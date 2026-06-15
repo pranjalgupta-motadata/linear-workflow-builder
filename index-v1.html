@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Flow · Workflow Builder</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="builds.js"></script>
+<style>
+  :root, [data-theme="dark"]{
+    --bg:#0a0a0c; --panel:#0f0f12; --panel2:#131317; --topbar:#0c0c0f; --border:#1f1f25;
+    --border2:#2a2a32; --text:#e6e6ea; --muted:#86868f; --faint:#5a5a63; --ink-mid:#b0b0b8;
+    --pop-bg:#16161b; --pop-hover:#20202a;
+    --accent:#5b6cff; --accent2:#7c89ff; --green:#3fb950; --amber:#d6a531; --red:#f85149;
+    --c-when:#7aa2ff; --c-when-bg:#16213d; --c-when-h:#10192b;
+    --c-if:#e3b341;   --c-if-bg:#2a2410;   --c-if-h:#1d1a11;
+    --c-then:#5fd07e; --c-then-bg:#13241b; --c-then-h:#101e16;
+    --grain:#ffffff08;
+    --rdy-bg:#16241c; --rdy-fg:#3fb950; --rdy-bd:#2c5237;
+    --drf-bg:#2a2418; --drf-fg:#d29922; --drf-bd:#4a3f1f;
+  }
+  [data-theme="light"]{
+    --bg:#f7f7f9; --panel:#ffffff; --panel2:#f1f1f4; --topbar:#ffffff; --border:#e6e6ea;
+    --border2:#d8d8de; --text:#16161a; --muted:#6a6a73; --faint:#9a9aa3; --ink-mid:#52525c;
+    --pop-bg:#ffffff; --pop-hover:#eef0f4;
+    --accent:#4f5dff; --accent2:#5562e6; --green:#1a7f37; --amber:#9a6700; --red:#cf222e;
+    --c-when:#2563eb; --c-when-bg:#e6efff; --c-when-h:#eef4ff;
+    --c-if:#a86a16;   --c-if-bg:#faf0d6;   --c-if-h:#fbf5e6;
+    --c-then:#15803d; --c-then-bg:#e6f6ec; --c-then-h:#ecf7f0;
+    --grain:#00000006;
+    --rdy-bg:#e6f5ec; --rdy-fg:#1a7f37; --rdy-bd:#a7d8ba;
+    --drf-bg:#fdf3d8; --drf-fg:#9a6700; --drf-bd:#ecd9a3;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased; font-feature-settings:"cv11","ss01";
+    transition:background .2s ease,color .2s ease;}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#26262e;border-radius:6px;border:2px solid var(--bg)}
+  ::-webkit-scrollbar-thumb:hover{background:#33333d}
+  .pop-enter{animation:pop .12s ease-out}
+  @keyframes pop{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
+  .grain{background-image:radial-gradient(circle at 1px 1px,var(--grain) 1px,transparent 0);background-size:22px 22px}
+  .slot{ display:inline; text-decoration-line:underline; text-decoration-style:dashed; text-decoration-thickness:1.5px; text-underline-offset:4px; }
+  .slot:hover, .slot:focus, .slot:focus-visible, .slot.pop-open{ text-decoration-style:solid; outline:none; }
+  .slot.pop-open{ color:var(--text) !important; text-decoration-color:var(--accent); }
+  .striking{ text-decoration-line:line-through; text-decoration-color:var(--text); text-decoration-thickness:1px; }
+  .striking .slot{ text-decoration-line:underline line-through !important; text-decoration-color:var(--text) !important; }
+  input[type=time],input[type=date]{color-scheme:dark}
+  [data-theme="light"] input[type=time],[data-theme="light"] input[type=date]{color-scheme:light}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect } = React;
+
+/* ---------------------------------------------------------------------------
+   ITSM / ITIL vocabulary
+--------------------------------------------------------------------------- */
+const MODULES   = ["Incident","Service Request","Problem","Change","Release","Asset / CI","Knowledge Article","User"];
+const TFIELDS   = ["priority","status","category","impact","urgency","assignee","assignment group"];
+const CADENCE   = ["hourly","daily","weekly","monthly","on a specific date"];
+const WEEKDAYS  = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+const DOM       = Array.from({length:28},(_,i)=>String(i+1)).concat(["last day"]);
+
+const PLACEHOLDER = { module:"module", field:"field", value:"a value", change:"updated", from:"any", to:"a value", cadence:"how often",
+  weekday:"a weekday", dom:"a day", time:"a time", date:"a date" };
+
+const TRIGGER_TYPES = [
+  { id:"created",       tpl:"a {module} is created",           slots:{ module:MODULES } },
+  { id:"deleted",       tpl:"a {module} is deleted",           slots:{ module:MODULES } },
+  { id:"field_updated", tpl:"a {module}'s {field} is updated", slots:{ module:MODULES, field:TFIELDS } },
+  { id:"date_reached",  tpl:"{date} is reached",               slots:{ date:"__date" } },
+  { id:"periodically",  tpl:"{cadence}",                       slots:{ cadence:CADENCE } },
+];
+
+const sv = (d) => <svg width="16" height="16" viewBox="0 0 24 24" fill="none">{d}</svg>;
+const I = {
+  plus:  sv(<><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.8"/><path d="M12 8v8M8 12h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></>),
+  trash: sv(<><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></>),
+  field: sv(<><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M9 4v16M15 4v16" stroke="currentColor" strokeWidth="1.8"/></>),
+  cal:   sv(<><rect x="3" y="4" width="18" height="17" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M3 9h18M8 3v3M16 3v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></>),
+  repeat:sv(<><path d="M17 2l3 3-3 3M3 11V9a4 4 0 014-4h13M7 22l-3-3 3-3M21 13v2a4 4 0 01-4 4H4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></>),
+  ai:    sv(<><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3zM18 14l.8 2.2L21 17l-2.2.8L18 20l-.8-2.2L15 17l2.2-.8L18 14z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></>),
+  group: sv(<><circle cx="9" cy="8" r="3" stroke="currentColor" strokeWidth="1.8"/><path d="M3 20a6 6 0 0112 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M16 7a3 3 0 010 6M21 20a6 6 0 00-5-5.9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></>),
+  user:  sv(<><circle cx="12" cy="8" r="3.2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 20a7 7 0 0114 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></>),
+  flag:  sv(<><path d="M5 21V4h12l-2 4 2 4H5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></>),
+  status:sv(<><path d="M4 7h11M4 12h11M4 17h7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M18 6l1.4 1.4L22 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></>),
+  clock: sv(<><circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.8"/><path d="M12 7v5l3 2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></>),
+  bell:  sv(<><path d="M6 9a6 6 0 1112 0c0 5 2 6 2 6H4s2-1 2-6z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M10 19a2 2 0 004 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></>),
+  mail:  sv(<><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M4 7l8 6 8-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></>),
+  up:    sv(<><path d="M12 20V5M6 11l6-6 6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></>),
+  task:  sv(<><path d="M4 7h9M4 12h9M4 17h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M15.5 16l1.8 1.8L21 14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></>),
+  link:  sv(<><path d="M10 6l1-1a4 4 0 016 6l-1 1M14 18l-1 1a4 4 0 01-6-6l1-1M9 15l6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></>),
+  tag:   sv(<><path d="M3 3h8l10 10-8 8L3 11V3z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><circle cx="7.5" cy="7.5" r="1.4" fill="currentColor"/></>),
+};
+
+// trigger picker contents (matches the "When this happens" design)
+const TRIGGER_MENU = [
+  { header:"Record events" },
+  { id:"created", label:"When a record is created", icon:I.plus },
+  { id:"changed", label:"When a record is updated", icon:I.field },
+  { header:"Time based" },
+  { id:"date_reached",  label:"When a date is reached",   icon:I.cal },
+  { id:"periodically",  label:"Every time period",        icon:I.repeat },
+];
+// values offered when a particular field is chosen (for "field changes to a value")
+const FIELD_VALUES = {
+  priority:["Urgent","High","Medium","Low"],
+  status:["New","In Progress","On Hold","Resolved","Closed"],
+  category:["Hardware","Software","Network","Access","Email","Other"],
+  impact:["High","Medium","Low"],
+  urgency:["High","Medium","Low"],
+  assignee:["Auto (round-robin)","Least busy","On-call agent","Specific agent…"],
+  "assignment group":["Service Desk","Tier-2","Network Ops","Apps Team","Field Support"],
+};
+
+// Returns the sentence template + an ORDERED list of slots ({key, options}) given current vals.
+// options is an array, or "__date" / "__time" for native inputs.
+function triggerView(trigger) {
+  const v = trigger.vals, id = trigger.typeId;
+  if (id==="created")  return { tpl:"a {module} is created",  slots:[{key:"module",options:MODULES}] };
+  if (id==="changed") {
+    const co = [{id:"updated",label:"field is updated"},{id:"deleted",label:"deleted"},{id:"archived",label:"archived"}];
+    if (v.change==="updated") {
+      const vals = FIELD_VALUES[v.field] || [];
+      if (v.field)
+        return { tpl:"a {module}'s {field} is {change} from {from} to {to}",
+          slots:[{key:"module",options:MODULES},{key:"change",options:co},{key:"field",options:TFIELDS},
+                 {key:"from",options:["any",...vals]},{key:"to",options:vals}] };
+      return { tpl:"a {module}'s {field} is {change}",
+        slots:[{key:"module",options:MODULES},{key:"change",options:co},{key:"field",options:TFIELDS}] };
+    }
+    return { tpl:"a {module} is {change}", slots:[{key:"module",options:MODULES},{key:"change",options:co}] };
+  }
+  if (id==="date_reached") return { tpl:"{date} is reached", slots:[{key:"date",options:"__date"}] };
+  // periodically — chain depends on the cadence
+  const c = v.cadence, base = [{key:"cadence",options:CADENCE}];
+  if (c==="daily")    return { tpl:"{cadence} at {time}", slots:[...base,{key:"time",options:"__time"}] };
+  if (c==="weekly")   return { tpl:"{cadence} on {weekday} at {time}", slots:[...base,{key:"weekday",options:WEEKDAYS},{key:"time",options:"__time"}] };
+  if (c==="monthly")  return { tpl:"{cadence} on day {dom} at {time}", slots:[...base,{key:"dom",options:DOM},{key:"time",options:"__time"}] };
+  if (c==="on a specific date") return { tpl:"{cadence} — {date} at {time}", slots:[...base,{key:"date",options:"__date"},{key:"time",options:"__time"}] };
+  return { tpl:"{cadence}", slots:base };
+}
+
+const FIELDS = [
+  { id:"priority", label:"priority", values:["Urgent","High","Medium","Low"] },
+  { id:"impact", label:"impact", values:["High","Medium","Low"] },
+  { id:"urgency", label:"urgency", values:["High","Medium","Low"] },
+  { id:"category", label:"category", values:["Hardware","Software","Network","Access","Email","Other"] },
+  { id:"status", label:"status", values:["New","In Progress","On Hold","Resolved","Closed"] },
+  { id:"group", label:"assignment group", values:["Service Desk","Tier-2","Network Ops","Apps Team","Field Support"] },
+  { id:"channel", label:"source channel", values:["Email","Portal","Phone","Chat","Walk-up"] },
+];
+const OPERATORS = ["is","is not","is one of","contains","is greater than","is less than"];
+
+const ACTIONS = [
+  { id:"assign_group", label:"assign it to", arg:["Service Desk","Tier-2","Network Ops","Apps Team","Field Support"] },
+  { id:"assign_user", label:"assign it to agent", arg:["Auto (round-robin)","Least busy","On-call agent","Specific agent…"] },
+  { id:"set_priority", label:"set priority to", arg:["Urgent","High","Medium","Low"] },
+  { id:"set_status", label:"set status to", arg:["In Progress","On Hold","Resolved"] },
+  { id:"notify_slack", label:"notify on Slack", arg:["#service-desk","#tier-2","#major-incidents","On-call channel"] },
+  { id:"send_email", label:"send an email to", arg:["Requester","Assignee","Manager","Watchers"] },
+  { id:"apply_sla", label:"apply SLA", arg:["Gold (1h)","Silver (4h)","Bronze (8h)"] },
+  { id:"escalate", label:"escalate to", arg:["Tier-2","Tier-3","Incident Manager","Duty Manager"] },
+  { id:"create_task", label:"create a task for", arg:["Approver","Change team","CAB review","Requester"] },
+  { id:"link_problem", label:"link it to a problem record", arg:null },
+  { id:"add_tag", label:"add the tag", arg:["major","vip","recurring","needs-review","after-hours"] },
+];
+
+// categorized ITSM / ITIL action picker
+const ACTION_MENU = [
+  { header:"Assignment" },
+  { id:"assign_group", label:"assign it to", icon:I.group },
+  { id:"assign_user",  label:"assign it to agent", icon:I.user },
+  { header:"Triage" },
+  { id:"set_priority", label:"set priority to", icon:I.flag },
+  { id:"set_status",   label:"set status to", icon:I.status },
+  { id:"apply_sla",    label:"apply SLA", icon:I.clock },
+  { header:"Notify" },
+  { id:"notify_slack", label:"notify on Slack", icon:I.bell },
+  { id:"send_email",   label:"send an email to", icon:I.mail },
+  { header:"Escalation" },
+  { id:"escalate",     label:"escalate to", icon:I.up },
+  { header:"Records & tasks" },
+  { id:"create_task",  label:"create a task for", icon:I.task },
+  { id:"link_problem", label:"link it to a problem record", icon:I.link },
+  { id:"add_tag",      label:"add the tag", icon:I.tag },
+];
+
+const ADD_MENU = [
+  { header:"Required" },
+  { id:"action",    label:"Add action",    tag:"do" },
+  { header:"Suggestion" },
+  { id:"trigger",   label:"Add trigger",   tag:"or" },
+  { id:"condition", label:"Add condition", tag:"if" },
+  { id:"branch",    label:"Add branch",    tag:"soon", disabled:true },
+];
+// menu shown by a branch's own "+" affordance
+const BRANCH_MENU = [
+  { id:"action",    label:"Add action" },
+  { id:"condition", label:"Add condition" },
+  { id:"branch",    label:"Add branch" },
+];
+
+// Saved experiment builds — single shared source of truth in builds.js (window.BUILDS).
+const BUILDS = (typeof window!=="undefined" && window.BUILDS) || [{ label:"Working", file:"index.html" }];
+
+/* tree helpers (path = array of child indices) */
+const treeInsert = (nodes, path, node) => {
+  if (path.length === 0) return [...nodes, node];
+  const [i, ...rest] = path;
+  return nodes.map((n, idx) => idx===i ? {...n, children: treeInsert(n.children||[], rest, node)} : n);
+};
+const treeRemove = (nodes, path) => {
+  const [i, ...rest] = path;
+  if (rest.length === 0) return nodes.filter((_, idx) => idx!==i);
+  return nodes.map((n, idx) => idx===i ? {...n, children: treeRemove(n.children||[], rest)} : n);
+};
+const treeUpdate = (nodes, path, patch) => {
+  const [i, ...rest] = path;
+  return nodes.map((n, idx) => {
+    if (idx!==i) return n;
+    if (rest.length===0) return {...n, ...patch};
+    return {...n, children: treeUpdate(n.children||[], rest, patch)};
+  });
+};
+const hasAction = (nodes) => (nodes||[]).some(n=>n.kind==="action");
+const childrenAt = (nodes, path) => path.length ? childrenAt(((nodes[path[0]]||{}).children)||[], path.slice(1)) : nodes;
+const treeFindPath = (nodes, id, base=[]) => {
+  for (let i=0;i<nodes.length;i++) {
+    const p=[...base,i];
+    if (nodes[i].id===id) return p;
+    if (nodes[i].children) { const r=treeFindPath(nodes[i].children,id,p); if(r) return r; }
+  }
+  return null;
+};
+
+/* ---------------------------------------------------------------------------
+   Popover — list / grouped-menu / native time/date input
+--------------------------------------------------------------------------- */
+function Popover({ anchor, items, onPick, onClose, title, inputType, noSearch, footer, wide }) {
+  const ref = useRef(null);
+  const posRef = useRef(null);
+  const [q, setQ] = useState("");
+  const [val, setVal] = useState("");
+  const [active, setActive] = useState(0);
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    const k = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("mousedown", h);
+    document.addEventListener("keydown", k);
+    return () => { document.removeEventListener("mousedown", h); document.removeEventListener("keydown", k); };
+  }, []);
+  // keep the related editable slot's underline solid (connected) while open
+  useEffect(() => { if (!anchor) return; anchor.classList.add("pop-open"); return () => anchor.classList.remove("pop-open"); }, [anchor]);
+  useEffect(() => {
+    if (inputType) return;
+    const onArrow = (e) => {
+      if (!["ArrowDown","ArrowUp","Enter"].includes(e.key)) return;
+      const list = (noSearch ? items : items.filter(i => i.header || i.label.toLowerCase().includes(q.toLowerCase())))
+        .filter(i => !i.header && !i.disabled);
+      if (!list.length) return;
+      e.preventDefault();
+      if (e.key === "Enter") { const it = list[Math.min(active, list.length-1)]; if (it) { onPick(it); onClose(); } return; }
+      setActive(a => { const cur = Math.min(a, list.length-1);
+        return e.key === "ArrowDown" ? Math.min(list.length-1, cur+1) : Math.max(0, cur-1); });
+    };
+    document.addEventListener("keydown", onArrow);
+    return () => document.removeEventListener("keydown", onArrow);
+  }, [q, active, items, noSearch, inputType]);
+  if (!anchor) return null;
+  // freeze position at open time (anchor element may be replaced on re-render)
+  if (!posRef.current) {
+    const r = anchor.getBoundingClientRect();
+    posRef.current = { top: Math.min(r.bottom + 20, window.innerHeight - 300), left: Math.min(r.left, window.innerWidth - 280) };
+  }
+  const { top, left } = posRef.current;
+  const wrap = (children, w=(wide?"w-[340px]":"w-64")) => (
+    <div ref={ref} className={`pop-enter fixed z-50 ${w} rounded-2xl shadow-2xl overflow-hidden`}
+      style={{ top, left, background:"var(--pop-bg)", border:"1px solid var(--border2)" }}>{children}</div>
+  );
+
+  if (inputType) {
+    return wrap(
+      <div className="p-3">
+        {title && <div className="text-[10px] uppercase tracking-wider mb-2" style={{color:"var(--faint)"}}>{title}</div>}
+        <input type={inputType} autoFocus value={val} onChange={e=>setVal(e.target.value)}
+          className="w-full rounded-lg px-2.5 py-1.5 text-sm outline-none"
+          style={{background:"var(--panel)",border:"1px solid var(--border2)",color:"var(--text)"}}/>
+        <button onClick={()=>{ if(val){ onPick({id:val,label:val}); onClose(); } }}
+          className="mt-2.5 w-full rounded-lg py-1.5 text-sm font-medium" style={{background:"var(--accent)",color:"#fff"}}>Set</button>
+      </div>, "w-56");
+  }
+
+  const filtered = noSearch ? items : items.filter(i => i.header || i.label.toLowerCase().includes(q.toLowerCase()));
+  const selCount = filtered.filter(i=>!i.header && !i.disabled).length;
+  let si = -1;
+  return wrap(<>
+    {!noSearch &&
+      <div className="p-2.5 pb-2">
+        {title && <div className="text-[10px] uppercase tracking-wider mb-1.5 px-1" style={{color:"var(--faint)"}}>{title}</div>}
+        <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{border:"1px solid var(--accent)", background:"var(--pop-bg)"}}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2"/><path d="M21 21l-4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+          <input autoFocus value={q} onChange={e=>{setQ(e.target.value); setActive(0);}} placeholder="Search"
+            className="w-full bg-transparent outline-none text-[12px] placeholder:text-[var(--faint)]" />
+        </div>
+      </div>}
+    <div className="max-h-72 overflow-y-auto py-1 px-1.5">
+      {filtered.length===0 && <div className="px-3 py-2 text-[12px]" style={{color:"var(--faint)"}}>No matches</div>}
+      {filtered.map((i,k)=>{
+        if (i.header) return <div key={"h"+k} className="px-2.5 pt-3 pb-1 text-[11px] font-medium" style={{color:"var(--faint)"}}>{i.header}</div>;
+        if (i.disabled) return (
+          <button key={i.id} disabled className="w-full text-left px-2.5 py-1.5 text-[12px] rounded-lg flex items-center justify-between cursor-default opacity-50" style={{color:"var(--text)"}}>
+            <span className="flex items-center gap-2.5">{i.icon && <span style={{color:"var(--muted)"}}>{i.icon}</span>}{i.label}</span>
+            {i.tag && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{background:"var(--border)",color:"var(--muted)"}}>{i.tag}</span>}
+          </button>);
+        si++; const isActive = si === Math.min(active, selCount-1);
+        return (
+          <button key={i.id} onClick={()=>{ onPick(i); onClose(); }}
+            className={"w-full text-left px-2.5 py-1.5 text-[12px] rounded-lg flex items-center justify-between " + (isActive ? "bg-[var(--pop-hover)]" : "hover:bg-[var(--pop-hover)]")}
+            style={{color:"var(--text)"}}>
+            <span className="flex items-center gap-3">{i.icon && <span style={{color:"var(--muted)"}}>{i.icon}</span>}{i.label}</span>
+            {i.tag && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{background:"var(--border)",color:"var(--muted)"}}>{i.tag}</span>}
+          </button>);
+      })}
+    </div>
+    {footer && <div className="border-t p-1.5" style={{borderColor:"var(--border)"}}>{footer}</div>}
+  </>);
+}
+
+/* ---------------------------------------------------------------------------
+   Inline editable slot — underlined text, colored by role
+--------------------------------------------------------------------------- */
+const SLOT_COLOR = { trigger:"var(--c-when)", action:"var(--c-then)", value:"var(--c-then)", cond:"var(--c-if)" };
+function Slot({ value, placeholder, onClick, innerRef }) {
+  const filled = !!value;
+  return (
+    <button ref={innerRef} onClick={onClick} className={"slot " + (filled ? "font-medium" : "font-normal")}
+      style={{ color: filled ? "var(--text)" : "var(--faint)" }}>
+      {filled ? value : placeholder}
+    </button>
+  );
+}
+const Word = ({children}) => <span className="font-normal" style={{color:"var(--ink-mid)"}}>{children}</span>;
+function Template({ tpl, vals, onSlot, slotRef }) {
+  return tpl.split(/(\{[^}]+\})/).filter(p=>p!=="").map((p,i)=>{
+    const m = p.match(/^\{(.+)\}$/);
+    if (m) { const k = m[1];
+      return <Slot key={i} value={vals[k]} placeholder={PLACEHOLDER[k]||k}
+        innerRef={slotRef ? (el)=>slotRef(k, el) : undefined} onClick={(e)=>onSlot(k,e)} />; }
+    return <Word key={i}>{p}</Word>;
+  });
+}
+
+/* ---------------------------------------------------------------------------
+   App
+--------------------------------------------------------------------------- */
+function App() {
+  // editable document (trigger + flow tree) behind an undo/redo history
+  const [doc, setDoc] = useState({ triggers:[], flow:[] });
+  const triggers = doc.triggers, flow = doc.flow;
+  const past = useRef([]); const future = useRef([]);
+  const commit = (updater) => setDoc(prev => { past.current.push(prev); if(past.current.length>200) past.current.shift(); future.current=[]; return updater(prev); });
+  const setTriggers = (upd) => commit(prev => ({ ...prev, triggers: typeof upd==="function" ? upd(prev.triggers) : upd }));
+  const setFlow = (upd) => commit(prev => ({ ...prev, flow: typeof upd==="function" ? upd(prev.flow) : upd }));
+  const undo = () => setDoc(prev => { if(!past.current.length) return prev; future.current.push(prev); return past.current.pop(); });
+  const redo = () => setDoc(prev => { if(!future.current.length) return prev; past.current.push(prev); return future.current.pop(); });
+  const reset = () => { commit(() => ({ triggers:[], flow:[] })); guidingRef.current = null; setFocusKey("T"); setPop(null); };
+  // switch between saved experiment builds (separate HTML files)
+  const openVersions = (anchor) => open(anchor,
+    BUILDS.map(b=>({ id:b.file, label:b.label, tag: b.file===currentBuild ? "current" : undefined })),
+    (i)=>{ if (i.id!==currentBuild) window.location.href = i.id; },
+    "Experiments", { noSearch:true });
+  const [pop, setPop] = useState(null);
+  const [name, setName] = useState("Untitled rule");
+  const [enabled, setEnabled] = useState(true);
+  const [theme, setTheme] = useState("dark");
+  const [focusKey, setFocusKey] = useState("T"); // "T" = trigger, else path.join('.')
+  const [helpOpen, setHelpOpen] = useState(false);
+  const currentBuild = decodeURIComponent((location.pathname.split("/").pop()) || "index.html") || "index.html";
+  const idRef = useRef(1);
+  const nid = () => idRef.current++;
+  const rowRefs = useRef({});
+  const setRowRef = (key, el) => { if (el) rowRefs.current[key] = el; };
+  const triggerSlotRefs = useRef({});
+  const setTriggerSlotRef = (tid, key, el) => { if (el) triggerSlotRefs.current[`${tid}:${key}`] = el; };
+  const guidingRef = useRef(null); // id of the trigger currently auto-advancing (or null)
+  const actionSlotRefs = useRef({}); // action node id -> its "choose an action" element
+  useEffect(()=>{ document.documentElement.dataset.theme = theme; }, [theme]);
+
+  const open = (anchor, items, onPick, title, opts={}) => setPop({ anchor, items, onPick, title, ...opts });
+  const close = () => setPop(null);
+  const hasTrigger = triggers.length > 0;
+
+  /* triggers (multiple, OR'd) */
+  // open the trigger-type picker; on pick, APPEND a new trigger and guide its slots
+  const pickTriggerType = (anchor) => open(anchor, TRIGGER_MENU,
+    (i)=>{ const nt = { id:nid(), typeId:i.id, vals:{} }; setTriggers(ts=>[...ts, nt]); guidingRef.current = nt.id; setFocusKey(`trig:${nt.id}`); }, null,
+    { wide:true, footer:(
+      <button className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-[12px] rounded-lg hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}>
+        <span style={{color:"var(--accent2)"}}>{I.ai}</span> Generate with AI
+      </button>
+    )});
+
+  const updateTrigger = (tid, key, val) => setTriggers(ts=>ts.map(t=>t.id===tid?{...t, vals:{...t.vals,[key]:val}}:t));
+  const removeTrigger = (tid) => setTriggers(ts=>ts.filter(t=>t.id!==tid));
+
+  // Guided chain: open the next empty slot of trigger `tid`; when all are filled, open the action menu.
+  // Each pick just sets the value — the [triggers] effect re-runs this, so it works for mouse AND keyboard.
+  const advanceTrigger = (tid) => {
+    const t = triggers.find(x=>x.id===tid);
+    if (!t) { guidingRef.current = null; return; }
+    const view = triggerView(t);
+    const next = view.slots.find(s => !t.vals[s.key]);
+    if (next) {
+      const el = triggerSlotRefs.current[`${tid}:${next.key}`] || rowRefs.current[`trig:${tid}`];
+      const setter = (i) => updateTrigger(tid, next.key, i.id);
+      if (next.options==="__date") return open(el, [], setter, "Pick a date", {inputType:"date"});
+      if (next.options==="__time") return open(el, [], setter, "Pick a time", {inputType:"time"});
+      return open(el, next.options.map(o=>typeof o==="string"?{id:o,label:o}:o), setter, PLACEHOLDER[next.key]||next.key);
+    }
+    // this trigger is complete — open the "do this…" menu (anchored under it)
+    guidingRef.current = null;
+    if (!hasAction(flow)) setTimeout(()=>openMainAt([], rowRefs.current["__thenSlot"] || rowRefs.current["__then"]), 0);
+  };
+  // drive the chain off trigger changes so it advances no matter how a value was picked
+  useEffect(() => { if (guidingRef.current) advanceTrigger(guidingRef.current); }, [triggers]);
+
+  // open the categorized ITSM action picker on a given line
+  const openActionPicker = (path, el) => open(el, ACTION_MENU, (i)=>update(path,{action:i.id,arg:null}), "Do this", {wide:true});
+  // insert an action at `path` and immediately open its picker (anchored under the new line)
+  const addActionAndPick = (path, fallbackEl) => {
+    const node = { id:nid(), kind:"action", action:null, arg:null };
+    const newPath = [...path, childrenAt(flow, path).length];
+    setFlow(f => treeInsert(f, path, node));
+    setTimeout(() => openActionPicker(newPath, actionSlotRefs.current[node.id] || fallbackEl), 30);
+  };
+
+  // manual edit of a single slot (clicking it) — no auto-advance
+  const pickTriggerSlot = (t, key, e) => {
+    const slot = triggerView(t).slots.find(s=>s.key===key); if(!slot) return;
+    const setter = (i)=>updateTrigger(t.id, key, i.id);
+    if (slot.options==="__date") return open(e.currentTarget, [], setter, "Pick a date", {inputType:"date"});
+    if (slot.options==="__time") return open(e.currentTarget, [], setter, "Pick a time", {inputType:"time"});
+    open(e.currentTarget, slot.options.map(o=>typeof o==="string"?{id:o,label:o}:o), setter, PLACEHOLDER[key]||key);
+  };
+
+  /* tree ops */
+  const update = (path, patch) => setFlow(f => treeUpdate(f, path, patch));
+  const remove = (path) => setFlow(f => treeRemove(f, path));
+  const openMainAt = (path, anchor) => {
+    if (!anchor) return;
+    open(anchor, ADD_MENU, (i)=>{
+      if (i.id==="action")    addActionAndPick(path, anchor);
+      else if (i.id==="condition") setFlow(f => treeInsert(f, path, { id:nid(), kind:"branch", field:null, op:"is", value:null, children:[] }));
+      else if (i.id==="trigger")   setTimeout(()=>pickTriggerType(anchor), 0);
+    }, "Add step", {noSearch:true});
+  };
+  const openMain = (path, e) => openMainAt(path, e.currentTarget);
+  const openBranchAdd = (path, e) => {
+    const anchor = e.currentTarget;
+    open(anchor, BRANCH_MENU, (i)=>{
+      if (i.id==="action") addActionAndPick(path, anchor);
+      else setFlow(f => treeInsert(f, path, { id:nid(), kind:"branch", field:null, op:"is", value:null, children:[] }));
+    }, "Add step in this branch", {noSearch:true});
+  };
+
+  /* node slot pickers */
+  const pickField = (path, e) => open(e.currentTarget, FIELDS.map(f=>({id:f.id,label:f.label})),
+    (i)=>update(path,{field:i.id,value:null}), "Which field");
+  const pickOp = (path, e) => open(e.currentTarget, OPERATORS.map(o=>({id:o,label:o})),
+    (i)=>update(path,{op:i.id}), "Comparison");
+  const pickValue = (path, node, e) => {
+    const f = FIELDS.find(f=>f.id===node.field); if(!f) return;
+    open(e.currentTarget, f.values.map(v=>({id:v,label:v})), (i)=>update(path,{value:i.id}), f.label);
+  };
+  const pickAction = (path, e) => open(e.currentTarget, ACTION_MENU,
+    (i)=>update(path,{action:i.id,arg:null}), "Do this", {wide:true});
+  const pickArg = (path, node, e) => {
+    const a = ACTIONS.find(a=>a.id===node.action); if(!a||!a.arg) return;
+    open(e.currentTarget, a.arg.map(v=>({id:v,label:v})), (i)=>update(path,{arg:i.id}), a.label);
+  };
+
+  const isComplete = hasTrigger && hasAction(flow);
+  const hasRootAction = flow.some(n => n.kind==="action"); // a trunk-level action took the "then" slot
+  const showOpener = !hasRootAction;                       // keep "do this…" until then
+
+  /* ---- keyboard navigation for power users ---- */
+  const navList = () => {
+    const out = [];
+    if (!hasTrigger) out.push({ key:"T", kind:"trigger", path:null });
+    else triggers.forEach(t => out.push({ key:`trig:${t.id}`, kind:"trigger", path:null }));
+    const walk = (nodes, base) => nodes.forEach((n,i)=>{ const p=[...base,i];
+      out.push({ key:p.join("."), kind:n.kind, path:p, node:n }); if(n.children) walk(n.children, p); });
+    walk(flow, []); return out;
+  };
+  const isTriggerKey = (k) => k==="T" || k.startsWith("trig:");
+  const focusScope = () => {
+    if (isTriggerKey(focusKey)) return [];
+    const cur = navList().find(n=>n.key===focusKey);
+    if (!cur || !cur.node) return [];
+    return cur.node.kind==="branch" ? cur.path : cur.path.slice(0,-1);
+  };
+  const addToScope = (kind) => {
+    const scope = focusScope();
+    const node = kind==="action"
+      ? { id:nid(), kind:"action", action:null, arg:null }
+      : { id:nid(), kind:"branch", field:null, op:"is", value:null, children:[] };
+    setFlow(f => treeInsert(f, scope, node));
+  };
+  const openMenuAt = (scope, el) => {
+    if (!el) return;
+    open(el, BRANCH_MENU, (i)=>{
+      if (i.id==="action") setFlow(f => treeInsert(f, scope, { id:nid(), kind:"action", action:null, arg:null }));
+      else setFlow(f => treeInsert(f, scope, { id:nid(), kind:"branch", field:null, op:"is", value:null, children:[] }));
+    }, "Add step", {noSearch:true});
+  };
+  const removeFocused = () => {
+    const nav = navList(); const i = nav.findIndex(n=>n.key===focusKey);
+    if (focusKey.startsWith("trig:")) { removeTrigger(focusKey.slice(5)); }
+    else if (focusKey==="T") { return; }
+    else if (i>=0) { setFlow(f => treeRemove(f, nav[i].path)); }
+    const prev = nav[Math.max(0, i-1)];
+    setFocusKey(prev ? prev.key : "T");
+  };
+  useEffect(() => {
+    const onKey = (e) => {
+      if (pop) return; // popover owns the keyboard while open
+      const tag = (e.target.tagName||"").toLowerCase();
+      if (tag==="input" || tag==="textarea") return;
+      const nav = navList();
+      const idx = Math.max(0, nav.findIndex(n=>n.key===focusKey));
+      const k = e.key.toLowerCase();
+      if (e.metaKey || e.ctrlKey) {
+        if (k==="z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+        else if (k==="y") { e.preventDefault(); redo(); }
+        return; // don't let other Ctrl/⌘ combos trigger single-key actions
+      }
+      if (k==="arrowdown" || k==="j") { e.preventDefault(); setFocusKey(nav[Math.min(nav.length-1, idx+1)].key); }
+      else if (k==="arrowup" || k==="k") { e.preventDefault(); setFocusKey(nav[Math.max(0, idx-1)].key); }
+      else if (e.key==="Enter") { e.preventDefault();
+        if (isTriggerKey(focusKey)) {
+          let el = rowRefs.current["Twhen"];
+          if (focusKey.startsWith("trig:")) {
+            const t = triggers.find(x=>`trig:${x.id}`===focusKey);
+            const fk = t && triggerView(t).slots[0] && triggerView(t).slots[0].key;
+            el = (t && fk && triggerSlotRefs.current[`${t.id}:${fk}`]) || rowRefs.current[focusKey];
+          }
+          pickTriggerType(el || rowRefs.current["T"]);
+        }
+        else if (hasTrigger) openMenuAt(focusScope(), rowRefs.current[focusKey]); }
+      else if (k==="a") { if (!hasTrigger) return; e.preventDefault(); addToScope("action"); }
+      else if (k==="c") { if (!hasTrigger) return; e.preventDefault(); addToScope("condition"); }
+      else if (k==="x" || k==="delete" || k==="backspace") { e.preventDefault(); removeFocused(); }
+      else if (e.shiftKey && k==="r") { e.preventDefault(); reset(); }
+      else if (k==="t") { setTheme(t=>t==="dark"?"light":"dark"); }
+      else if (e.key==="?") { setHelpOpen(h=>!h); }
+      else if (k==="escape") { setHelpOpen(false); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  /* ---- markers ---- */
+  const MARK = {
+    trigger:<span className="block w-3.5 h-3.5 rounded-full" style={{border:"2px solid var(--c-when)",background:"var(--bg)",boxShadow:"0 0 0 4px var(--bg)"}}/>,
+    cond:   <span className="block w-2.5 h-2.5 rotate-45" style={{background:"var(--c-if)",boxShadow:"0 0 0 4px var(--bg)"}}/>,
+    action: <span className="block w-2.5 h-2.5 rounded-full" style={{background:"var(--c-then)",boxShadow:"0 0 0 4px var(--bg)"}}/>,
+  };
+
+  const HEAD = 28, PAD = 7, GAP = 10, MC = PAD + HEAD/2; // MC = marker center from row top
+  const Station = ({ marker, isFirst, isLast, head, headColor, headBg, hoverBg, onRemove, removeLabel, onFocus, innerRef, dense, bgLeft="16px", bgRight="16px", padLeft="34px", padRight="28px", children }) => {
+    const [xHover, setXHover] = useState(false);
+    const pt = dense ? 6 : PAD, bgBottom = dense ? 12 : GAP, pb = pt + bgBottom, mc = pt + HEAD/2;
+    return (
+    <div ref={innerRef} className="relative group" onMouseDown={onFocus}
+      style={{paddingLeft:padLeft, paddingRight:padRight, paddingTop:`${pt}px`, paddingBottom:`${pb}px`}}>
+      {/* role-tinted hover background hugging the line (hover only) */}
+      <div className="absolute rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+        style={{ top:0, bottom:`${bgBottom}px`, left:bgLeft, right:bgRight, background:hoverBg||"var(--panel2)" }}/>
+      {/* rail */}
+      <div className="absolute w-px" style={{ left:"9px", top:isFirst?`${mc}px`:0, bottom:isLast?`calc(100% - ${mc}px)`:0, background:"var(--border2)" }}/>
+      {/* marker (optional) */}
+      {marker && <span className="absolute flex items-center justify-center" style={{ left:"9px", top:`${mc}px`, transform:"translate(-50%,-50%)" }}>{marker}</span>}
+      <div className="relative flex items-start gap-4">
+        <div className="flex-1 min-w-0 text-[16px]" style={{lineHeight:`${HEAD}px`}}>
+          {head && <span className="text-[10px] font-semibold uppercase tracking-[0.1em] mr-2.5 px-2 py-[3px] rounded-md whitespace-nowrap"
+            style={{color:headColor||"var(--faint)", background:headBg||"var(--panel2)"}}>{head}</span>}
+          <span className={"inline align-top " + (xHover ? "striking" : "")}>
+            {children}
+          </span>
+        </div>
+        {/* remove cross on the right */}
+        <div className="relative shrink-0" style={{marginTop:"2px"}}>
+          {xHover && removeLabel &&
+            <div className="absolute right-0 px-2 py-1 rounded-md text-[11px] whitespace-nowrap shadow-lg" style={{ bottom:"28px", background:"var(--pop-bg)", border:"1px solid var(--border2)", color:"var(--text)" }}>{removeLabel}</div>}
+          <button onMouseDown={(e)=>{ if(!onRemove) return; e.stopPropagation(); setPop(null); onRemove(); }}
+            onMouseEnter={()=>setXHover(true)} onMouseLeave={()=>setXHover(false)}
+            className={"rounded-md flex items-center justify-center transition-colors " + (onRemove ? "opacity-0 group-hover:opacity-100" : "opacity-0 pointer-events-none")}
+            style={{ color: xHover ? "var(--red)" : "var(--faint)", background: xHover ? "rgba(248,81,73,0.18)" : "transparent", padding:"6px" }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    );
+  };
+
+  /* trunk opener — looks like an action row, opens the grouped popover */
+  const Opener = ({ path, hasActions, isLast }) => (
+    <Station marker={MARK.action} isLast={isLast} head={hasActions ? "And" : "Then"} headColor="var(--c-then)" headBg="var(--c-then-bg)" hoverBg="var(--c-then-h)"
+      innerRef={(el)=>setRowRef("__then", el)}>
+      {hasTrigger
+        ? <Slot tone="action" value={null} placeholder="do this…" innerRef={(el)=>setRowRef("__thenSlot", el)} onClick={(e)=>openMain(path,e)} />
+        : <span className="text-[16px]" style={{color:"var(--faint)", opacity:.55}} title="Add a trigger first">do this…</span>}
+    </Station>
+  );
+
+  /* branch opener — subtle + that expands to "add step in this branch" */
+  const BranchAdd = ({ path }) => (
+    <div onClick={(e)=>openBranchAdd(path,e)} className="group/add relative cursor-pointer" style={{paddingLeft:"34px", paddingTop:`${PAD}px`, paddingBottom:`${PAD+GAP}px`}}>
+      <div className="absolute w-px" style={{ left:"9px", top:0, bottom:`calc(100% - ${MC}px)`, background:"var(--border2)" }}/>
+      <span className="absolute flex items-center justify-center w-5 h-5 rounded-full transition-colors group-hover/add:text-[var(--accent2)]"
+        style={{ left:"9px", top:`${MC}px`, transform:"translate(-50%,-50%)", border:"1px dashed var(--border2)", color:"var(--faint)", background:"var(--bg)" }}>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>
+      </span>
+      <div className="flex items-center" style={{height:`${HEAD}px`}}>
+        <span className="text-[13px] max-w-0 overflow-hidden whitespace-nowrap opacity-0 group-hover/add:max-w-[220px] group-hover/add:opacity-100 transition-all duration-200" style={{color:"var(--faint)"}}>add step in this branch</span>
+      </div>
+    </div>
+  );
+
+  /* recursive flow renderer */
+  function renderFlow(nodes, basePath, opts={}) {
+    let acted = false;
+    return nodes.map((node, i) => {
+      const path = [...basePath, i];
+      if (node.kind === "action") {
+        const def = ACTIONS.find(a=>a.id===node.action);
+        const head = acted ? "And" : "Then"; acted = true;
+        const isLast = opts.last && i===nodes.length-1;
+        return (
+          <Station key={node.id} marker={MARK.action} isLast={isLast} head={head} headColor="var(--c-then)" headBg="var(--c-then-bg)" hoverBg="var(--c-then-h)"
+            innerRef={(el)=>setRowRef(path.join("."), el)} removeLabel="Clear action"
+            focused={focusKey===path.join(".")} onFocus={()=>setFocusKey(path.join("."))} onRemove={()=>remove(path)}>
+            <Slot tone="action" value={def?.label} placeholder="choose an action" innerRef={(el)=>{ if(el) actionSlotRefs.current[node.id]=el; }} onClick={(e)=>pickAction(path,e)} />
+            {def && def.arg && <> <Slot tone="action" value={node.arg} placeholder="…" onClick={(e)=>pickArg(path,node,e)} /></>}
+          </Station>
+        );
+      }
+      // condition -> a forked branch (family-tree style)
+      const f = FIELDS.find(x=>x.id===node.field);
+      return (
+        <div key={node.id} className="relative" style={{marginLeft:"24px"}}>
+          {/* parent rail continues straight down behind the fork */}
+          <div className="absolute" style={{ left:"-15px", top:0, bottom:0, width:"1px", background:"var(--border2)" }}/>
+          {/* family-tree elbow into this branch */}
+          <div className="absolute" style={{ left:"-15px", top:0, width:"24px", height:`${MC}px`,
+            borderLeft:"1px solid var(--border2)", borderBottom:"1px solid var(--border2)", borderBottomLeftRadius:"12px" }}/>
+          {/* condition header on the new rail */}
+          <Station marker={MARK.cond} isFirst head="And if" headColor="var(--c-if)" headBg="var(--c-if-bg)" hoverBg="var(--c-if-h)"
+            innerRef={(el)=>setRowRef(path.join("."), el)} removeLabel="Clear condition"
+            focused={focusKey===path.join(".")} onFocus={()=>setFocusKey(path.join("."))} onRemove={()=>remove(path)}>
+            <Slot tone="cond" value={f?.label} placeholder="a field" onClick={(e)=>pickField(path,e)} />
+            {node.field && <> <Slot tone="cond" value={node.op} placeholder="is" onClick={(e)=>pickOp(path,e)} /> </>}
+            {node.field && <Slot tone="cond" value={node.value} placeholder="a value" onClick={(e)=>pickValue(path,node,e)} />}
+          </Station>
+          {/* the branch's own steps + its own "+" affordance */}
+          {renderFlow(node.children || [], path)}
+          <BranchAdd path={path} />
+        </div>
+      );
+    });
+  }
+
+  return (
+    <div className="flex flex-col h-screen w-screen overflow-hidden grain">
+      {/* top bar */}
+      <header className="h-14 shrink-0 flex items-center gap-3 px-6 border-b" style={{borderColor:"var(--border)",background:"var(--topbar)"}}>
+        <div className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs mr-1"
+          style={{background:"linear-gradient(135deg,#5b6cff,#7c89ff)",color:"#fff"}}>F</div>
+        <input value={name} onChange={e=>setName(e.target.value)}
+          className="bg-transparent outline-none text-[15px] font-medium w-56" style={{color:"var(--text)"}} />
+        <button onClick={(e)=>openVersions(e.currentTarget)} title="Switch experiment build"
+          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[12px] font-medium transition-colors hover:brightness-125"
+          style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--muted)"}}>
+          {(BUILDS.find(b=>b.file===currentBuild)?.label) || "Working"}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </button>
+        <span className="text-xs px-2 py-0.5 rounded-full"
+          style={{background: isComplete?"var(--rdy-bg)":"var(--drf-bg)", color: isComplete?"var(--rdy-fg)":"var(--drf-fg)", border:`1px solid ${isComplete?"var(--rdy-bd)":"var(--drf-bd)"}`}}>
+          {isComplete? "Ready" : "Draft"}
+        </span>
+        <div className="ml-auto flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm cursor-pointer" style={{color:"var(--muted)"}}>
+            <button onClick={()=>setEnabled(!enabled)} className="w-9 h-5 rounded-full relative transition-colors"
+              style={{background: enabled?"var(--accent)":"var(--border2)"}}>
+              <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all" style={{left: enabled?"18px":"2px"}}></span>
+            </button>{enabled?"Enabled":"Disabled"}
+          </label>
+          <button onClick={()=>setTheme(theme==="dark"?"light":"dark")} title="Toggle theme"
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:brightness-125"
+            style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--muted)"}}>
+            {theme==="dark"
+              ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              : <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4.2" stroke="currentColor" strokeWidth="2"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8L6 18M18 6l1.8-1.8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>}
+          </button>
+          <button onClick={reset} title="Reset (⇧R)"
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:brightness-125"
+            style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--muted)"}}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M3 3v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+          <button onClick={undo} title="Undo (Ctrl/⌘+Z)"
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:brightness-125"
+            style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--muted)"}}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 14L4 9l5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M4 9h11a5 5 0 010 10h-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+          <button onClick={redo} title="Redo (Ctrl/⌘+Shift+Z)"
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:brightness-125"
+            style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--muted)"}}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M15 14l5-5-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M20 9H9a5 5 0 000 10h3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+          <button onClick={()=>setHelpOpen(true)} title="Keyboard shortcuts (?)"
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:brightness-125 text-[13px] font-semibold"
+            style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--muted)"}}>⌘</button>
+          <button className="px-3 py-1.5 rounded-lg text-sm font-medium" style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--text)"}}>Test</button>
+          <button className="px-3.5 py-1.5 rounded-lg text-sm font-medium" style={{background:"var(--accent)",color:"#fff"}}>Save</button>
+        </div>
+      </header>
+
+      {/* canvas */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-xl mx-auto px-8 py-14">
+
+          {/* WHEN — multiple triggers, OR'd */}
+          {!hasTrigger
+            ? <Station marker={MARK.trigger} isFirst head="When" headColor="var(--c-when)" headBg="var(--c-when-bg)" hoverBg="var(--c-when-h)"
+                innerRef={(el)=>setRowRef("T", el)}
+                focused={focusKey==="T"} onFocus={()=>setFocusKey("T")}>
+                <Slot value={null} placeholder="when this happens…" innerRef={(el)=>setRowRef("Twhen", el)} onClick={(e)=>pickTriggerType(e.currentTarget)} />
+              </Station>
+            : triggers.map((t,i)=>(
+                <Station key={t.id} marker={i===0 ? MARK.trigger : null} isFirst={i===0} dense={i>0}
+                  bgLeft={i===0 ? "16px" : "34px"} bgRight={i===0 ? "16px" : "34px"} padLeft={i===0 ? "34px" : "50px"} padRight={i===0 ? "28px" : "46px"}
+                  head={i===0?"When":"Or"} headColor="var(--c-when)" headBg="var(--c-when-bg)" hoverBg="var(--c-when-h)"
+                  innerRef={(el)=>setRowRef(`trig:${t.id}`, el)} removeLabel="Clear trigger"
+                  focused={focusKey===`trig:${t.id}`} onFocus={()=>setFocusKey(`trig:${t.id}`)} onRemove={()=>removeTrigger(t.id)}>
+                  <Template tpl={triggerView(t).tpl} vals={t.vals} onSlot={(key,e)=>pickTriggerSlot(t,key,e)} slotRef={(k,el)=>setTriggerSlotRef(t.id,k,el)} />
+                </Station>
+              ))}
+
+          {/* trunk flow */}
+          {renderFlow(flow, [], {last: !showOpener})}
+
+          {/* trunk opener — stays until a trunk action takes the "then" slot */}
+          {showOpener && <Opener path={[]} hasActions={false} isLast />}
+
+        </div>
+      </div>
+
+      {pop && <Popover anchor={pop.anchor} items={pop.items} title={pop.title} inputType={pop.inputType} noSearch={pop.noSearch} footer={pop.footer} wide={pop.wide} onPick={pop.onPick} onClose={close}/>}
+
+      {helpOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{background:"rgba(0,0,0,.45)"}} onMouseDown={()=>setHelpOpen(false)}>
+          <div className="w-[380px] rounded-2xl shadow-2xl p-5" style={{background:"var(--panel2)",border:"1px solid var(--border2)"}} onMouseDown={e=>e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-semibold">Keyboard shortcuts</div>
+              <button onClick={()=>setHelpOpen(false)} className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-[var(--panel)]" style={{color:"var(--faint)"}}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+              </button>
+            </div>
+            {[
+              ["↑ ↓  /  J K", "Move between lines"],
+              ["⏎ Enter", "Open the add menu on the focused line"],
+              ["A", "Add action to the focused scope"],
+              ["C", "Add condition (branch) to the focused scope"],
+              ["X  /  Delete", "Remove the focused line"],
+              ["⌘/Ctrl + Z", "Undo"],
+              ["⌘/Ctrl + ⇧ + Z", "Redo"],
+              ["⇧ R", "Reset the whole rule"],
+              ["T", "Toggle dark / light theme"],
+              ["? ", "Show / hide this help"],
+              ["In a menu: ↑ ↓ + ⏎", "Highlight and pick an option"],
+              ["Esc", "Close menu / help"],
+            ].map(([keys,desc],i)=>(
+              <div key={i} className="flex items-center justify-between py-1.5 text-sm" style={{color:"var(--muted)"}}>
+                <span>{desc}</span>
+                <span className="ml-4 px-2 py-0.5 rounded-md text-[12px] font-medium whitespace-nowrap" style={{background:"var(--panel)",border:"1px solid var(--border)",color:"var(--text)"}}>{keys}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

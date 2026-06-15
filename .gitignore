@@ -1,0 +1,10 @@
+# Internal working notes — not for public publish
+CLAUDE.md
+HANDOFF.md
+Feature Details/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
