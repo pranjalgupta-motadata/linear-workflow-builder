@@ -1322,6 +1322,10 @@ function NODE_GRAPHIC(id){
 // so EVERY version file shows the full list and new snapshots appear everywhere automatically.
 const BUILDS = (typeof window!=="undefined" && window.BUILDS) || [{ label:"Working", file:"index.html" }];
 
+// Live-vs-local tell: true only when served from GitHub Pages (…github.io). Used to flip the
+// top-left logo (orange "G" live / purple "F" local) so the deployed site is visually distinct.
+const IS_LIVE = (typeof location!=="undefined") && /\.github\.io$/i.test(location.hostname || "");
+
 /* tree helpers (path = array of segments).
    A segment is a NUMBER (index into a node's .children array) for action/condition siblings,
    OR a branch-descent object: {path:k} → branch.paths[k].children, {otherwise:true} → branch.otherwise.children.
@@ -3142,7 +3146,8 @@ function App() {
       <div className="relative h-full flex shrink-0" onMouseEnter={()=>setRailHover(true)} onMouseLeave={()=>setRailHover(false)}>
       {/* ── Sidebar 1: Suites (thin icon rail) ── */}
       <nav className="relative z-30 w-16 shrink-0 h-full flex flex-col items-center py-3 gap-1 border-r" style={{background:"var(--rail-bg)", borderColor: (sideCollapsed && !railHover) ? "transparent" : "var(--side-bd)"}}>
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm mb-2" style={{background:"linear-gradient(135deg,#5b6cff,#7c89ff)",color:"#fff"}}>F</div>
+        {/* Live (GitHub Pages) vs local tell: github.io → orange "G", elsewhere → purple "F". Code stays in source so it survives every push; only the RENDER differs by host. */}
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm mb-2" style={{background: IS_LIVE?"linear-gradient(135deg,#d97757,#e89b82)":"linear-gradient(135deg,#5b6cff,#7c89ff)",color:"#fff"}}>{IS_LIVE?"G":"F"}</div>
         {SUITES.map(s=>{
           const on = s.id===activeSuite;
           return (
