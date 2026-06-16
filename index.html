@@ -1909,6 +1909,16 @@ function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false); // "How it works" stepper — opened on demand (toast / lightbulb)
   const [step, setStep] = useState(0); // active step in the "How it works" stepper
+  // auto-open the "How it works" stepper once for a first-time visitor; remember via localStorage
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem("lwb_intro_seen")) {
+        setStep(0);
+        setGuideOpen(true);
+        localStorage.setItem("lwb_intro_seen", "1");
+      }
+    } catch (e) { /* localStorage unavailable — skip */ }
+  }, []); // run once on mount
   const [refOpen, setRefOpen] = useState(false); // "Node reference" dialogue
   const [refSel, setRefSel] = useState("trigger"); // selected node id in the reference
   const [toastHidden, setToastHidden] = useState(false); // user dismissed the bottom intro toast
