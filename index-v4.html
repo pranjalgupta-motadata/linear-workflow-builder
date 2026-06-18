@@ -65,10 +65,10 @@
   .canvas-layer{position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(circle at 1px 1px,var(--grain) 1px,transparent 0);background-size:22px 22px}
   .canvas-glow{position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(ellipse 60% 55% at 50% 48%,var(--canvas-glow),transparent 60%)}
   .solid-ico svg path,.solid-ico svg rect{ fill:currentColor; stroke:none; }
-  .slot{ display:inline; text-decoration-line:underline; text-decoration-style:dashed; text-decoration-thickness:1.5px; text-underline-offset:5px; text-decoration-skip-ink:none; text-decoration-color:var(--border2); }
+  .slot{ display:inline; text-decoration-line:underline; text-decoration-style:dashed; text-decoration-thickness:1.5px; text-underline-offset:5px; text-decoration-skip-ink:none; }
   .slot:hover, .slot:focus, .slot:focus-visible{ text-decoration-style:solid; outline:none; }
   .striking{ text-decoration-line:line-through; text-decoration-color:var(--text); text-decoration-thickness:1px; text-decoration-style:solid; text-decoration-skip-ink:none; }
-  .striking .slot{ text-decoration-line:line-through !important; text-decoration-color:var(--text) !important; text-decoration-style:solid !important; text-decoration-skip-ink:none !important; }
+  .striking .slot{ text-decoration-line:underline line-through !important; text-decoration-color:var(--text) !important; text-decoration-style:solid !important; text-decoration-skip-ink:none !important; }
   input[type=time],input[type=date]{color-scheme:dark}
   [data-theme="light"] input[type=time],[data-theme="light"] input[type=date]{color-scheme:light}
   /* intro guide step cards — hover lifts + glows in the role color (--rc set per card) */
@@ -1635,47 +1635,40 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
     if (!el) return null;
     const r = el.getBoundingClientRect();
     if (r.width === 0 && r.top === 0) return null;
-    return { below: r.bottom + 14, aTop: r.top, left: r.left };
+    return { below: r.bottom + 14, aTop: r.top, left: Math.min(r.left, window.innerWidth - 280) };
   };
   const measureKeyed = () => anchorKey ? measureEl(document.querySelector(`[data-anchor="${anchorKey}"]`)) : null;
   const measureFallback = () => measureEl(anchor);
-  // Turn raw anchor geometry into the FINAL on-screen position. NEVER let the popover leave the viewport:
-  // open below, flip ABOVE when there's not enough room below (and more above); then clamp BOTH axes to the
-  // viewport using the popover's real measured size. Computed straight into posRef (no separate state).
+  // Turn raw anchor geometry into the FINAL on-screen position: open below, but FLIP above (or clamp)
+  // when the popover would overflow the viewport bottom; also clamp the docked help card. Computed
+  // straight into posRef (no separate state) so it stays correct across reused popover instances.
   const placePos = (raw) => {
     if (!raw) return null;
-    const M = 12, GAP = 14, vw = window.innerWidth, vh = window.innerHeight;
+    const M = 12, GAP = 14, vh = window.innerHeight;
     const h = ref.current ? ref.current.offsetHeight : 0;
-    const w = ref.current ? ref.current.offsetWidth  : (wide ? 340 : 256);
-    // vertical: below by default; flip above if it would overflow the bottom
     let top = raw.below;
-    if (h) {
-      if (top + h > vh - M) { const above = raw.aTop - GAP - h; top = above >= M ? above : Math.max(M, vh - M - h); }
-      top = Math.max(M, Math.min(top, vh - M - h)); // final clamp top/bottom
-    }
-    // horizontal: clamp so the popover stays fully on screen (left & right)
-    let left = Math.max(M, Math.min(raw.left, vw - w - M));
+    if (h && top + h > vh - M) { const above = raw.aTop - GAP - h; top = above >= M ? above : Math.max(M, vh - M - h); }
     const hh = helpRef.current ? helpRef.current.offsetHeight : 0;
     let helpTop = raw.aTop;
     if (hh && helpTop + hh > vh - M) helpTop = Math.max(M, vh - M - hh);
-    return { top, left, aTop: raw.aTop, helpTop };
+    return { top, left: raw.left, aTop: raw.aTop, helpTop };
   };
   const posRef = useRef(null);
   const [, bump] = useState(0);
   // Initial synchronous placement so the popover can paint immediately when the element is already available.
   if (!posRef.current) posRef.current = placePos(measureKeyed() || measureFallback());
-  // CONTINUOUSLY re-place: once synchronously BEFORE paint (real size known → flip/clamp with no off-screen
-  // flash), then every frame to follow layout/scroll shifts. Only re-renders on a real move, so it idles.
+  // CONTINUOUSLY re-place every frame while open: follows layout/scroll shifts, converges onto the keyed
+  // slot once it commits, recomputes the flip as the popover's own height settles, keeps the last good
+  // position if an anchor detaches. Only re-renders on a real move, so it idles once stable.
   useLayoutEffect(() => {
-    const place = () => {
+    let raf;
+    const loop = () => {
       const p = placePos(measureKeyed() || measureFallback());
       if (p && (!posRef.current || Math.abs(p.top - posRef.current.top) > 0.5 || Math.abs(p.left - posRef.current.left) > 0.5 || Math.abs((p.helpTop||0) - (posRef.current.helpTop||0)) > 0.5)) {
         posRef.current = p; bump(n=>n+1);
       }
+      raf = requestAnimationFrame(loop);
     };
-    place(); // synchronous, pre-paint
-    let raf;
-    const loop = () => { place(); raf = requestAnimationFrame(loop); };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, []);
@@ -1975,7 +1968,6 @@ function App() {
   const [refSel, setRefSel] = useState("trigger"); // selected node id in the reference
   const [toastHidden, setToastHidden] = useState(false); // user dismissed the bottom intro toast
   const [published, setPublished] = useState(false);
-  const [board, setBoard] = useState("linguistic"); // canvas view: "linguistic" (sentence) | "node" (node-based, coming soon)
   const currentBuild = decodeURIComponent((location.pathname.split("/").pop()) || "index.html") || "index.html";
   const idRef = useRef(1);
   const nid = () => idRef.current++;
@@ -2040,7 +2032,7 @@ function App() {
       if (next.options==="__time") return open(el, [], setter, "Pick a time", {inputType:"time"});
       return open(el, next.options.map(o=>typeof o==="string"?{id:o,label:o}:o), setter, PLACEHOLDER[next.key]||next.key);
     }
-    // this trigger is complete — open the v6 path-type chooser (anchored under it)
+    // this trigger is complete — open the "do this…" menu (anchored under it)
     guidingRef.current = null;
     if (!hasAction(flow)) setTimeout(()=>openMainAt([], firstVisibleEl(rowRefs.current["__thenSlot"], rowRefs.current["__then"], addStepBtnRef.current)), 0);
   };
@@ -2068,21 +2060,23 @@ function App() {
              requestAnimationFrame(()=>openClauseValueByKey(condPath, ci, i.id, `cval:${cid}:${ci}`, defaultOp(t))); },
       "Which field", {wide:true, help:NODE_HELP.condition, anchorKey:`cond:${cid}:${ci}`}));
   };
-  // v6: a "condition" is a MERGING branch — it splits into If / Else-if / Else and rejoins, then the trunk
-  // continues. It reuses the branch data shape (paths + otherwise) with a `merge:true` flag, so every branch
-  // helper (childrenAt, cloneWithIds, drag-drop, nav) works unchanged. Creating one opens the first check.
+  // insert an inline condition at `path`/`index`. AUTO-GROUP: if the step directly before is a
+  // condition, fold this in as a new AND clause of that group instead of creating a separate row.
   const addConditionAndPick = (path, fallbackEl, index) => {
-    const caseId = nid();
-    const node = { id:nid(), kind:"branch", merge:true, otherwise:null,
-      paths:[{ id:caseId, clauses:[{ field:null, op:"is", value:null }], combiner:"and", children:[] }] };
-    const idx = index===undefined ? childrenAt(flow, path).length : index;
+    const siblings = childrenAt(flow, path);
+    const idx = index===undefined ? siblings.length : index;
+    const prev = siblings[idx-1];
+    if (prev && prev.kind==="condition") {
+      const condPath = [...path, idx-1];
+      const ci = (prev.clauses||[]).length;
+      setFlow(f => { const n = nodeAt(f, condPath); return treeUpdate(f, condPath, { clauses:[...(n.clauses||[]), { field:null, op:"is", value:null }] }); });
+      openCondFieldPicker(condPath, prev.id, ci, fallbackEl);
+      return;
+    }
+    const node = { id:nid(), kind:"condition", clauses:[{ field:null, op:"is", value:null }], combiner:"and" };
     const newPath = [...path, idx];
     setFlow(f => treeInsertAt(f, path, idx, node));
-    setOpenSlot(`${pathKey(newPath)}:p0:c0:field`);
-    requestAnimationFrame(()=> open(fallbackEl||null, flowMenu(node),
-      (i)=>{ const t=flowFD(node,i.id)?.type||"enum"; updatePathClause(newPath,0,0,{field:i.id,op:defaultOp(t),value:null});
-             setTimeout(()=>pickPathValueEl(newPath,node,0,0,valueSlotRefs.current[`${caseId}:0`],i.id,defaultOp(t)),40); },
-      "Which field", {wide:true, help:NODE_HELP.condition, anchorKey:`pcond:${caseId}:0`}));
+    openCondFieldPicker(newPath, node.id, 0, fallbackEl);
   };
   // "Condition group": add an OR-group (a clause flagged .or) to the adjacent CHECK IF — or start a
   // new condition if there's none. The OR-group renders as a new "or" row of the same gate.
@@ -2096,22 +2090,15 @@ function App() {
     setFlow(f => { const n = nodeAt(f, condPath); return treeUpdate(f, condPath, { clauses:[...(n.clauses||[]), { field:null, op:"is", value:null, or:true }] }); });
     openCondFieldPicker(condPath, prev.id, ci, fallbackEl);
   };
+  // insert a BRANCH (fork: one path + an Otherwise lane) at `path` and focus it
   const addBranchAndPick = (path, fallbackEl, index) => {
     const node = { id:nid(), kind:"branch",
-      paths:[{ id:nid(), clauses:[], combiner:"and", children:[] }],  // v6: no forced condition — the user picks the lane's first node
+      paths:[{ id:nid(), clauses:[{ field:null, op:"is", value:null }], combiner:"and", children:[] }],
       otherwise:null };
     const idx = index===undefined ? childrenAt(flow, path).length : index;
     const newPath = [...path, idx];
     setFlow(f => treeInsertAt(f, path, idx, node));
     setFocusKey(pathKey(newPath));
-  };
-  // v6 canvas fork: split a path RIGHT HERE into two empty gate-less lanes — no popover. The user fills each
-  // lane via its "pick first step". `index` omitted → append at the path's end.
-  const splitIntoBranch = (path, index) => {
-    const node = { id:nid(), kind:"branch", otherwise:null,
-      paths:[ { id:nid(), clauses:[], combiner:"and", children:[] }, { id:nid(), clauses:[], combiner:"and", children:[] } ] };
-    const idx = index===undefined ? childrenAt(flow, path).length : index;
-    setFlow(f => treeInsertAt(f, path, idx, node));
   };
   // ── DELAY — two types: mode "time" ("wait for {n}{unit}" / "wait until {date|field}") and
   //    mode "event" ("wait until {condition} becomes true"). ──
@@ -2290,8 +2277,7 @@ function App() {
     // step is a CHECK IF (it OR-extends that gate). Attach per-item help for the docked Quick Help.
     anchor,
     items: (()=>{ const lastSib = childrenAt(flow, path).slice(-1)[0]; const canGroup = !!(lastSib && lastSib.kind==="condition");
-      const isTrunk = !(path||[]).some(s=> typeof s === "object"); // triggers belong on the trunk, never inside a branch path
-      let list = (firstIsPeriodic() || !isTrunk) ? ADD_MENU.filter(it=>it.id!=="trigger") : ADD_MENU;
+      let list = firstIsPeriodic() ? ADD_MENU.filter(it=>it.id!=="trigger") : ADD_MENU;
       list = list.filter(it => it.id!=="condition_group" || canGroup);
       return list.map(it => it.id ? {...it, help:ADD_HELP[it.id]} : it); })(),
     title:"Add step", wide:true, solidIcons:true, itemsAsNodes:true,
@@ -2300,7 +2286,7 @@ function App() {
     onPick:(i, idx)=>{
       const backToMain = ()=>setPop({ ...mainMenuConfig(path, anchor), initActive: idx }); // back lands on the item you came from
       if (i.id==="trigger") { setPop(triggerMenuConfig(anchor, backToMain)); return true; } // swap in place, with back
-      if (i.id==="condition") { addConditionAndPick(path, anchor); return; } // inline gate (branch/inline is chosen earlier via the path-type chooser)
+      if (i.id==="condition") { setPop(condKindMenuConfig(path, anchor, backToMain)); return true; } // swap to inline/branching
       if (i.id==="condition_group") { addOrGroupAndPick(path, anchor); return; }
       if (i.id==="delay") { setPop(delayKindMenuConfig(path, anchor, backToMain)); return true; } // swap to time/event
       if (i.id==="get")   { addGetAndPick(path, anchor); return; }
@@ -2309,34 +2295,6 @@ function App() {
   });
   const openMainAt = (path, anchor) => { if (anchor) { setFocusKey("__then"); setOpenSlot("__then"); setPop(mainMenuConfig(path, anchor)); } };
   const openMain = (path, e) => openMainAt(path, e.currentTarget);
-  // v6: PATH-TYPE chooser — shown FIRST (on the "Then" opener and "Add step"). Pick how the flow continues:
-  // keep this one path (inline) or split into branches. After picking, swap to the "what happens next" menu.
-  const pathKindMenuConfig = (path, anchor) => ({
-    anchor, noSearch:true, wide:true, itemsAsNodes:true,
-    title:"Add a step",
-    items:[
-      { header:"How should the flow continue?" },
-      { id:"inline", label:"Continue this path", tone:"util",
-        icon:(<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 4v12M7 12l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>),
-        sub:"Add the next step in line" },
-      { id:"branch", label:"Branch into paths", tone:"util",
-        icon:(<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 4v4M12 8c0 4-6 3-6 8M12 8c0 4 6 3 6 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>),
-        sub:"Split into separate paths from here" },
-    ],
-    help: { title:"Inline or branch?", color:"var(--accent)", bg:"var(--panel2)", graphic:G.action,
-      body:"Keep building this single path, or split it into separate branches that each do their own thing." },
-    onPick:(i)=>{
-      if (i.id==="inline") { setPop(mainMenuConfig(path, anchor)); return true; }          // → what happens next (this path)
-      if (i.id==="branch") {                                                                // → create the fork, then add into the new lane
-        addBranchAndPick(path, anchor);
-        const idx = childrenAt(flow, path).length; const lanePath = [...path, idx, {path:0}];
-        requestAnimationFrame(()=> setPop(mainMenuConfig(lanePath, anchor)));
-        return true;
-      }
-    },
-  });
-  const openPathKindAt = (path, anchor) => { if (anchor) { setFocusKey("__then"); setOpenSlot("__then"); setPop(pathKindMenuConfig(path, anchor)); } };
-  const openPathKind = (path, e) => openPathKindAt(path, e.currentTarget);
   const openBranchAddAt = (path, anchor) => {
     if (!anchor) return;
     setBranchMenuPath(pathKey(path));
@@ -2408,28 +2366,7 @@ function App() {
     return treeSetLevel(f, parent, kept);
   });
   const addPath = (path) => setFlow(f => treeUpdate(f, path, (()=>{ const n=nodeAt(f,path);
-    return { paths:[...(n.paths||[]), { id:nid(), clauses:[], combiner:"and", children:[] }] }; })()));
-  // v6: add a new (gate-less) lane, then open the what-happens-next menu so the user picks its first node
-  const addPathAndPick = (path, anchor) => {
-    const newIdx = (nodeAt(flow, path)?.paths || []).length;
-    addPath(path);
-    const lanePath = [...path, {path:newIdx}];
-    requestAnimationFrame(()=> setPop(mainMenuConfig(lanePath, anchor)));
-  };
-  // "+ add check" on a merging condition — append a gated case (Else-if) and open its check field picker
-  const addCaseAndPick = (path, anchor) => {
-    const node = nodeAt(flow, path); if(!node) return;
-    const pi = (node.paths||[]).length;
-    const caseId = nid();
-    const newCase = { id:caseId, clauses:[{field:null,op:"is",value:null}], combiner:"and", children:[] };
-    const node2 = { ...node, paths:[...(node.paths||[]), newCase] }; // for the picker's reads (tree updates async)
-    setFlow(f => treeUpdate(f, path, { paths:[...((nodeAt(f,path)||{}).paths||[]), newCase] }));
-    setOpenSlot(`${pathKey(path)}:p${pi}:c0:field`);
-    requestAnimationFrame(()=> open(anchor||null, flowMenu(node2),
-      (i)=>{ const t=flowFD(node2,i.id)?.type||"enum"; updatePathClause(path,pi,0,{field:i.id,op:defaultOp(t),value:null});
-             setTimeout(()=>pickPathValueEl(path,node2,pi,0,valueSlotRefs.current[`${caseId}:0`],i.id,defaultOp(t)),40); },
-      "Which field", {wide:true, help:NODE_HELP.condition, anchorKey:`pcond:${caseId}:0`}));
-  };
+    return { paths:[...(n.paths||[]), { id:nid(), clauses:[{field:null,op:"is",value:null}], combiner:"and", children:[] }] }; })()));
   const addOtherwise = (path) => setFlow(f => treeUpdate(f, path, { otherwise:{ id:nid(), children:[] } }));
   // clause ops on a branch path's condition (paths[pi].clauses)
   const updatePathClause = (path, pi, ci, patch) => setFlow(f => treeUpdate(f, path, (()=>{ const n=nodeAt(f,path);
@@ -2439,30 +2376,25 @@ function App() {
   const removePath = (path, pi) => setFlow(f => {
     const n = nodeAt(f, path); if(!n) return f;
     let paths = n.paths.filter((_,k)=>k!==pi);
-    if (n.merge) {
-      // condition: keep ≥1 case; removing the last case removes the whole condition node
-      if (paths.length===0) return mergeAdjacentConditions(treeRemove(f, path));
-      return treeUpdate(f, path, { paths });
-    }
-    // floating branch: collapse to inline steps when down to one path and no otherwise
+    // collapse a branch back to an inline condition when it's down to one path and no otherwise
     if (paths.length===1 && !n.otherwise) {
       const only = paths[0];
+      const cond = { id:nid(), kind:"condition", clauses:only.clauses, combiner:only.combiner };
       const parent = path.slice(0,-1), idx = path[path.length-1];
       const siblings = childrenAt(f, parent);
-      const kept = [...siblings.slice(0,idx), ...(only.children||[]), ...siblings.slice(idx+1)];
+      const kept = [...siblings.slice(0,idx), cond, ...(only.children||[]), ...siblings.slice(idx+1)];
       return treeSetLevel(f, parent, kept);
     }
     return treeUpdate(f, path, { paths });
   });
   const removeOtherwise = (path) => setFlow(f => {
     const n = nodeAt(f, path); if(!n) return f;
-    if (n.merge) return treeUpdate(f, path, { otherwise:null }); // condition: just drop the Else
-    // floating branch: collapse to inline steps when one path remains
-    if ((n.paths||[]).length===1) {
+    if ((n.paths||[]).length===1) { // collapse back to inline condition
       const only = n.paths[0];
+      const cond = { id:nid(), kind:"condition", clauses:only.clauses, combiner:only.combiner };
       const parent = path.slice(0,-1), idx = path[path.length-1];
       const siblings = childrenAt(f, parent);
-      const kept = [...siblings.slice(0,idx), ...(only.children||[]), ...siblings.slice(idx+1)];
+      const kept = [...siblings.slice(0,idx), cond, ...(only.children||[]), ...siblings.slice(idx+1)];
       return treeSetLevel(f, parent, kept);
     }
     return treeUpdate(f, path, { otherwise:null });
@@ -2767,7 +2699,7 @@ function App() {
       if (k==="arrowdown" || k==="j") { e.preventDefault(); setFocusKey(nav[Math.min(nav.length-1, idx+1)].key); }
       else if (k==="arrowup" || k==="k") { e.preventDefault(); setFocusKey(nav[Math.max(0, idx-1)].key); }
       else if (e.key==="Enter") { e.preventDefault();
-        // contextual: no trigger → trigger picker; else → the v6 path-type chooser (then "what happens next")
+        // contextual: no trigger → trigger picker; else → the "do this / add steps" menu
         if (!hasTrigger) pickTriggerType(rowRefs.current["Twhen"] || rowRefs.current["T"]);
         else openMainAt([], firstVisibleEl(rowRefs.current["__thenSlot"], rowRefs.current["__then"], addStepBtnRef.current)); }
       else if (k==="a") { if (!hasTrigger) return; e.preventDefault(); addToScope("action"); }
@@ -2796,7 +2728,7 @@ function App() {
   };
 
   const HEAD = 28, PAD = 7, GAP = 10, MC = PAD + HEAD/2; // MC = marker center from row top
-  const Station = ({ marker, isFirst, isLast, head, headColor, headBg, hoverBg, onRemove, removeLabel, onInsert, onCopy, onSplit, onAdd, addLabel, dnd, onFocus, onClick, focused, help, innerRef, dense, gapBottom, okBorder, editing, bgLeft="16px", bgRight="16px", padLeft="34px", padRight="28px", children }) => {
+  const Station = ({ marker, isFirst, isLast, head, headColor, headBg, hoverBg, onRemove, removeLabel, onInsert, onCopy, dnd, onFocus, onClick, focused, help, innerRef, dense, gapBottom, okBorder, editing, bgLeft="16px", bgRight="16px", padLeft="34px", padRight="28px", children }) => {
     const [xHover, setXHover] = useState(false);
     const pt = dense ? 6 : PAD, bgBottom = gapBottom!==undefined ? gapBottom : (dense ? 12 : GAP), pb = pt + bgBottom, mc = pt + HEAD/2;
     const active = focused && !!pop; // row's popover is open → keep its tint on (focus state)
@@ -2819,7 +2751,7 @@ function App() {
       {/* marker (optional) */}
       {marker && <span className="absolute flex items-center justify-center" style={{ left:"9px", top:`${mc}px`, transform:"translate(-50%,-50%)" }}>{marker}</span>}
       <div onClick={onClick} className={"relative flex items-start gap-4 " + (onClick ? "cursor-pointer" : "")}>
-        <div className="flex-1 min-w-0 text-[17.5px]" style={{lineHeight:`${HEAD}px`}}>
+        <div className="flex-1 min-w-0 text-[16px]" style={{lineHeight:`${HEAD}px`}}>
           {head && <span className="relative group/help inline-flex items-center align-top mr-2.5" style={{height:`${HEAD}px`}}>
             <span className={"text-[10px] font-semibold uppercase tracking-[0.1em] px-2 py-[3px] rounded-md whitespace-nowrap " + (help ? "cursor-help" : "")}
               style={{color:headColor||"var(--faint)", background:headBg||"var(--panel2)"}}>{head}</span>
@@ -2842,23 +2774,11 @@ function App() {
             </span>}
           {xHover && removeLabel &&
             <div className="absolute right-0 px-2 py-1 rounded-md text-[11px] whitespace-nowrap" style={{ bottom:"28px", background:"var(--pop-bg)", border:"1px solid var(--border2)", color:"var(--text)", boxShadow:"var(--shadow-sm)" }}>{removeLabel}</div>}
-          {onAdd &&
-            <button onMouseDown={(e)=>{ e.stopPropagation(); onAdd(e.currentTarget); }} title={addLabel||"Add"}
-              className="rounded-md flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100 hover:bg-[var(--pop-hover)]"
-              style={{ color:"var(--faint)", padding:"6px" }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-            </button>}
           {onCopy &&
             <button onMouseDown={(e)=>{ e.stopPropagation(); onCopy(); }} title="Duplicate"
               className="rounded-md flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100 hover:bg-[var(--pop-hover)]"
               style={{ color:"var(--faint)", padding:"6px" }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15V5a2 2 0 012-2h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-            </button>}
-          {onSplit &&
-            <button onMouseDown={(e)=>{ e.stopPropagation(); onSplit(); }} title="Split into parallel paths"
-              className="rounded-md flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100 hover:bg-[var(--pop-hover)]"
-              style={{ color:"var(--faint)", padding:"6px" }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 4v4M12 8c0 4-6 3-6 8M12 8c0 4 6 3 6 8" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </button>}
           <button onMouseDown={(e)=>{ if(!onRemove) return; e.stopPropagation(); setPop(null); onRemove(); }}
             onMouseEnter={()=>setXHover(true)} onMouseLeave={()=>setXHover(false)}
@@ -2898,7 +2818,7 @@ function App() {
   };
 
   /* branch opener — subtle + that expands to "add step in this branch" */
-  const BranchAdd = ({ path, branchId, empty }) => (
+  const BranchAdd = ({ path, branchId }) => (
     <div ref={(el)=>{ if(el) branchAddRefs.current[pathKey(path)]=el; }} onClick={(e)=>openBranchAdd(path,e)}
       onDragOver={branchId!=null ? (e)=>{ e.preventDefault(); } : undefined} onDrop={branchId!=null ? (e)=>dropInto(branchId, e) : undefined}
       className="group/add relative cursor-pointer" style={{paddingLeft:"34px", paddingTop:`${PAD}px`, paddingBottom:`${PAD+GAP}px`}}>
@@ -2908,7 +2828,7 @@ function App() {
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>
       </span>
       <div className="flex items-center" style={{height:`${HEAD}px`}}>
-        <span className={"text-[13px] whitespace-nowrap transition-all duration-200 " + (empty ? "opacity-100 max-w-[220px]" : "max-w-0 overflow-hidden opacity-0 group-hover/add:max-w-[220px] group-hover/add:opacity-100")} style={{color:"var(--faint)"}}>{empty ? "pick first step" : "add step in this branch"}</span>
+        <span className="text-[13px] max-w-0 overflow-hidden whitespace-nowrap opacity-0 group-hover/add:max-w-[220px] group-hover/add:opacity-100 transition-all duration-200" style={{color:"var(--faint)"}}>add step in this branch</span>
       </div>
     </div>
   );
@@ -3014,7 +2934,6 @@ function App() {
     return nodes.map((node, i) => {
       const path = [...basePath, i];
       const k = pathKey(path);
-      const isFirstRow = !!opts.firstIsHead && i===0; // v6: gate-less branch lane → its first node heads the lane (rail starts at its marker)
       const insertBelow = (el)=>openInsert(basePath, i+1, el); // subtle hover "+" inside the row card
 
       // ── ACTION ──────────────────────────────────────────────────────────
@@ -3031,8 +2950,8 @@ function App() {
         const _hasCard = ((def && def.details) || _spec) && !(def && def.arg && !node.arg);
         const nodeGood = !!(_hasCard && _complete && node.confirmed);
         return (
-          <Station key={node.id} marker={MARK.action} isFirst={isFirstRow} isLast={isLast} head={head} headColor="var(--c-then)" headBg="var(--c-then-bg)" hoverBg="var(--c-then-h)" help={NODE_HELP.action} editing={drawer===node.id}
-            innerRef={(el)=>setRowRef(k, el)} removeLabel="Clear action" onCopy={()=>copyNode(path)} onSplit={()=>splitIntoBranch(basePath, i+1)} dnd={dnd(node.id)}
+          <Station key={node.id} marker={MARK.action} isLast={isLast} head={head} headColor="var(--c-then)" headBg="var(--c-then-bg)" hoverBg="var(--c-then-h)" help={NODE_HELP.action} editing={drawer===node.id}
+            innerRef={(el)=>setRowRef(k, el)} removeLabel="Clear action" onCopy={()=>copyNode(path)} dnd={dnd(node.id)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)} onRemove={()=>remove(path)}>
             {node.action === "assign" ? (<>
               {/* multi-slot "sentence" action: assign {record?} to {target} */}
@@ -3141,8 +3060,8 @@ function App() {
         // it never has children of its own. It is the rail's last node only if it's literally last.
         const isLast = opts.last && i===nodes.length-1;
         return (
-          <Station key={node.id} marker={MARK.cond} isFirst={isFirstRow} isLast={isLast} head="Check if" headColor="var(--c-if)" headBg="var(--c-if-bg)" hoverBg="var(--c-if-h)" help={NODE_HELP.condition}
-            innerRef={(el)=>setRowRef(k, el)} removeLabel="Clear condition" onCopy={()=>copyNode(path)} onSplit={()=>splitIntoBranch(basePath, i+1)} dnd={dnd(node.id)}
+          <Station key={node.id} marker={MARK.cond} isLast={isLast} head="Check if" headColor="var(--c-if)" headBg="var(--c-if-bg)" hoverBg="var(--c-if-h)" help={NODE_HELP.condition}
+            innerRef={(el)=>setRowRef(k, el)} removeLabel="Clear condition" onCopy={()=>copyNode(path)} dnd={dnd(node.id)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)} onRemove={()=>remove(path)}>
             {inlineClauses(path, node)}
             {/* escalation affordances removed — condition "kind" (inline vs branching) will be chosen up-front in the popover (redesign pending) */}
@@ -3154,8 +3073,8 @@ function App() {
       if (node.kind === "delay") {
         const isLast = opts.last && i===nodes.length-1;
         return (
-          <Station key={node.id} marker={MARK.delay} isFirst={isFirstRow} isLast={isLast} head="Wait" headColor="var(--text)" headBg="var(--panel2)" hoverBg="var(--panel2)"
-            innerRef={(el)=>setRowRef(k, el)} removeLabel="Remove delay" onCopy={()=>copyNode(path)} onSplit={()=>splitIntoBranch(basePath, i+1)} dnd={dnd(node.id)}
+          <Station key={node.id} marker={MARK.delay} isLast={isLast} head="Wait" headColor="var(--text)" headBg="var(--panel2)" hoverBg="var(--panel2)"
+            innerRef={(el)=>setRowRef(k, el)} removeLabel="Remove delay" onCopy={()=>copyNode(path)} dnd={dnd(node.id)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)} onRemove={()=>remove(path)}>
             {node.mode==="event"
               ? <span className="inline-flex flex-wrap items-baseline gap-x-1.5"><Word>until</Word>{inlineClauses(path, node)}</span>
@@ -3174,8 +3093,8 @@ function App() {
       if (node.kind === "get") {
         const isLast = opts.last && i===nodes.length-1;
         return (
-          <Station key={node.id} marker={MARK.get} isFirst={isFirstRow} isLast={isLast} head="Get" headColor="var(--text)" headBg="var(--panel2)" hoverBg="var(--panel2)"
-            innerRef={(el)=>setRowRef(k, el)} removeLabel="Remove get" onCopy={()=>copyNode(path)} onSplit={()=>splitIntoBranch(basePath, i+1)} dnd={dnd(node.id)}
+          <Station key={node.id} marker={MARK.get} isLast={isLast} head="Get" headColor="var(--text)" headBg="var(--panel2)" hoverBg="var(--panel2)"
+            innerRef={(el)=>setRowRef(k, el)} removeLabel="Remove get" onCopy={()=>copyNode(path)} dnd={dnd(node.id)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)} onRemove={()=>remove(path)}>
             <span className="inline-flex flex-col gap-1.5 align-top">
               <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
@@ -3195,70 +3114,27 @@ function App() {
         );
       }
 
-      // ── CONDITION (merging if / else-if / else, node.merge) vs BRANCH (floating parallel fork) ──
-      const merge = !!node.merge;
-      const branchIsTerminal = !!opts.last && i===nodes.length-1; // nothing (not even the End cap) follows → stop the trunk rail
-
-      if (merge) {
-        // CONDITION: ONE indented column off the trunk — a single split (top), every case (If / Else-if / Else)
-        // stacked on that one column, a single rejoin (bottom); the trunk then continues to the following steps.
-        const cases = node.paths || [];
-        const caseRow = (pobj, headTxt, lanePath, onRemove, removeLabel, isFirst, body) => (
-          <div key={pobj.id} className="relative group/lane">
-            <Station marker={MARK.cond} isFirst={isFirst} head={headTxt} headColor="var(--c-if)" headBg="var(--c-if-bg)" hoverBg="var(--c-if-h)" help={NODE_HELP.condition}
-              innerRef={(el)=>setRowRef(pathKey(lanePath), el)} removeLabel={removeLabel} onRemove={onRemove}>
-              {body}
-            </Station>
-            {renderFlow(pobj.children||[], lanePath)}
-            <BranchAdd path={lanePath} branchId={pobj.id} />
-          </div>
-        );
-        return (
-          <React.Fragment key={node.id}>
-            <div className="relative" style={{ marginLeft:"60px" }}>
-              {/* trunk rail (x≈9) — full height to the rejoin, then continues to the following steps */}
-              <div className="absolute" style={{ left:"-51px", top:0, bottom:0, width:"1px", background:"var(--border2)" }}/>
-              {/* SINGLE split elbow (top): trunk → condition column, rounded at the trunk */}
-              <div className="absolute" style={{ left:"-51px", top:0, width:"60px", height:`${MC}px`,
-                borderLeft:"1px solid var(--border2)", borderBottom:"1px solid var(--border2)", borderBottomLeftRadius:"12px" }}/>
-              {/* condition COLUMN (x≈69) + SINGLE rejoin corner (bottom) — one continuous border */}
-              <div className="absolute" style={{ left:"-51px", top:`${MC}px`, bottom:0, width:"60px",
-                borderRight:"1px solid var(--border2)", borderBottom:"1px solid var(--border2)", borderBottomRightRadius:"12px" }}/>
-              {cases.map((pobj, pi) => caseRow(pobj, pi===0?"If":"Else if", [...path,{path:pi}], ()=>removePath(path,pi), "Remove check", pi===0, pathClauses(path, node, pi)))}
-              {node.otherwise && caseRow(node.otherwise, "Else", [...path,{otherwise:true}], ()=>removeOtherwise(path), "Remove else", false,
-                <span className="text-[15px]" style={{color:"var(--muted)"}}>otherwise</span>)}
-              {/* column affordances — add another check / an Else */}
-              <div className="relative flex items-center gap-3" style={{ paddingLeft:"34px", paddingTop:`${PAD}px`, paddingBottom:`${GAP}px` }}>
-                <button onClick={(e)=>addCaseAndPick(path, e.currentTarget)} className="text-[12px] font-medium transition-colors hover:brightness-125" style={{color:"var(--c-if)"}}>+ add check</button>
-                {!node.otherwise && <button onClick={()=>addOtherwise(path)} className="text-[12px] font-medium transition-colors hover:brightness-110" style={{color:"var(--muted)"}}>+ Else</button>}
-              </div>
-            </div>
-          </React.Fragment>
-        );
-      }
-
-      // ── BRANCH (floating parallel fork): gate-less lanes, ends float ──
+      // ── BRANCH (explicit fork) ──────────────────────────────────────────
       const lanes = [];
+      const branchIsTerminal = !!opts.last && i===nodes.length-1; // nothing (not even the End cap) follows → stop the trunk rail at the fork
       (node.paths||[]).forEach((pobj, pi) => {
         const lanePath = [...path, {path:pi}];
         const branchActive = branchMenuPath === pathKey(lanePath);
-        const hasGate = !!(pobj.clauses && pobj.clauses.length); // legacy gated lane (older docs)
         lanes.push(
-          <div key={pobj.id} className="relative group/lane" style={{marginLeft:"60px"}}>
+          <div key={pobj.id} className="relative" style={{marginLeft:"60px"}}>
             {branchActive && <div className="absolute pointer-events-none rounded-xl" style={{ top:`-${PAD}px`, bottom:"2px", left:"-56px", right:"8px", background:"var(--c-if-h)", boxShadow:"inset 0 0 0 1px var(--c-if-bg)" }}/>}
+            {/* parent rail continues straight down behind the fork (stops at the last lane) */}
             <div className="absolute" style={{ left:"-51px", top:0, bottom: (pi===(node.paths||[]).length-1 && !node.otherwise && branchIsTerminal) ? `calc(100% - ${MC}px)` : 0, width:"1px", background:"var(--border2)" }}/>
+            {/* family-tree elbow into this lane */}
             <div className="absolute" style={{ left:"-51px", top:0, width:"60px", height:`${MC}px`,
               borderLeft:"1px solid var(--border2)", borderBottom:"1px solid var(--border2)", borderBottomLeftRadius:"12px" }}/>
-            {hasGate
-              ? (<Station marker={MARK.cond} isFirst head={pi===0?"Check if":"Or if"} headColor="var(--c-if)" headBg="var(--c-if-bg)" hoverBg="var(--c-if-h)" help={NODE_HELP.condition}
-                  innerRef={(el)=>setRowRef(pathKey(lanePath), el)} removeLabel="Remove path" onRemove={()=>removePath(path,pi)}>
-                  {pathClauses(path, node, pi)}
-                </Station>)
-              : (<button onClick={(e)=>{ e.stopPropagation(); removePath(path,pi); }} title="Remove path"
-                  className="absolute z-10 opacity-0 group-hover/lane:opacity-100 text-[14px] leading-none px-1 transition-opacity"
-                  style={{ top:`-${GAP/2}px`, right:"8px", color:"var(--faint)" }}>×</button>)}
-            {renderFlow(pobj.children||[], lanePath, { firstIsHead: !hasGate })}
-            <BranchAdd path={lanePath} branchId={pobj.id} empty={!hasGate && !(pobj.children||[]).length} />
+            {/* this lane's condition header */}
+            <Station marker={MARK.cond} isFirst head={pi===0?"Check if":"Or if"} headColor="var(--c-if)" headBg="var(--c-if-bg)" hoverBg="var(--c-if-h)" help={NODE_HELP.condition}
+              innerRef={(el)=>setRowRef(pathKey(lanePath), el)} removeLabel="Remove path" onRemove={()=>removePath(path,pi)}>
+              {pathClauses(path, node, pi)}
+            </Station>
+            {renderFlow(pobj.children||[], lanePath)}
+            <BranchAdd path={lanePath} branchId={pobj.id} />
           </div>
         );
       });
@@ -3283,9 +3159,10 @@ function App() {
       return (
         <React.Fragment key={node.id}>
           {lanes}
+          {/* branch-level affordances */}
           <div className="relative flex items-center gap-3" style={{ marginLeft:"60px", paddingLeft:"4px", paddingBottom:`${GAP}px` }}>
             {!branchIsTerminal && <div className="absolute" style={{ left:"-51px", top:0, bottom:0, width:"1px", background:"var(--border2)" }}/>}
-            <button onClick={(e)=>addPathAndPick(path, e.currentTarget)} className="text-[12px] font-medium transition-colors hover:brightness-125" style={{color:"var(--c-if)"}}>+ add branch</button>
+            <button onClick={()=>addPath(path)} className="text-[12px] font-medium transition-colors hover:brightness-125" style={{color:"var(--c-if)"}}>+ add branch</button>
           </div>
         </React.Fragment>
       );
@@ -3366,7 +3243,7 @@ function App() {
           <div className="text-[13px]">Coming soon</div>
         </div>
       ) : (
-    <div className="relative flex flex-col h-full w-full overflow-hidden">
+    <div className="flex flex-col h-full w-full overflow-hidden">
       {/* top bar */}
       <header className="h-14 shrink-0 flex items-center gap-3 px-6 border-b" style={{borderColor:"var(--border)",background:"var(--topbar)"}}>
         <button onClick={toggleSide}
@@ -3423,7 +3300,32 @@ function App() {
               ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
               : <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4.2" stroke="currentColor" strokeWidth="2"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8L6 18M18 6l1.8-1.8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>}
           </button>
-          {/* v5: reset / undo / redo / help / shortcuts moved to the floating canvas toolbar */}
+          <button onClick={reset} title="Reset (⇧R)"
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:brightness-125"
+            style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--muted)"}}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M3 3v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+          <button onClick={undo} title="Undo (Ctrl/⌘+Z)"
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:brightness-125"
+            style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--muted)"}}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 14L4 9l5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M4 9h11a5 5 0 010 10h-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+          <button onClick={redo} title="Redo (Ctrl/⌘+Shift+Z)"
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:brightness-125"
+            style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--muted)"}}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M15 14l5-5-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M20 9H9a5 5 0 000 10h3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+          <button onClick={(e)=>open(e.currentTarget, [
+              { id:"guide", label:"How it works", icon:<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.6 1 1.3 1 2.1h6c0-.8.4-1.5 1-2.1A6 6 0 0012 3z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg> },
+              { id:"nodes", label:"Node reference", icon:<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 8l8-4 8 4-8 4-8-4zM4 12l8 4 8-4M4 16l8 4 8-4" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg> },
+            ], (i)=>{ if(i.id==="guide"){ setStep(0); setGuideOpen(true); } else { setRefOpen(true); } }, "Help", { noSearch:true })} title="Help"
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:brightness-125"
+            style={{background:(guideOpen||refOpen)?"var(--accent)":"var(--panel2)",border:"1px solid var(--border2)",color:(guideOpen||refOpen)?"#fff":"var(--muted)"}}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.6 1 1.3 1 2.1h6c0-.8.4-1.5 1-2.1A6 6 0 0012 3z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+          <button onClick={()=>setHelpOpen(true)} title="Keyboard shortcuts (?)"
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:brightness-125 text-[13px] font-semibold"
+            style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--muted)"}}>⌘</button>
           <button className="px-3 py-1.5 rounded-lg text-sm font-medium" style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--text)"}}>Test</button>
         </div>
       </header>
@@ -3451,7 +3353,6 @@ function App() {
                     bgLeft={i===0 ? "16px" : "34px"} bgRight="16px" padLeft={i===0 ? "34px" : "50px"} padRight="28px"
                     head={i===0?"When":"Or"} headColor="var(--c-when)" headBg="var(--c-when-bg)" hoverBg="var(--c-when-h)" help={NODE_HELP.when}
                     innerRef={(el)=>setRowRef(`trig:${t.id}`, el)} removeLabel="Clear trigger"
-                    onAdd={(el)=>pickTriggerType(el)} addLabel="Add another trigger (OR)"
                     focused={focusKey===`trig:${t.id}`} onFocus={()=>setFocusKey(`trig:${t.id}`)} onRemove={()=>removeTrigger(t.id)}>
                     <Template tpl={triggerView(t).tpl} vals={t.vals}
                       openKey={openSlot && openSlot.startsWith(`trig:${t.id}:`) ? openSlot.slice(`trig:${t.id}:`.length) : null}
@@ -3480,15 +3381,33 @@ function App() {
             {/* trunk opener — the green "Then do this…" prompt for the first action */}
             <Opener path={[]} />
 
-            {/* v5: Add step / Publish moved to the floating canvas toolbar (see bottom of builder) */}
+            {/* CTAs — always present, aligned to the rail line; sticky to bottom when the flow scrolls */}
+            <div className="sticky bottom-0 flex items-center gap-3 -mx-8 px-8 pt-6 pb-8 mt-16"
+              style={{ paddingLeft:"34px", background:"linear-gradient(to top, var(--bg) 70%, transparent)" }}>
+              <button ref={addStepBtnRef} onClick={(e)=>openMain([], e)} title="Add a step"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-[13px] font-medium transition-colors hover:bg-[var(--pop-hover)]"
+                style={{ background:"transparent", border:"1px solid var(--border2)", color:"var(--muted)" }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                Add step
+              </button>
+              <button onClick={()=>setPublished(p=>!p)}
+                className="inline-flex items-center px-4 py-2 rounded-lg text-[13px] font-semibold transition-colors hover:brightness-110"
+                style={ published
+                  ? { background:"transparent", border:"1px solid var(--border2)", color:"var(--muted)" }
+                  : { background:"var(--accent)", border:"1px solid var(--accent)", color:"#fff" } }>
+                {published ? "Unpublish" : "Publish workflow"}
+              </button>
+            </div>
 
           </div>
         </div>
 
         {/* right: context rail — overview normally; swaps to an action's DETAIL FORM (wider) when a
             detail card is clicked. Back chevron returns to the overview. */}
-        <aside className={((drawer||refOpen||helpOpen) ? (drawer?"w-[440px]":refOpen?"w-[400px]":"w-[360px]") : "w-0") + " shrink-0 h-full overflow-hidden transition-[width] duration-300 ease-in-out"} style={{ borderLeft: (drawer||refOpen||helpOpen) ? "1px solid var(--border)" : "none", background:"var(--panel)" }}>
-          {drawer && (()=>{
+        <aside className={(drawer ? "w-[460px] p-3 pl-1" : "w-0 p-0") + " shrink-0 h-full overflow-hidden transition-[width] duration-300 ease-in-out"}>
+          {drawer ? (
+          <div className="relative h-full w-full rounded-2xl flex flex-col overflow-hidden" style={{ background:"var(--panel)", border:"1px solid var(--border)", boxShadow:"var(--shadow-pop)" }}>
+          {(()=>{
             const dpath = treeFindPath(flow, drawer);
             const dnode = dpath ? nodeAt(flow, dpath) : null;
             if (!dnode) return null;
@@ -3526,7 +3445,7 @@ function App() {
                     segs.push(val ? {t:val,em:true} : {t:"a value",dim:true}); });
                   return segs; })();
             return (
-              <div className="h-full w-full flex flex-col" style={{background:"var(--panel)"}}>
+              <div className="absolute inset-0 z-10 flex flex-col" style={{background:"var(--panel)"}}>
                 <div className="px-4 h-16 shrink-0 flex items-center gap-2.5 border-b" style={{borderColor:"var(--border)"}}>
                   <div className="min-w-0">
                     <div className="text-[14.5px] font-semibold truncate" style={{color:"var(--text)"}}>{title}</div>
@@ -3742,78 +3661,8 @@ function App() {
               </div>
             );
           })()}
-          {/* Node reference — right-section panel: list → drill into a node → "How it works" pinned at bottom */}
-          {!drawer && refOpen && (()=>{
-            const doc = refSel ? (NODE_DOCS.find(d=>d.id===refSel) || null) : null;
-            const Section = ({ label, children }) => (
-              <div className="mb-4"><div className="text-[10px] uppercase tracking-[0.14em] mb-1.5" style={{color:"var(--faint)"}}>{label}</div><div className="text-[13px] leading-relaxed" style={{color:"var(--ink-mid)"}}>{children}</div></div>
-            );
-            return (
-              <div className="h-full w-full flex flex-col">
-                <div className="px-4 h-14 shrink-0 flex items-center gap-2 border-b" style={{borderColor:"var(--border)"}}>
-                  {doc && <button onClick={()=>setRefSel(null)} title="Back" className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>}
-                  <div className="text-[14px] font-semibold truncate" style={{color: doc?doc.color:"var(--text)"}}>{doc ? doc.name : "Node reference"}</div>
-                  <button onClick={()=>setRefOpen(false)} className="ml-auto w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></button>
-                </div>
-                <div className="flex-1 overflow-y-auto">
-                  {doc ? (
-                    <div key={doc.id} className="stepin p-5">
-                      <div className="w-full rounded-2xl flex items-center justify-center mb-5 px-4" style={{ height:"128px", background:doc.bg, overflow:"hidden", border:`1px solid ${doc.color}22` }}>{NODE_GRAPHIC(doc.id)}</div>
-                      {doc.types && (<div className="mb-4"><div className="text-[10px] uppercase tracking-[0.14em] mb-2" style={{color:"var(--faint)"}}>Types</div><div className="flex flex-col gap-2">{doc.types.map((t,i)=>(<div key={i} className="rounded-xl px-3 py-2.5" style={{ background:doc.bg, border:`1px solid ${doc.color}22`, borderLeft:`3px solid ${doc.color}` }}><div className="text-[12.5px] font-semibold mb-0.5" style={{color:doc.color}}>{t.name}</div><div className="text-[12px] leading-relaxed" style={{color:"var(--ink-mid)"}}>{t.desc}</div></div>))}</div></div>)}
-                      <Section label="What it is">{doc.meaning}</Section>
-                      <Section label="Function">{doc.function}</Section>
-                      <Section label="When to use it">{doc.use}</Section>
-                      <Section label="When to avoid it">{doc.avoid}</Section>
-                    </div>
-                  ) : (
-                    <div className="p-2.5">
-                      {NODE_DOCS.map(n=>(
-                        <button key={n.id} onClick={()=>setRefSel(n.id)} className="w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-left transition-colors hover:bg-[var(--pop-hover)] mb-0.5">
-                          <span className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center" style={{ background:n.bg, color:n.color }}>{n.icon}</span>
-                          <span className="text-[13px] font-medium truncate" style={{color:"var(--text)"}}>{n.name}</span>
-                          <svg className="ml-auto shrink-0" width="15" height="15" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="shrink-0 border-t px-4 py-3" style={{borderColor:"var(--border)"}}>
-                  <button onClick={()=>{ setRefOpen(false); setStep(0); setGuideOpen(true); }} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[12.5px] font-medium transition-colors hover:brightness-110" style={{ background:"color-mix(in srgb, var(--accent) 14%, transparent)", color:"var(--accent2)" }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.6 1 1.3 1 2.1h6c0-.8.4-1.5 1-2.1A6 6 0 0012 3z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    How it works
-                  </button>
-                </div>
-              </div>
-            );
-          })()}
-          {/* Keyboard shortcuts — right-section panel */}
-          {!drawer && !refOpen && helpOpen && (
-            <div className="h-full w-full flex flex-col">
-              <div className="px-4 h-14 shrink-0 flex items-center gap-2 border-b" style={{borderColor:"var(--border)"}}>
-                <div className="text-[14px] font-semibold" style={{color:"var(--text)"}}>Keyboard shortcuts</div>
-                <button onClick={()=>setHelpOpen(false)} className="ml-auto w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></button>
-              </div>
-              <div className="flex-1 overflow-y-auto px-4 py-3">
-                {[
-                  ["↑ ↓ / J K", "Move between lines"],
-                  ["⏎ Enter", "Open the add menu on the focused line"],
-                  ["A", "Add action to the focused scope"],
-                  ["C", "Add condition (branch)"],
-                  ["X / Delete", "Remove the focused line"],
-                  ["⌘/Ctrl + Z", "Undo"],
-                  ["⌘/Ctrl + ⇧ + Z", "Redo"],
-                  ["⇧ R", "Reset the whole rule"],
-                  ["T", "Toggle dark / light theme"],
-                  ["Esc", "Close menu / panel"],
-                ].map(([keys,desc],i)=>(
-                  <div key={i} className="flex items-center justify-between gap-3 py-2 text-[13px]" style={{color:"var(--muted)"}}>
-                    <span>{desc}</span>
-                    <span className="shrink-0 px-2 py-0.5 rounded-md text-[12px] font-medium whitespace-nowrap" style={{background:"var(--panel2)",border:"1px solid var(--border)",color:"var(--text)"}}>{keys}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          </div>
+          ) : null}
         </aside>
 
       </div>
@@ -3840,78 +3689,6 @@ function App() {
 
 
       {/* "How it works" — intro STEPPER (toast / lightbulb); doesn't compete with the canvas */}
-      {/* v5: floating canvas toolbar — flow control ▏ primary/secondary ▏ help */}
-      {showBuilder && (() => {
-        const sep = <span className="w-px h-5 mx-2 shrink-0" style={{ background:"var(--border2)" }} />;
-        const Tool = ({onClick, title, children}) => (
-          <button onClick={onClick} title={title}
-            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)]"
-            style={{ color:"var(--muted)" }}>{children}</button>
-        );
-        const segColor = (id) => id==="linguistic" ? "var(--c-when)" : "var(--accent2)"; // sentence = blue, node = violet
-        const segBtn = (id, label, icon) => (
-          <button onClick={()=>setBoard(id)} title={label}
-            className="w-9 h-7 rounded-lg flex items-center justify-center transition-colors"
-            style={{ background: board===id ? `color-mix(in srgb, ${segColor(id)} 20%, transparent)` : "transparent", color: board===id ? segColor(id) : "var(--muted)" }}>{icon}</button>
-        );
-        return (
-          <div className="absolute left-1/2 bottom-6 z-40 flex items-center gap-1 px-3.5 py-2.5 rounded-2xl"
-            style={{ background:"var(--panel)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-pop)",
-              transform:`translateX(calc(-50% - ${(drawer?440:refOpen?400:helpOpen?360:0)/2}px))`, transition:"transform .3s ease" }}>
-            {/* board view toggle: sentence ↔ node */}
-            <div className="flex items-center gap-0.5 p-0.5 rounded-xl" style={{ background:"var(--bg)", border:"1px solid var(--border)" }}>
-              {segBtn("linguistic","Sentence view",<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>)}
-              {segBtn("node","Node view (coming soon)",<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="3" y="4.5" width="7" height="5.5" rx="1.4" stroke="currentColor" strokeWidth="1.7"/><rect x="14" y="14" width="7" height="5.5" rx="1.4" stroke="currentColor" strokeWidth="1.7"/><path d="M6.5 10v3.2a2 2 0 002 2H14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>)}
-            </div>
-            {sep}
-            {/* help */}
-            <Tool onClick={()=>{ setHelpOpen(false); setRefSel(null); setRefOpen(true); }} title="Help & node reference">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.6 1 1.3 1 2.1h6c0-.8.4-1.5 1-2.1A6 6 0 0012 3z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </Tool>
-            <Tool onClick={()=>{ setRefOpen(false); setHelpOpen(true); }} title="Keyboard shortcuts (?)"><span className="text-[14px] font-semibold">⌘</span></Tool>
-            {sep}
-            {/* flow control */}
-            <Tool onClick={undo} title="Undo (Ctrl/⌘+Z)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 14L4 9l5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M4 9h11a5 5 0 010 10h-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </Tool>
-            <Tool onClick={redo} title="Redo (Ctrl/⌘+Shift+Z)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 14l5-5-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M20 9H9a5 5 0 000 10h3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </Tool>
-            <Tool onClick={reset} title="Reset (⇧R)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M3 3v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </Tool>
-            {sep}
-            {/* actions (right) */}
-            <button onClick={()=>{}} title="Test this workflow"
-              className="inline-flex items-center gap-1.5 px-3 h-8 rounded-lg text-[13px] font-medium transition-colors hover:bg-[var(--pop-hover)]"
-              style={{ color:"var(--muted)" }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M7 5l11 7-11 7V5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Test
-            </button>
-            {sep}
-            <button ref={addStepBtnRef} onClick={(e)=>openMain([], e)} title="Add a step"
-              className="inline-flex items-center gap-1.5 px-3 h-8 rounded-lg text-[13px] font-medium transition-colors hover:bg-[var(--pop-hover)]"
-              style={{ color:"var(--text)" }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-              Add step
-            </button>
-            <button onClick={()=>splitIntoBranch([])} title="Split into parallel paths"
-              className="inline-flex items-center gap-1.5 px-3 h-8 rounded-lg text-[13px] font-medium transition-colors hover:bg-[var(--pop-hover)]"
-              style={{ color:"var(--text)" }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 4v4M12 8c0 4-6 3-6 8M12 8c0 4 6 3 6 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Split
-            </button>
-            <button onClick={()=>setPublished(p=>!p)}
-              className="inline-flex items-center px-4 h-8 rounded-lg text-[13px] font-semibold transition-all hover:-translate-y-0.5"
-              style={ published
-                ? { background:"transparent", border:"1px solid var(--border2)", color:"var(--muted)" }
-                : { background:"var(--accent)", color:"#fff", boxShadow:"0 8px 20px -12px var(--accent)" } }>
-              {published ? "Unpublish" : "Publish"}
-            </button>
-          </div>
-        );
-      })()}
-
       {/* one-time intro announcement → guided walkthrough (placeholder CTA, shown once to everyone) */}
       {introOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center px-4" style={{background:"rgba(0,0,0,.5)"}} onMouseDown={()=>setIntroOpen(false)}>
@@ -3969,7 +3746,102 @@ function App() {
         </div>
       )}
 
-      {/* Node reference & keyboard shortcuts now render in the right-section panel (see <aside>). */}
+      {/* "Node reference" — detailed two-pane node guide */}
+      {refOpen && (() => {
+        const doc = NODE_DOCS.find(d=>d.id===refSel) || NODE_DOCS[0];
+        const Section = ({ label, children }) => (
+          <div className="mb-4">
+            <div className="text-[10px] uppercase tracking-[0.14em] mb-1.5" style={{color:"var(--faint)"}}>{label}</div>
+            <div className="text-[13px] leading-relaxed" style={{color:"var(--ink-mid)"}}>{children}</div>
+          </div>
+        );
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center px-4" style={{background:"rgba(0,0,0,.5)"}} onMouseDown={()=>setRefOpen(false)}>
+            <div className="guidein w-[820px] max-w-full rounded-2xl overflow-hidden flex flex-col" style={{ maxHeight:"80vh", background:"var(--panel2)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-pop)" }} onMouseDown={e=>e.stopPropagation()}>
+              {/* header */}
+              <div className="flex items-center justify-between px-5 py-3.5 shrink-0" style={{ borderBottom:"1px solid var(--border)" }}>
+                <div className="text-[14px] font-semibold" style={{color:"var(--text)"}}>Node reference</div>
+                <button onClick={()=>setRefOpen(false)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-[var(--pop-hover)]" style={{color:"var(--faint)"}}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                </button>
+              </div>
+              <div className="flex min-h-0 flex-1">
+                {/* left sidebar */}
+                <div className="w-[210px] shrink-0 overflow-y-auto py-2.5 px-2" style={{ borderRight:"1px solid var(--border)", background:"var(--panel)" }}>
+                  {NODE_DOCS.map(n=>{
+                    const sel = n.id===refSel;
+                    return (
+                      <button key={n.id} onClick={()=>setRefSel(n.id)}
+                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition-colors mb-0.5"
+                        style={{ background: sel?"var(--pop-hover)":"transparent", color:"var(--text)" }}>
+                        <span className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center" style={{ background:n.bg, color:n.color }}>{n.icon}</span>
+                        <span className="text-[13px] font-medium">{n.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* right context pane */}
+                <div key={doc.id} className="stepin flex-1 overflow-y-auto p-6">
+                  {/* illustrative graphic banner */}
+                  <div className="w-full rounded-2xl flex items-center justify-center mb-5 px-4" style={{ height:"148px", background:doc.bg, overflow:"hidden", border:`1px solid ${doc.color}22` }}>
+                    {NODE_GRAPHIC(doc.id)}
+                  </div>
+                  <div className="text-[20px] font-semibold mb-4" style={{color:doc.color}}>{doc.name}</div>
+                  {doc.types && (
+                    <div className="mb-4">
+                      <div className="text-[10px] uppercase tracking-[0.14em] mb-2" style={{color:"var(--faint)"}}>Types</div>
+                      <div className="flex flex-col gap-2">
+                        {doc.types.map((t,i)=>(
+                          <div key={i} className="rounded-xl px-3 py-2.5" style={{ background:doc.bg, border:`1px solid ${doc.color}22`, borderLeft:`3px solid ${doc.color}` }}>
+                            <div className="text-[12.5px] font-semibold mb-0.5" style={{color:doc.color}}>{t.name}</div>
+                            <div className="text-[12px] leading-relaxed" style={{color:"var(--ink-mid)"}}>{t.desc}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <Section label="What it is">{doc.meaning}</Section>
+                  <Section label="Function">{doc.function}</Section>
+                  <Section label="When to use it">{doc.use}</Section>
+                  <Section label="When to avoid it">{doc.avoid}</Section>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {helpOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{background:"rgba(0,0,0,.45)"}} onMouseDown={()=>setHelpOpen(false)}>
+          <div className="w-[380px] rounded-2xl p-5" style={{background:"var(--panel2)",border:"1px solid var(--border2)", boxShadow:"var(--shadow-pop)"}} onMouseDown={e=>e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-semibold">Keyboard shortcuts</div>
+              <button onClick={()=>setHelpOpen(false)} className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-[var(--panel)]" style={{color:"var(--faint)"}}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+              </button>
+            </div>
+            {[
+              ["↑ ↓  /  J K", "Move between lines"],
+              ["⏎ Enter", "Open the add menu on the focused line"],
+              ["A", "Add action to the focused scope"],
+              ["C", "Add condition (branch) to the focused scope"],
+              ["X  /  Delete", "Remove the focused line"],
+              ["⌘/Ctrl + Z", "Undo"],
+              ["⌘/Ctrl + ⇧ + Z", "Redo"],
+              ["⇧ R", "Reset the whole rule"],
+              ["T", "Toggle dark / light theme"],
+              ["? ", "Show / hide this help"],
+              ["In a menu: ↑ ↓ + ⏎", "Highlight and pick an option"],
+              ["Esc", "Close menu / help"],
+            ].map(([keys,desc],i)=>(
+              <div key={i} className="flex items-center justify-between py-1.5 text-sm" style={{color:"var(--muted)"}}>
+                <span>{desc}</span>
+                <span className="ml-4 px-2 py-0.5 rounded-md text-[12px] font-medium whitespace-nowrap" style={{background:"var(--panel)",border:"1px solid var(--border)",color:"var(--text)"}}>{keys}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
       )}
       </div>

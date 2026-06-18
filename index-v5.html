@@ -1810,29 +1810,29 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
       const itemIco  = itemHelp ? (curItem.icon || null) : null;
       if (!baseHelp && !itemHelp) return null;
       const accent = (baseHelp && baseHelp.color) || (itemHelp && itemHelp.color) || "var(--accent)";
-      const CW = 300, GAP = 12, popW = wide ? 340 : 256;
+      const CW = 264, GAP = 12, popW = wide ? 340 : 256;
       let hl = left + popW + GAP;
       if (hl + CW > window.innerWidth - 12) hl = Math.max(12, left - CW - GAP);
       return (
-        <div className="pop-enter fixed z-50 rounded-2xl overflow-hidden flex flex-col" style={{ top, left: hl, width: CW, maxHeight:"72vh", background:"var(--pop-bg)", border:"1px solid var(--border2)", borderTop:`3px solid ${accent}`, boxShadow:"var(--shadow-pop)" }}>
-          <div className="px-5 pt-4 pb-2.5 shrink-0">
-            <div className="text-[10px] uppercase tracking-[0.14em] flex items-center gap-1.5" style={{color:"var(--faint)"}}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/><path d="M12 11v5M12 7.5v.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+        <div className="pop-enter fixed z-50 rounded-xl overflow-hidden flex flex-col" style={{ top, left: hl, width: CW, maxHeight:"66vh", background:"var(--pop-bg)", border:"1px solid var(--border2)", borderTop:`3px solid ${accent}`, boxShadow:"var(--shadow-pop)" }}>
+          <div className="px-3.5 pt-3 pb-1.5 shrink-0">
+            <div className="text-[9.5px] uppercase tracking-[0.14em] flex items-center gap-1.5" style={{color:"var(--faint)"}}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/><path d="M12 11v5M12 7.5v.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
               Quick help
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-5 pb-5 flex flex-col gap-4">
-            {baseHelp && <HelpCard help={baseHelp} />}
+          <div className="flex-1 overflow-y-auto px-3.5 pb-3.5 flex flex-col gap-2.5">
+            {baseHelp && <HelpCard help={baseHelp} compact />}
             {itemHelp && (<>
               <div className="h-px shrink-0" style={{background:"var(--border)"}}/>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.13em]" style={{color:"var(--faint)"}}>This option</div>
-              <div className="rounded-xl p-3.5" style={{ background:"var(--panel2)", border:"1px solid var(--border)" }}>
-                <div className="flex items-center gap-2.5 mb-2.5">
-                  {(itemIco || itemHelp.graphic) && <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background:"var(--panel)", color:"var(--muted)" }}>{itemIco || itemHelp.graphic}</span>}
-                  <div className="text-[13.5px] font-semibold leading-tight" style={{color:"var(--text)"}}>{itemHelp.title}</div>
+              <div className="text-[9.5px] font-semibold uppercase tracking-[0.13em]" style={{color:"var(--faint)"}}>This option</div>
+              <div className="rounded-lg p-2.5" style={{ background:"var(--panel2)", border:"1px solid var(--border)" }}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  {(itemIco || itemHelp.graphic) && <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ background:"var(--panel)", color:"var(--muted)" }}>{itemIco || itemHelp.graphic}</span>}
+                  <div className="text-[12.5px] font-semibold leading-tight" style={{color:"var(--text)"}}>{itemHelp.title}</div>
                 </div>
-                <div className="text-[12.5px] leading-relaxed" style={{color:"var(--muted)"}}>{itemHelp.body}</div>
-                {itemHelp.eg && <div className="text-[11.5px] italic mt-2 leading-snug" style={{color:"var(--faint)"}}>{itemHelp.eg}</div>}
+                <div className="text-[11.5px] leading-relaxed" style={{color:"var(--muted)"}}>{itemHelp.body}</div>
+                {itemHelp.eg && <div className="text-[11px] italic mt-1.5 leading-snug" style={{color:"var(--faint)"}}>{itemHelp.eg}</div>}
               </div>
             </>)}
           </div>
@@ -2008,12 +2008,16 @@ function App() {
   const isPeriodicType = (t) => t==="date_reached" || t==="periodically";
   const firstIsPeriodic = () => triggers.length>0 && isPeriodicType(triggers[0].typeId);
   // trigger-type picker config. `back` (when present) = adding an OR trigger → restrict to event types only.
-  const triggerMenuConfig = (anchor, back) => ({
+  const triggerMenuConfig = (anchor, back, replaceId) => ({
     anchor,
     items: (back ? TRIGGER_MENU.filter(it => it.id ? !isPeriodicType(it.id) : it.header!=="Time based") : TRIGGER_MENU)
       .map(it => it.id ? { ...it, help:TRIGGER_HELP[it.id] } : it),
-    wide:true, back, title: back ? "Add trigger" : null, help: NODE_HELP.when,
-    onPick:(i)=>{ const nt = { id:nid(), typeId:i.id, vals:{} }; setTriggers(ts=>[...ts, nt]); guidingRef.current = nt.id; setFocusKey(`trig:${nt.id}`); },
+    wide:true, back, title: back ? "Add trigger" : (replaceId ? "Change trigger" : null), help: NODE_HELP.when,
+    selected: replaceId ? (triggers.find(t=>t.id===replaceId)||{}).typeId : undefined,
+    onPick:(i)=>{
+      if (replaceId) { setTriggers(ts=>ts.map(t=>t.id===replaceId ? {...t, typeId:i.id, vals:{}} : t)); guidingRef.current = replaceId; setFocusKey(`trig:${replaceId}`); }
+      else { const nt = { id:nid(), typeId:i.id, vals:{} }; setTriggers(ts=>[...ts, nt]); guidingRef.current = nt.id; setFocusKey(`trig:${nt.id}`); }
+    },
     footer:(
       <button className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-[12px] rounded-lg hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}>
         <span style={{color:"var(--accent2)"}}>{I.ai}</span> Generate with AI
@@ -2021,6 +2025,8 @@ function App() {
     ),
   });
   const pickTriggerType = (anchor) => { setFocusKey("T"); setOpenSlot("Twhen"); setPop(triggerMenuConfig(anchor, null)); };
+  // re-open the picker on an EXISTING trigger to swap its type in place (keeps the row; resets its slots, then re-advances)
+  const changeTriggerType = (tid, anchor) => { setFocusKey(`trig:${tid}`); setOpenSlot(null); setPop(triggerMenuConfig(anchor, null, tid)); };
 
   const updateTrigger = (tid, key, val) => setTriggers(ts=>ts.map(t=>t.id===tid?{...t, vals:{...t.vals,[key]:val}}:t));
   const removeTrigger = (tid) => setTriggers(ts=>ts.filter(t=>t.id!==tid));
@@ -2040,7 +2046,7 @@ function App() {
       if (next.options==="__time") return open(el, [], setter, "Pick a time", {inputType:"time"});
       return open(el, next.options.map(o=>typeof o==="string"?{id:o,label:o}:o), setter, PLACEHOLDER[next.key]||next.key);
     }
-    // this trigger is complete — open the v6 path-type chooser (anchored under it)
+    // this trigger is complete — open the "do this…" menu (anchored under it)
     guidingRef.current = null;
     if (!hasAction(flow)) setTimeout(()=>openMainAt([], firstVisibleEl(rowRefs.current["__thenSlot"], rowRefs.current["__then"], addStepBtnRef.current)), 0);
   };
@@ -2068,21 +2074,23 @@ function App() {
              requestAnimationFrame(()=>openClauseValueByKey(condPath, ci, i.id, `cval:${cid}:${ci}`, defaultOp(t))); },
       "Which field", {wide:true, help:NODE_HELP.condition, anchorKey:`cond:${cid}:${ci}`}));
   };
-  // v6: a "condition" is a MERGING branch — it splits into If / Else-if / Else and rejoins, then the trunk
-  // continues. It reuses the branch data shape (paths + otherwise) with a `merge:true` flag, so every branch
-  // helper (childrenAt, cloneWithIds, drag-drop, nav) works unchanged. Creating one opens the first check.
+  // insert an inline condition at `path`/`index`. AUTO-GROUP: if the step directly before is a
+  // condition, fold this in as a new AND clause of that group instead of creating a separate row.
   const addConditionAndPick = (path, fallbackEl, index) => {
-    const caseId = nid();
-    const node = { id:nid(), kind:"branch", merge:true, otherwise:null,
-      paths:[{ id:caseId, clauses:[{ field:null, op:"is", value:null }], combiner:"and", children:[] }] };
-    const idx = index===undefined ? childrenAt(flow, path).length : index;
+    const siblings = childrenAt(flow, path);
+    const idx = index===undefined ? siblings.length : index;
+    const prev = siblings[idx-1];
+    if (prev && prev.kind==="condition") {
+      const condPath = [...path, idx-1];
+      const ci = (prev.clauses||[]).length;
+      setFlow(f => { const n = nodeAt(f, condPath); return treeUpdate(f, condPath, { clauses:[...(n.clauses||[]), { field:null, op:"is", value:null }] }); });
+      openCondFieldPicker(condPath, prev.id, ci, fallbackEl);
+      return;
+    }
+    const node = { id:nid(), kind:"condition", clauses:[{ field:null, op:"is", value:null }], combiner:"and" };
     const newPath = [...path, idx];
     setFlow(f => treeInsertAt(f, path, idx, node));
-    setOpenSlot(`${pathKey(newPath)}:p0:c0:field`);
-    requestAnimationFrame(()=> open(fallbackEl||null, flowMenu(node),
-      (i)=>{ const t=flowFD(node,i.id)?.type||"enum"; updatePathClause(newPath,0,0,{field:i.id,op:defaultOp(t),value:null});
-             setTimeout(()=>pickPathValueEl(newPath,node,0,0,valueSlotRefs.current[`${caseId}:0`],i.id,defaultOp(t)),40); },
-      "Which field", {wide:true, help:NODE_HELP.condition, anchorKey:`pcond:${caseId}:0`}));
+    openCondFieldPicker(newPath, node.id, 0, fallbackEl);
   };
   // "Condition group": add an OR-group (a clause flagged .or) to the adjacent CHECK IF — or start a
   // new condition if there's none. The OR-group renders as a new "or" row of the same gate.
@@ -2098,20 +2106,12 @@ function App() {
   };
   const addBranchAndPick = (path, fallbackEl, index) => {
     const node = { id:nid(), kind:"branch",
-      paths:[{ id:nid(), clauses:[], combiner:"and", children:[] }],  // v6: no forced condition — the user picks the lane's first node
+      paths:[{ id:nid(), clauses:[{ field:null, op:"is", value:null }], combiner:"and", children:[] }],
       otherwise:null };
     const idx = index===undefined ? childrenAt(flow, path).length : index;
     const newPath = [...path, idx];
     setFlow(f => treeInsertAt(f, path, idx, node));
     setFocusKey(pathKey(newPath));
-  };
-  // v6 canvas fork: split a path RIGHT HERE into two empty gate-less lanes — no popover. The user fills each
-  // lane via its "pick first step". `index` omitted → append at the path's end.
-  const splitIntoBranch = (path, index) => {
-    const node = { id:nid(), kind:"branch", otherwise:null,
-      paths:[ { id:nid(), clauses:[], combiner:"and", children:[] }, { id:nid(), clauses:[], combiner:"and", children:[] } ] };
-    const idx = index===undefined ? childrenAt(flow, path).length : index;
-    setFlow(f => treeInsertAt(f, path, idx, node));
   };
   // ── DELAY — two types: mode "time" ("wait for {n}{unit}" / "wait until {date|field}") and
   //    mode "event" ("wait until {condition} becomes true"). ──
@@ -2150,11 +2150,9 @@ function App() {
     setFlow(f => treeInsertAt(f, path, idx, node));
     openCondFieldPicker(newPath, node.id, 0, fallbackEl);
   };
-  // insert menu shown by the between-steps "+"
-  const openInsert = (parentPath, index, anchor) => open(anchor,
-    [{ id:"action", label:"Add action", icon:I.play, help:ADD_HELP.action }, { id:"condition", label:"Add condition", icon:I.diamond, help:ADD_HELP.condition }],
-    (i)=>{ if (i.id==="action") { openAddActionMenu(parentPath, anchor, ()=>openInsert(parentPath, index, anchor), index); return true; } addConditionAndPick(parentPath, anchor, index); },
-    "Insert step", {noSearch:true, itemsAsNodes:true});
+  // insert menu shown by the between-steps "+" — the SAME full add-step menu (action/condition→branch/
+   // delay/get, and "Add trigger" only when inserting right after the trigger), but at a specific index.
+  const openInsert = (parentPath, index, anchor) => { setFocusKey("__then"); setOpenSlot("__then"); setPop(mainMenuConfig(parentPath, anchor, index)); };
 
   // manual edit of a single slot (clicking it) — no auto-advance
   const pickTriggerSlot = (t, key, e) => {
@@ -2241,7 +2239,7 @@ function App() {
   const dragEnd = () => { setDropHint(null); dragIdRef.current=null; };
   const dnd = (id) => ({ id, start:dragStart, over:dragOverRow, drop:dropRow, end:dragEnd, hint:dropHint });
   // "Add condition" swaps the menu in place to choose the condition's shape (inline vs branching)
-  const condKindMenuConfig = (path, anchor, back) => {
+  const condKindMenuConfig = (path, anchor, back, index) => {
     // VERTICAL graphics (the workflow flows top→bottom). Diamond = the check, with sharp/slightly-rounded
     // corners to match the canvas condition marker.
     const gxInline = (
@@ -2269,11 +2267,11 @@ function App() {
       anchor, back, title:"Add condition", wide:true,
       items: COND_KIND_MENU.map(it=> it.id ? {...it, help:COND_HELP[it.id], icon: it.id==="inline"?gxInline:gxBranch} : it),
       help: NODE_HELP.condition, // base = the Condition node; the type (Inline/Branching) shows as "This option"
-      onPick:(i)=>{ if (i.id==="inline") addConditionAndPick(path, anchor); else addBranchAndPick(path, anchor); },
+      onPick:(i)=>{ if (i.id==="inline") addConditionAndPick(path, anchor, index); else addBranchAndPick(path, anchor, index); },
     };
   };
   // "Add delay" swaps to choose the delay TYPE (time-based vs event-based)
-  const delayKindMenuConfig = (path, anchor, back) => ({
+  const delayKindMenuConfig = (path, anchor, back, index) => ({
     anchor, back, title:"Add delay", wide:true,
     items: [
       { header:"Delay type" },
@@ -2283,60 +2281,32 @@ function App() {
         help:{ title:"Until an event", color:"var(--ink-mid)", bg:"var(--panel2)", graphic:G.action, body:"Pause the workflow until a condition you define becomes true, then continue." } },
     ],
     help: ADD_HELP.delay, // base = the Delay node; the kind (For a time / Until an event) shows as "This option"
-    onPick:(i)=>{ if (i.id==="time") addDelayAndPick(path, anchor); else addDelayEventAndPick(path, anchor); },
+    onPick:(i)=>{ if (i.id==="time") addDelayAndPick(path, anchor, index); else addDelayEventAndPick(path, anchor, index); },
   });
-  const mainMenuConfig = (path, anchor) => ({
-    // hide "Add trigger" when the starting trigger is periodic; show "Condition group" only when the previous
-    // step is a CHECK IF (it OR-extends that gate). Attach per-item help for the docked Quick Help.
+  const mainMenuConfig = (path, anchor, index) => ({
+    // "Add trigger" shows ONLY in the add-step directly after the trigger (trunk, insert index 0) — and never
+    // when the start is periodic. "Condition group" shows only when the step BEFORE the insert point is a CHECK IF.
     anchor,
-    items: (()=>{ const lastSib = childrenAt(flow, path).slice(-1)[0]; const canGroup = !!(lastSib && lastSib.kind==="condition");
-      const isTrunk = !(path||[]).some(s=> typeof s === "object"); // triggers belong on the trunk, never inside a branch path
-      let list = (firstIsPeriodic() || !isTrunk) ? ADD_MENU.filter(it=>it.id!=="trigger") : ADD_MENU;
+    items: (()=>{ const sibs = childrenAt(flow, path); const insIdx = index===undefined ? sibs.length : index;
+      const atTrigger = path.length===0 && insIdx===0; const canGroup = !!(sibs[insIdx-1] && sibs[insIdx-1].kind==="condition");
+      let list = (atTrigger && !firstIsPeriodic()) ? ADD_MENU : ADD_MENU.filter(it=>it.id!=="trigger");
       list = list.filter(it => it.id!=="condition_group" || canGroup);
       return list.map(it => it.id ? {...it, help:ADD_HELP[it.id]} : it); })(),
     title:"Add step", wide:true, solidIcons:true, itemsAsNodes:true,
     help: { title:"What happens next", color:"var(--c-then)", bg:"var(--c-then-bg)", graphic:G.action,
       body:"Choose what the workflow should do next — run an action, add a condition to branch on, or watch for another trigger." },
     onPick:(i, idx)=>{
-      const backToMain = ()=>setPop({ ...mainMenuConfig(path, anchor), initActive: idx }); // back lands on the item you came from
+      const backToMain = ()=>setPop({ ...mainMenuConfig(path, anchor, index), initActive: idx }); // back lands on the item you came from
       if (i.id==="trigger") { setPop(triggerMenuConfig(anchor, backToMain)); return true; } // swap in place, with back
-      if (i.id==="condition") { addConditionAndPick(path, anchor); return; } // inline gate (branch/inline is chosen earlier via the path-type chooser)
-      if (i.id==="condition_group") { addOrGroupAndPick(path, anchor); return; }
-      if (i.id==="delay") { setPop(delayKindMenuConfig(path, anchor, backToMain)); return true; } // swap to time/event
-      if (i.id==="get")   { addGetAndPick(path, anchor); return; }
-      if (i.id==="action") { openAddActionMenu(path, anchor, ()=>setPop(mainMenuConfig(path, anchor))); return true; } // swap to the action picker; create the row only on pick
+      if (i.id==="condition") { setPop(condKindMenuConfig(path, anchor, backToMain, index)); return true; } // swap to inline/branching
+      if (i.id==="condition_group") { addOrGroupAndPick(path, anchor, index); return; }
+      if (i.id==="delay") { setPop(delayKindMenuConfig(path, anchor, backToMain, index)); return true; } // swap to time/event
+      if (i.id==="get")   { addGetAndPick(path, anchor, index); return; }
+      if (i.id==="action") { openAddActionMenu(path, anchor, ()=>setPop(mainMenuConfig(path, anchor, index)), index); return true; } // swap to the action picker; create the row only on pick
     },
   });
   const openMainAt = (path, anchor) => { if (anchor) { setFocusKey("__then"); setOpenSlot("__then"); setPop(mainMenuConfig(path, anchor)); } };
   const openMain = (path, e) => openMainAt(path, e.currentTarget);
-  // v6: PATH-TYPE chooser — shown FIRST (on the "Then" opener and "Add step"). Pick how the flow continues:
-  // keep this one path (inline) or split into branches. After picking, swap to the "what happens next" menu.
-  const pathKindMenuConfig = (path, anchor) => ({
-    anchor, noSearch:true, wide:true, itemsAsNodes:true,
-    title:"Add a step",
-    items:[
-      { header:"How should the flow continue?" },
-      { id:"inline", label:"Continue this path", tone:"util",
-        icon:(<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 4v12M7 12l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>),
-        sub:"Add the next step in line" },
-      { id:"branch", label:"Branch into paths", tone:"util",
-        icon:(<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 4v4M12 8c0 4-6 3-6 8M12 8c0 4 6 3 6 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>),
-        sub:"Split into separate paths from here" },
-    ],
-    help: { title:"Inline or branch?", color:"var(--accent)", bg:"var(--panel2)", graphic:G.action,
-      body:"Keep building this single path, or split it into separate branches that each do their own thing." },
-    onPick:(i)=>{
-      if (i.id==="inline") { setPop(mainMenuConfig(path, anchor)); return true; }          // → what happens next (this path)
-      if (i.id==="branch") {                                                                // → create the fork, then add into the new lane
-        addBranchAndPick(path, anchor);
-        const idx = childrenAt(flow, path).length; const lanePath = [...path, idx, {path:0}];
-        requestAnimationFrame(()=> setPop(mainMenuConfig(lanePath, anchor)));
-        return true;
-      }
-    },
-  });
-  const openPathKindAt = (path, anchor) => { if (anchor) { setFocusKey("__then"); setOpenSlot("__then"); setPop(pathKindMenuConfig(path, anchor)); } };
-  const openPathKind = (path, e) => openPathKindAt(path, e.currentTarget);
   const openBranchAddAt = (path, anchor) => {
     if (!anchor) return;
     setBranchMenuPath(pathKey(path));
@@ -2408,28 +2378,7 @@ function App() {
     return treeSetLevel(f, parent, kept);
   });
   const addPath = (path) => setFlow(f => treeUpdate(f, path, (()=>{ const n=nodeAt(f,path);
-    return { paths:[...(n.paths||[]), { id:nid(), clauses:[], combiner:"and", children:[] }] }; })()));
-  // v6: add a new (gate-less) lane, then open the what-happens-next menu so the user picks its first node
-  const addPathAndPick = (path, anchor) => {
-    const newIdx = (nodeAt(flow, path)?.paths || []).length;
-    addPath(path);
-    const lanePath = [...path, {path:newIdx}];
-    requestAnimationFrame(()=> setPop(mainMenuConfig(lanePath, anchor)));
-  };
-  // "+ add check" on a merging condition — append a gated case (Else-if) and open its check field picker
-  const addCaseAndPick = (path, anchor) => {
-    const node = nodeAt(flow, path); if(!node) return;
-    const pi = (node.paths||[]).length;
-    const caseId = nid();
-    const newCase = { id:caseId, clauses:[{field:null,op:"is",value:null}], combiner:"and", children:[] };
-    const node2 = { ...node, paths:[...(node.paths||[]), newCase] }; // for the picker's reads (tree updates async)
-    setFlow(f => treeUpdate(f, path, { paths:[...((nodeAt(f,path)||{}).paths||[]), newCase] }));
-    setOpenSlot(`${pathKey(path)}:p${pi}:c0:field`);
-    requestAnimationFrame(()=> open(anchor||null, flowMenu(node2),
-      (i)=>{ const t=flowFD(node2,i.id)?.type||"enum"; updatePathClause(path,pi,0,{field:i.id,op:defaultOp(t),value:null});
-             setTimeout(()=>pickPathValueEl(path,node2,pi,0,valueSlotRefs.current[`${caseId}:0`],i.id,defaultOp(t)),40); },
-      "Which field", {wide:true, help:NODE_HELP.condition, anchorKey:`pcond:${caseId}:0`}));
-  };
+    return { paths:[...(n.paths||[]), { id:nid(), clauses:[{field:null,op:"is",value:null}], combiner:"and", children:[] }] }; })()));
   const addOtherwise = (path) => setFlow(f => treeUpdate(f, path, { otherwise:{ id:nid(), children:[] } }));
   // clause ops on a branch path's condition (paths[pi].clauses)
   const updatePathClause = (path, pi, ci, patch) => setFlow(f => treeUpdate(f, path, (()=>{ const n=nodeAt(f,path);
@@ -2439,30 +2388,25 @@ function App() {
   const removePath = (path, pi) => setFlow(f => {
     const n = nodeAt(f, path); if(!n) return f;
     let paths = n.paths.filter((_,k)=>k!==pi);
-    if (n.merge) {
-      // condition: keep ≥1 case; removing the last case removes the whole condition node
-      if (paths.length===0) return mergeAdjacentConditions(treeRemove(f, path));
-      return treeUpdate(f, path, { paths });
-    }
-    // floating branch: collapse to inline steps when down to one path and no otherwise
+    // collapse a branch back to an inline condition when it's down to one path and no otherwise
     if (paths.length===1 && !n.otherwise) {
       const only = paths[0];
+      const cond = { id:nid(), kind:"condition", clauses:only.clauses, combiner:only.combiner };
       const parent = path.slice(0,-1), idx = path[path.length-1];
       const siblings = childrenAt(f, parent);
-      const kept = [...siblings.slice(0,idx), ...(only.children||[]), ...siblings.slice(idx+1)];
+      const kept = [...siblings.slice(0,idx), cond, ...(only.children||[]), ...siblings.slice(idx+1)];
       return treeSetLevel(f, parent, kept);
     }
     return treeUpdate(f, path, { paths });
   });
   const removeOtherwise = (path) => setFlow(f => {
     const n = nodeAt(f, path); if(!n) return f;
-    if (n.merge) return treeUpdate(f, path, { otherwise:null }); // condition: just drop the Else
-    // floating branch: collapse to inline steps when one path remains
-    if ((n.paths||[]).length===1) {
+    if ((n.paths||[]).length===1) { // collapse back to inline condition
       const only = n.paths[0];
+      const cond = { id:nid(), kind:"condition", clauses:only.clauses, combiner:only.combiner };
       const parent = path.slice(0,-1), idx = path[path.length-1];
       const siblings = childrenAt(f, parent);
-      const kept = [...siblings.slice(0,idx), ...(only.children||[]), ...siblings.slice(idx+1)];
+      const kept = [...siblings.slice(0,idx), cond, ...(only.children||[]), ...siblings.slice(idx+1)];
       return treeSetLevel(f, parent, kept);
     }
     return treeUpdate(f, path, { otherwise:null });
@@ -2767,7 +2711,7 @@ function App() {
       if (k==="arrowdown" || k==="j") { e.preventDefault(); setFocusKey(nav[Math.min(nav.length-1, idx+1)].key); }
       else if (k==="arrowup" || k==="k") { e.preventDefault(); setFocusKey(nav[Math.max(0, idx-1)].key); }
       else if (e.key==="Enter") { e.preventDefault();
-        // contextual: no trigger → trigger picker; else → the v6 path-type chooser (then "what happens next")
+        // contextual: no trigger → trigger picker; else → the "do this / add steps" menu
         if (!hasTrigger) pickTriggerType(rowRefs.current["Twhen"] || rowRefs.current["T"]);
         else openMainAt([], firstVisibleEl(rowRefs.current["__thenSlot"], rowRefs.current["__then"], addStepBtnRef.current)); }
       else if (k==="a") { if (!hasTrigger) return; e.preventDefault(); addToScope("action"); }
@@ -2796,7 +2740,7 @@ function App() {
   };
 
   const HEAD = 28, PAD = 7, GAP = 10, MC = PAD + HEAD/2; // MC = marker center from row top
-  const Station = ({ marker, isFirst, isLast, head, headColor, headBg, hoverBg, onRemove, removeLabel, onInsert, onCopy, onSplit, onAdd, addLabel, dnd, onFocus, onClick, focused, help, innerRef, dense, gapBottom, okBorder, editing, bgLeft="16px", bgRight="16px", padLeft="34px", padRight="28px", children }) => {
+  const Station = ({ marker, isFirst, isLast, head, headColor, headBg, hoverBg, onRemove, removeLabel, onInsert, onCopy, onHead, dnd, onFocus, onClick, focused, help, innerRef, dense, gapBottom, okBorder, editing, bgLeft="16px", bgRight="16px", padLeft="34px", padRight="28px", children }) => {
     const [xHover, setXHover] = useState(false);
     const pt = dense ? 6 : PAD, bgBottom = gapBottom!==undefined ? gapBottom : (dense ? 12 : GAP), pb = pt + bgBottom, mc = pt + HEAD/2;
     const active = focused && !!pop; // row's popover is open → keep its tint on (focus state)
@@ -2821,8 +2765,9 @@ function App() {
       <div onClick={onClick} className={"relative flex items-start gap-4 " + (onClick ? "cursor-pointer" : "")}>
         <div className="flex-1 min-w-0 text-[17.5px]" style={{lineHeight:`${HEAD}px`}}>
           {head && <span className="relative group/help inline-flex items-center align-top mr-2.5" style={{height:`${HEAD}px`}}>
-            <span className={"text-[10px] font-semibold uppercase tracking-[0.1em] px-2 py-[3px] rounded-md whitespace-nowrap " + (help ? "cursor-help" : "")}
-              style={{color:headColor||"var(--faint)", background:headBg||"var(--panel2)"}}>{head}</span>
+            <span onClick={onHead ? (e)=>{ e.stopPropagation(); onHead(e.currentTarget); } : undefined} title={onHead ? "Change trigger" : undefined}
+              className={"text-[10px] font-semibold uppercase tracking-[0.1em] px-2 py-[3px] rounded-md whitespace-nowrap inline-flex items-center gap-1 " + (onHead ? "cursor-pointer hover:brightness-110 transition" : (help ? "cursor-help" : ""))}
+              style={{color:headColor||"var(--faint)", background:headBg||"var(--panel2)"}}>{head}{onHead && <svg width="9" height="9" viewBox="0 0 24 24" fill="none" className="opacity-0 group-hover/help:opacity-70 transition-opacity"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg>}</span>
             {help && <div className="absolute z-30 left-0 top-full mt-2 w-72 p-3.5 rounded-xl opacity-0 pointer-events-none group-hover/help:opacity-100 transition-opacity"
               style={{background:"var(--pop-bg)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-sm)"}}>
               <HelpCard help={help} />
@@ -2842,23 +2787,11 @@ function App() {
             </span>}
           {xHover && removeLabel &&
             <div className="absolute right-0 px-2 py-1 rounded-md text-[11px] whitespace-nowrap" style={{ bottom:"28px", background:"var(--pop-bg)", border:"1px solid var(--border2)", color:"var(--text)", boxShadow:"var(--shadow-sm)" }}>{removeLabel}</div>}
-          {onAdd &&
-            <button onMouseDown={(e)=>{ e.stopPropagation(); onAdd(e.currentTarget); }} title={addLabel||"Add"}
-              className="rounded-md flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100 hover:bg-[var(--pop-hover)]"
-              style={{ color:"var(--faint)", padding:"6px" }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-            </button>}
           {onCopy &&
             <button onMouseDown={(e)=>{ e.stopPropagation(); onCopy(); }} title="Duplicate"
               className="rounded-md flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100 hover:bg-[var(--pop-hover)]"
               style={{ color:"var(--faint)", padding:"6px" }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15V5a2 2 0 012-2h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-            </button>}
-          {onSplit &&
-            <button onMouseDown={(e)=>{ e.stopPropagation(); onSplit(); }} title="Split into parallel paths"
-              className="rounded-md flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100 hover:bg-[var(--pop-hover)]"
-              style={{ color:"var(--faint)", padding:"6px" }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 4v4M12 8c0 4-6 3-6 8M12 8c0 4 6 3 6 8" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </button>}
           <button onMouseDown={(e)=>{ if(!onRemove) return; e.stopPropagation(); setPop(null); onRemove(); }}
             onMouseEnter={()=>setXHover(true)} onMouseLeave={()=>setXHover(false)}
@@ -2868,12 +2801,14 @@ function App() {
           </button>
         </div>
       </div>
-      {/* subtle "insert step below" — only on row hover, bland (no bg/border), inside the card's bottom edge */}
+      {/* "Add step" — neutral pill sitting in the gap below the row (insert between this node and the next); hover-revealed */}
       {onInsert &&
-        <button onMouseDown={(e)=>{ e.stopPropagation(); onInsert(e.currentTarget); }} title="Insert step below"
-          className="absolute flex items-center justify-center opacity-0 group-hover:opacity-40 hover:!opacity-90 transition-opacity"
-          style={{ left:bgLeft, right:bgRight, bottom:`${bgBottom-3}px`, height:"12px", color:"var(--faint)" }}>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+        <button onMouseDown={(e)=>{ e.stopPropagation(); onInsert(e.currentTarget); }} title="Add a step here"
+          className="absolute z-10 inline-flex items-center gap-1 rounded-full opacity-0 group-hover:opacity-100 transition-all hover:text-[var(--text)]"
+          style={{ left:"0px", bottom:`${(bgBottom/2)-10}px`, height:"20px", padding:"0 9px 0 7px",
+                   border:"1px solid var(--border2)", background:"var(--panel2)", color:"var(--muted)", boxShadow:"0 0 0 3px var(--bg), var(--shadow-sm)" }}>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"/></svg>
+          <span className="text-[10.5px] font-medium whitespace-nowrap">Add step</span>
         </button>}
     </div>
     );
@@ -2898,7 +2833,7 @@ function App() {
   };
 
   /* branch opener — subtle + that expands to "add step in this branch" */
-  const BranchAdd = ({ path, branchId, empty }) => (
+  const BranchAdd = ({ path, branchId }) => (
     <div ref={(el)=>{ if(el) branchAddRefs.current[pathKey(path)]=el; }} onClick={(e)=>openBranchAdd(path,e)}
       onDragOver={branchId!=null ? (e)=>{ e.preventDefault(); } : undefined} onDrop={branchId!=null ? (e)=>dropInto(branchId, e) : undefined}
       className="group/add relative cursor-pointer" style={{paddingLeft:"34px", paddingTop:`${PAD}px`, paddingBottom:`${PAD+GAP}px`}}>
@@ -2908,7 +2843,7 @@ function App() {
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>
       </span>
       <div className="flex items-center" style={{height:`${HEAD}px`}}>
-        <span className={"text-[13px] whitespace-nowrap transition-all duration-200 " + (empty ? "opacity-100 max-w-[220px]" : "max-w-0 overflow-hidden opacity-0 group-hover/add:max-w-[220px] group-hover/add:opacity-100")} style={{color:"var(--faint)"}}>{empty ? "pick first step" : "add step in this branch"}</span>
+        <span className="text-[13px] max-w-0 overflow-hidden whitespace-nowrap opacity-0 group-hover/add:max-w-[220px] group-hover/add:opacity-100 transition-all duration-200" style={{color:"var(--faint)"}}>add step in this branch</span>
       </div>
     </div>
   );
@@ -3008,14 +2943,51 @@ function App() {
     );
   };
 
+  /* the ONE "Add step" affordance (reused at the flow end AND between nodes). Visual only — the
+     wrapper element owns the click so it can be nested inside a full-width button. */
+  const AddStepPill = () => (
+    <span className="inline-flex items-center gap-1.5 px-3 rounded-lg text-[13px] font-medium transition-all hover:bg-[var(--pop-hover)] hover:text-[var(--text)] hover:border-[var(--border)]"
+      style={{ height:`${HEAD}px`, color:"var(--muted)", border:"1px solid var(--border2)", background:"var(--panel2)", boxShadow:"var(--shadow-sm)" }}>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+      Add step
+    </span>
+  );
+
+  /* between-node insert: a thin gap that EXPANDS on hover into a node-sized space; the connector line
+     runs straight through (never breaks), a + marker sits on the line, and a ghost-node CARD (same
+     height as a normal node) reads "Add step in the main path". */
+  const InsertZone = ({ basePath, index }) => (
+    // FULL-WIDTH click/hover target: clicking anywhere in the gap opens the add popover
+    <button onMouseDown={(e)=>{ e.stopPropagation(); openInsert(basePath, index, e.currentTarget); }} title="Add a step here"
+      className="relative block w-full text-left group/iz cursor-pointer" style={{ background:"transparent" }}>
+      {/* continuous connector line — full height, grows with the zone */}
+      <div className="absolute" style={{ left:"9px", top:0, bottom:0, width:"1px", background:"var(--border2)" }}/>
+      {/* collapsed = the resting gap between nodes (doubled); on hover it opens to a node-sized space */}
+      <div className="relative overflow-hidden transition-[height] duration-200 ease-out h-[44px] group-hover/iz:h-[78px]">
+        {/* + marker on the trunk line (centred at x=9) */}
+        <span className="absolute flex items-center justify-center rounded-full opacity-0 group-hover/iz:opacity-100 transition-opacity duration-200"
+          style={{ left:"9px", top:"39px", transform:"translate(-50%,-50%)", width:"18px", height:"18px", border:"1px solid var(--border2)", background:"var(--panel2)", color:"var(--muted)", boxShadow:"0 0 0 3px var(--bg)" }}>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"/></svg>
+        </span>
+        {/* ghost-node card — same height AND same left edge as a normal node (bgLeft 16, text at 34) */}
+        <div className="absolute flex items-center opacity-0 group-hover/iz:opacity-100 transition-all duration-200 bg-[var(--panel2)] group-hover/iz:bg-[var(--pop-hover)]"
+          style={{ left:"16px", right:"16px", top:"18px", bottom:"18px", borderRadius:"10px", paddingLeft:"18px" }}>
+          <span className="text-[13px] font-medium" style={{ color:"var(--muted)" }}>Add step in the main path</span>
+        </div>
+      </div>
+    </button>
+  );
+
   /* recursive flow renderer */
   function renderFlow(nodes, basePath, opts={}) {
     let acted = false;
-    return nodes.map((node, i) => {
+    const isTrunk = basePath.length===0;
+    const rendered = nodes.map((node, i) => {
       const path = [...basePath, i];
       const k = pathKey(path);
-      const isFirstRow = !!opts.firstIsHead && i===0; // v6: gate-less branch lane → its first node heads the lane (rail starts at its marker)
-      const insertBelow = (el)=>openInsert(basePath, i+1, el); // subtle hover "+" inside the row card
+      // insert affordance ONLY between nodes — the LAST node is followed by a dedicated add affordance
+      // (the trunk "Add step" pill / a branch's "+") so it needs no extra insert chip (avoids the double-+).
+      const insertBelow = i < nodes.length-1 ? (el)=>openInsert(basePath, i+1, el) : null;
 
       // ── ACTION ──────────────────────────────────────────────────────────
       if (node.kind === "action") {
@@ -3031,8 +3003,8 @@ function App() {
         const _hasCard = ((def && def.details) || _spec) && !(def && def.arg && !node.arg);
         const nodeGood = !!(_hasCard && _complete && node.confirmed);
         return (
-          <Station key={node.id} marker={MARK.action} isFirst={isFirstRow} isLast={isLast} head={head} headColor="var(--c-then)" headBg="var(--c-then-bg)" hoverBg="var(--c-then-h)" help={NODE_HELP.action} editing={drawer===node.id}
-            innerRef={(el)=>setRowRef(k, el)} removeLabel="Clear action" onCopy={()=>copyNode(path)} onSplit={()=>splitIntoBranch(basePath, i+1)} dnd={dnd(node.id)}
+          <Station key={node.id} marker={MARK.action} isLast={isLast} head={head} headColor="var(--c-then)" headBg="var(--c-then-bg)" hoverBg="var(--c-then-h)" help={NODE_HELP.action} editing={drawer===node.id}
+            innerRef={(el)=>setRowRef(k, el)} removeLabel="Clear action" onCopy={()=>copyNode(path)} onInsert={isTrunk ? null : insertBelow} gapBottom={isTrunk?0:undefined} dnd={dnd(node.id)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)} onRemove={()=>remove(path)}>
             {node.action === "assign" ? (<>
               {/* multi-slot "sentence" action: assign {record?} to {target} */}
@@ -3141,8 +3113,8 @@ function App() {
         // it never has children of its own. It is the rail's last node only if it's literally last.
         const isLast = opts.last && i===nodes.length-1;
         return (
-          <Station key={node.id} marker={MARK.cond} isFirst={isFirstRow} isLast={isLast} head="Check if" headColor="var(--c-if)" headBg="var(--c-if-bg)" hoverBg="var(--c-if-h)" help={NODE_HELP.condition}
-            innerRef={(el)=>setRowRef(k, el)} removeLabel="Clear condition" onCopy={()=>copyNode(path)} onSplit={()=>splitIntoBranch(basePath, i+1)} dnd={dnd(node.id)}
+          <Station key={node.id} marker={MARK.cond} isLast={isLast} head="Check if" headColor="var(--c-if)" headBg="var(--c-if-bg)" hoverBg="var(--c-if-h)" help={NODE_HELP.condition}
+            innerRef={(el)=>setRowRef(k, el)} removeLabel="Clear condition" onCopy={()=>copyNode(path)} onInsert={isTrunk ? null : insertBelow} gapBottom={isTrunk?0:undefined} dnd={dnd(node.id)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)} onRemove={()=>remove(path)}>
             {inlineClauses(path, node)}
             {/* escalation affordances removed — condition "kind" (inline vs branching) will be chosen up-front in the popover (redesign pending) */}
@@ -3154,8 +3126,8 @@ function App() {
       if (node.kind === "delay") {
         const isLast = opts.last && i===nodes.length-1;
         return (
-          <Station key={node.id} marker={MARK.delay} isFirst={isFirstRow} isLast={isLast} head="Wait" headColor="var(--text)" headBg="var(--panel2)" hoverBg="var(--panel2)"
-            innerRef={(el)=>setRowRef(k, el)} removeLabel="Remove delay" onCopy={()=>copyNode(path)} onSplit={()=>splitIntoBranch(basePath, i+1)} dnd={dnd(node.id)}
+          <Station key={node.id} marker={MARK.delay} isLast={isLast} head="Wait" headColor="var(--text)" headBg="var(--panel2)" hoverBg="var(--panel2)"
+            innerRef={(el)=>setRowRef(k, el)} removeLabel="Remove delay" onCopy={()=>copyNode(path)} onInsert={isTrunk ? null : insertBelow} gapBottom={isTrunk?0:undefined} dnd={dnd(node.id)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)} onRemove={()=>remove(path)}>
             {node.mode==="event"
               ? <span className="inline-flex flex-wrap items-baseline gap-x-1.5"><Word>until</Word>{inlineClauses(path, node)}</span>
@@ -3174,8 +3146,8 @@ function App() {
       if (node.kind === "get") {
         const isLast = opts.last && i===nodes.length-1;
         return (
-          <Station key={node.id} marker={MARK.get} isFirst={isFirstRow} isLast={isLast} head="Get" headColor="var(--text)" headBg="var(--panel2)" hoverBg="var(--panel2)"
-            innerRef={(el)=>setRowRef(k, el)} removeLabel="Remove get" onCopy={()=>copyNode(path)} onSplit={()=>splitIntoBranch(basePath, i+1)} dnd={dnd(node.id)}
+          <Station key={node.id} marker={MARK.get} isLast={isLast} head="Get" headColor="var(--text)" headBg="var(--panel2)" hoverBg="var(--panel2)"
+            innerRef={(el)=>setRowRef(k, el)} removeLabel="Remove get" onCopy={()=>copyNode(path)} onInsert={isTrunk ? null : insertBelow} gapBottom={isTrunk?0:undefined} dnd={dnd(node.id)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)} onRemove={()=>remove(path)}>
             <span className="inline-flex flex-col gap-1.5 align-top">
               <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
@@ -3195,70 +3167,27 @@ function App() {
         );
       }
 
-      // ── CONDITION (merging if / else-if / else, node.merge) vs BRANCH (floating parallel fork) ──
-      const merge = !!node.merge;
-      const branchIsTerminal = !!opts.last && i===nodes.length-1; // nothing (not even the End cap) follows → stop the trunk rail
-
-      if (merge) {
-        // CONDITION: ONE indented column off the trunk — a single split (top), every case (If / Else-if / Else)
-        // stacked on that one column, a single rejoin (bottom); the trunk then continues to the following steps.
-        const cases = node.paths || [];
-        const caseRow = (pobj, headTxt, lanePath, onRemove, removeLabel, isFirst, body) => (
-          <div key={pobj.id} className="relative group/lane">
-            <Station marker={MARK.cond} isFirst={isFirst} head={headTxt} headColor="var(--c-if)" headBg="var(--c-if-bg)" hoverBg="var(--c-if-h)" help={NODE_HELP.condition}
-              innerRef={(el)=>setRowRef(pathKey(lanePath), el)} removeLabel={removeLabel} onRemove={onRemove}>
-              {body}
-            </Station>
-            {renderFlow(pobj.children||[], lanePath)}
-            <BranchAdd path={lanePath} branchId={pobj.id} />
-          </div>
-        );
-        return (
-          <React.Fragment key={node.id}>
-            <div className="relative" style={{ marginLeft:"60px" }}>
-              {/* trunk rail (x≈9) — full height to the rejoin, then continues to the following steps */}
-              <div className="absolute" style={{ left:"-51px", top:0, bottom:0, width:"1px", background:"var(--border2)" }}/>
-              {/* SINGLE split elbow (top): trunk → condition column, rounded at the trunk */}
-              <div className="absolute" style={{ left:"-51px", top:0, width:"60px", height:`${MC}px`,
-                borderLeft:"1px solid var(--border2)", borderBottom:"1px solid var(--border2)", borderBottomLeftRadius:"12px" }}/>
-              {/* condition COLUMN (x≈69) + SINGLE rejoin corner (bottom) — one continuous border */}
-              <div className="absolute" style={{ left:"-51px", top:`${MC}px`, bottom:0, width:"60px",
-                borderRight:"1px solid var(--border2)", borderBottom:"1px solid var(--border2)", borderBottomRightRadius:"12px" }}/>
-              {cases.map((pobj, pi) => caseRow(pobj, pi===0?"If":"Else if", [...path,{path:pi}], ()=>removePath(path,pi), "Remove check", pi===0, pathClauses(path, node, pi)))}
-              {node.otherwise && caseRow(node.otherwise, "Else", [...path,{otherwise:true}], ()=>removeOtherwise(path), "Remove else", false,
-                <span className="text-[15px]" style={{color:"var(--muted)"}}>otherwise</span>)}
-              {/* column affordances — add another check / an Else */}
-              <div className="relative flex items-center gap-3" style={{ paddingLeft:"34px", paddingTop:`${PAD}px`, paddingBottom:`${GAP}px` }}>
-                <button onClick={(e)=>addCaseAndPick(path, e.currentTarget)} className="text-[12px] font-medium transition-colors hover:brightness-125" style={{color:"var(--c-if)"}}>+ add check</button>
-                {!node.otherwise && <button onClick={()=>addOtherwise(path)} className="text-[12px] font-medium transition-colors hover:brightness-110" style={{color:"var(--muted)"}}>+ Else</button>}
-              </div>
-            </div>
-          </React.Fragment>
-        );
-      }
-
-      // ── BRANCH (floating parallel fork): gate-less lanes, ends float ──
+      // ── BRANCH (explicit fork) ──────────────────────────────────────────
       const lanes = [];
+      const branchIsTerminal = !!opts.last && i===nodes.length-1; // nothing (not even the End cap) follows → stop the trunk rail at the fork
       (node.paths||[]).forEach((pobj, pi) => {
         const lanePath = [...path, {path:pi}];
         const branchActive = branchMenuPath === pathKey(lanePath);
-        const hasGate = !!(pobj.clauses && pobj.clauses.length); // legacy gated lane (older docs)
         lanes.push(
-          <div key={pobj.id} className="relative group/lane" style={{marginLeft:"60px"}}>
+          <div key={pobj.id} className="relative" style={{marginLeft:"60px"}}>
             {branchActive && <div className="absolute pointer-events-none rounded-xl" style={{ top:`-${PAD}px`, bottom:"2px", left:"-56px", right:"8px", background:"var(--c-if-h)", boxShadow:"inset 0 0 0 1px var(--c-if-bg)" }}/>}
+            {/* parent rail continues straight down behind the fork (stops at the last lane) */}
             <div className="absolute" style={{ left:"-51px", top:0, bottom: (pi===(node.paths||[]).length-1 && !node.otherwise && branchIsTerminal) ? `calc(100% - ${MC}px)` : 0, width:"1px", background:"var(--border2)" }}/>
+            {/* family-tree elbow into this lane */}
             <div className="absolute" style={{ left:"-51px", top:0, width:"60px", height:`${MC}px`,
               borderLeft:"1px solid var(--border2)", borderBottom:"1px solid var(--border2)", borderBottomLeftRadius:"12px" }}/>
-            {hasGate
-              ? (<Station marker={MARK.cond} isFirst head={pi===0?"Check if":"Or if"} headColor="var(--c-if)" headBg="var(--c-if-bg)" hoverBg="var(--c-if-h)" help={NODE_HELP.condition}
-                  innerRef={(el)=>setRowRef(pathKey(lanePath), el)} removeLabel="Remove path" onRemove={()=>removePath(path,pi)}>
-                  {pathClauses(path, node, pi)}
-                </Station>)
-              : (<button onClick={(e)=>{ e.stopPropagation(); removePath(path,pi); }} title="Remove path"
-                  className="absolute z-10 opacity-0 group-hover/lane:opacity-100 text-[14px] leading-none px-1 transition-opacity"
-                  style={{ top:`-${GAP/2}px`, right:"8px", color:"var(--faint)" }}>×</button>)}
-            {renderFlow(pobj.children||[], lanePath, { firstIsHead: !hasGate })}
-            <BranchAdd path={lanePath} branchId={pobj.id} empty={!hasGate && !(pobj.children||[]).length} />
+            {/* this lane's condition header */}
+            <Station marker={MARK.cond} isFirst head={pi===0?"Check if":"Or if"} headColor="var(--c-if)" headBg="var(--c-if-bg)" hoverBg="var(--c-if-h)" help={NODE_HELP.condition}
+              innerRef={(el)=>setRowRef(pathKey(lanePath), el)} removeLabel="Remove path" onRemove={()=>removePath(path,pi)}>
+              {pathClauses(path, node, pi)}
+            </Station>
+            {renderFlow(pobj.children||[], lanePath)}
+            <BranchAdd path={lanePath} branchId={pobj.id} />
           </div>
         );
       });
@@ -3283,13 +3212,20 @@ function App() {
       return (
         <React.Fragment key={node.id}>
           {lanes}
+          {/* branch-level affordances */}
           <div className="relative flex items-center gap-3" style={{ marginLeft:"60px", paddingLeft:"4px", paddingBottom:`${GAP}px` }}>
             {!branchIsTerminal && <div className="absolute" style={{ left:"-51px", top:0, bottom:0, width:"1px", background:"var(--border2)" }}/>}
-            <button onClick={(e)=>addPathAndPick(path, e.currentTarget)} className="text-[12px] font-medium transition-colors hover:brightness-125" style={{color:"var(--c-if)"}}>+ add branch</button>
+            <button onClick={()=>addPath(path)} className="text-[12px] font-medium transition-colors hover:brightness-125" style={{color:"var(--c-if)"}}>+ add branch</button>
           </div>
         </React.Fragment>
       );
     });
+    if (!isTrunk) return rendered;
+    // trunk only: weave hover-expand InsertZones between nodes (and one after the trigger, before node 0)
+    const out = [];
+    if (hasTrigger && nodes.length>0) out.push(<InsertZone key="iz-lead" basePath={basePath} index={0} />);
+    rendered.forEach((el, i) => { out.push(el); if (i < rendered.length-1) out.push(<InsertZone key={"iz-"+i} basePath={basePath} index={i+1} />); });
+    return out;
   }
 
   const moduleListBody = (
@@ -3447,11 +3383,10 @@ function App() {
                 </Station>
               : triggers.map((t,i)=>(
                   <Station key={t.id} marker={i===0 ? MARK.trigger : null} isFirst={i===0} dense={i>0}
-                    gapBottom={i < triggers.length-1 ? 4 : 10}
+                    gapBottom={i < triggers.length-1 ? 4 : (flow.length>0 ? 0 : 10)}
                     bgLeft={i===0 ? "16px" : "34px"} bgRight="16px" padLeft={i===0 ? "34px" : "50px"} padRight="28px"
                     head={i===0?"When":"Or"} headColor="var(--c-when)" headBg="var(--c-when-bg)" hoverBg="var(--c-when-h)" help={NODE_HELP.when}
-                    innerRef={(el)=>setRowRef(`trig:${t.id}`, el)} removeLabel="Clear trigger"
-                    onAdd={(el)=>pickTriggerType(el)} addLabel="Add another trigger (OR)"
+                    innerRef={(el)=>setRowRef(`trig:${t.id}`, el)} removeLabel="Clear trigger" onHead={(el)=>changeTriggerType(t.id, el)}
                     focused={focusKey===`trig:${t.id}`} onFocus={()=>setFocusKey(`trig:${t.id}`)} onRemove={()=>removeTrigger(t.id)}>
                     <Template tpl={triggerView(t).tpl} vals={t.vals}
                       openKey={openSlot && openSlot.startsWith(`trig:${t.id}:`) ? openSlot.slice(`trig:${t.id}:`.length) : null}
@@ -3465,15 +3400,31 @@ function App() {
               const showEnd = hasTrigger && anyAction(flow);
               return (<>
                 {renderFlow(flow, [], { last: showEnd ? false : !openerShown })}
-                {showEnd && (
-                  <div className="relative" style={{ paddingLeft:"34px", paddingTop:`${PAD}px`, paddingBottom:"4px" }}>
+                {showEnd && (<>
+                  {/* persistent end "Add step" — styled like a node: + marker on the line + a ghost-node card,
+                      with the SAME doubled gap above it as between two nodes (paddingTop 44). */}
+                  <button ref={addStepBtnRef} onClick={(e)=>openMain([], e)} title="Add a step"
+                    className="relative block w-full text-left group/end cursor-pointer" style={{ paddingTop:"44px", paddingBottom:"32px", background:"transparent" }}>
+                    {/* dashed connector line from the previous node, through the marker, down to the end cap */}
+                    <div className="absolute" style={{ left:"9px", top:0, bottom:0, width:0, borderLeft:"1px dashed var(--border2)" }}/>
+                    {/* + marker on the line (centred on the card) */}
+                    <span className="absolute flex items-center justify-center rounded-full" style={{ left:"9px", top:"65px", transform:"translate(-50%,-50%)", width:"18px", height:"18px", border:"1px solid var(--border2)", background:"var(--panel2)", color:"var(--muted)", boxShadow:"0 0 0 3px var(--bg)" }}>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"/></svg>
+                    </span>
+                    {/* ghost-node card — fill only on hover (like a node), transparent at rest */}
+                    <div className="relative flex items-center transition-colors group-hover/end:bg-[var(--panel2)]" style={{ marginLeft:"16px", marginRight:"16px", height:"42px", borderRadius:"10px", paddingLeft:"18px" }}>
+                      <span className="text-[13px] font-medium" style={{ color:"var(--muted)" }}>Add step</span>
+                    </div>
+                  </button>
+                  {/* subtle terminal cap */}
+                  <div className="relative" style={{ paddingLeft:"34px", paddingTop:"2px", paddingBottom:"4px" }}>
                     <div className="absolute" style={{ left:"9px", top:0, height:`${MC}px`, width:"1px", background:"var(--border2)" }}/>
                     <span className="absolute flex items-center justify-center" style={{ left:"9px", top:`${MC}px`, transform:"translate(-50%,-50%)" }}>
-                      <span className="block w-3 h-3 rounded-full" style={{ border:"2px solid var(--border2)", background:"var(--bg)", boxShadow:"0 0 0 4px var(--bg)" }}/>
+                      <span className="block w-2 h-2 rounded-full" style={{ background:"var(--border2)", boxShadow:"0 0 0 4px var(--bg)" }}/>
                     </span>
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color:"var(--faint)", lineHeight:`${HEAD}px` }}>End</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color:"var(--faint)", opacity:.7, lineHeight:`${HEAD}px` }}>end</span>
                   </div>
-                )}
+                </>)}
               </>);
             })()}
 
@@ -3889,18 +3840,6 @@ function App() {
               Test
             </button>
             {sep}
-            <button ref={addStepBtnRef} onClick={(e)=>openMain([], e)} title="Add a step"
-              className="inline-flex items-center gap-1.5 px-3 h-8 rounded-lg text-[13px] font-medium transition-colors hover:bg-[var(--pop-hover)]"
-              style={{ color:"var(--text)" }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-              Add step
-            </button>
-            <button onClick={()=>splitIntoBranch([])} title="Split into parallel paths"
-              className="inline-flex items-center gap-1.5 px-3 h-8 rounded-lg text-[13px] font-medium transition-colors hover:bg-[var(--pop-hover)]"
-              style={{ color:"var(--text)" }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 4v4M12 8c0 4-6 3-6 8M12 8c0 4 6 3 6 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Split
-            </button>
             <button onClick={()=>setPublished(p=>!p)}
               className="inline-flex items-center px-4 h-8 rounded-lg text-[13px] font-semibold transition-all hover:-translate-y-0.5"
               style={ published
