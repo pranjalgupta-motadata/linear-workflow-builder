@@ -4,8 +4,7 @@
 // Every existing file picks it up automatically (they all read window.BUILDS).
 // Newest first — the dropdown shows them top-to-bottom in this order.
 window.BUILDS = [
-  { label: "v6", file: "index.html"    },
-  { label: "v5", file: "index-v5.html" },
+  { label: "v5", file: "index.html"    },
   { label: "v4", file: "index-v4.html" },
   { label: "v3", file: "index-v3.html" },
   { label: "v2", file: "index-v2.html" },

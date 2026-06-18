@@ -8,3 +8,6 @@ Feature Details/
 Thumbs.db
 .vscode/
 .idea/
+
+# v6 branching build — local only, NOT published
+index-v6.html
