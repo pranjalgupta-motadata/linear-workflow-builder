@@ -1819,6 +1819,8 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
   useEffect(() => {
     if (inputType) return;
     const onArrow = (e) => {
+      // Reference drill (smart) → Tab / ←/→ jumps BACK to the Specific value picker (mirror of Specific→Reference).
+      if (smart && smart.onSpecific && (e.key==="Tab" || e.key==="ArrowLeft" || e.key==="ArrowRight")) { e.preventDefault(); e.stopPropagation(); smart.onSpecific(); return; }
       if (!["ArrowDown","ArrowUp","Enter"].includes(e.key)) return;
       const qq = q.toLowerCase().trim(); const bb = (qq && flat) ? flat : items;
       const list = (noSearch ? bb : bb.filter(i => i.header || i.label.toLowerCase().includes(qq) || (i.sub && i.sub.toLowerCase().includes(qq)) || (i.keywords && i.keywords.toLowerCase().includes(qq))))
@@ -1832,25 +1834,20 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
     };
     document.addEventListener("keydown", onArrow);
     return () => document.removeEventListener("keydown", onArrow);
-  }, [q, active, items, noSearch, inputType]);
+  }, [q, active, items, noSearch, inputType, smart]);
   // keyboard control for the VALUE popover (multi-select list / smart Specific↔Smart tabs / single input),
   // which the list nav above intentionally skips (inputType set). ↑↓ move · space toggle · enter confirm · tab switch.
   useEffect(() => {
     if (!inputType) return;
     const onKey = (e) => {
-      const inSmart = smart && smartTab==="smart";
       const isMulti = inputType==="multi";
-      const inText = !isMulti && !inSmart;                 // a text/number/date/tokens field owns the cursor
+      const inText = !isMulti;                              // a text/number/date/tokens field owns the cursor
       // stop() also halts propagation so the key never reaches the canvas's window-level handler
       // (which would otherwise open "what happens next" / move the focused line while the popover is open).
       const stop = ()=>{ e.preventDefault(); e.stopPropagation(); };
-      if (smart && (e.key==="Tab" || ((e.key==="ArrowLeft"||e.key==="ArrowRight") && !inText))) {
-        stop(); setSmartTab(t=> t==="specific"?"smart":"specific"); return;
-      }
-      if (inSmart) {
-        if (e.key==="ArrowDown"||e.key==="ArrowUp"){ stop(); setKbIdx(i=> e.key==="ArrowDown"?Math.min(1,i+1):Math.max(0,i-1)); return; }
-        if (e.key==="Enter"){ stop(); (kbIdx===0 ? smart.onReference : smart.onExpression)(); return; }
-        return;
+      // Tab (or ←/→ outside a text field) from a Specific value picker → jump to the Reference drill.
+      if (smart && smart.onReference && (e.key==="Tab" || ((e.key==="ArrowLeft"||e.key==="ArrowRight") && !inText))) {
+        stop(); smart.onReference(); return;
       }
       if (isMulti) { const ch = choices||[]; const last = ch.length; // index `last` == the Done button
         const toggle=(v)=>{ if(v!=null) setMultiVal(m=> m.includes(v)?m.filter(x=>x!==v):[...m,v]); };
@@ -1941,31 +1938,43 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
   // `smart` = { init, onReference, onExpression } passed by the condition value pickers when references
   // are possible (a record is in scope). The header is sticky; the body swaps between the type-specific
   // input ("Specific") and the Reference / Expression menu ("Smart value").
-  const smartHeader = smart ? (
-    <div className="px-2.5 pt-2.5 pb-2 sticky top-0 z-10" style={{background:"var(--pop-bg)"}}>
-      <div className="text-[10px] uppercase tracking-wider mb-1.5 px-0.5" style={{color:"var(--faint)"}}>Set value as</div>
-      <div className="flex p-1 rounded-xl gap-1" style={{background:"var(--bg)", border:"1px solid var(--border2)"}}>
-        {[["specific","Specific"],["smart","Smart value"]].map(([id,lab])=>{ const on = smartTab===id;
-          return <button key={id} onClick={()=>setSmartTab(id)}
-            className="flex-1 text-[12px] font-semibold py-1.5 rounded-lg transition-colors"
-            style={ on ? {background:"var(--pop-bg)", color:"var(--text)", border:"1px solid var(--border)", boxShadow:"var(--shadow-sm)"} : {color:"var(--muted)", background:"transparent", border:"1px solid transparent"} }>
-            {lab}</button>; })}
-      </div>
+  // NEW smart chrome: a compact ICON-TAB toggle (Specific value ⇄ Reference) + a sticky "Expression" card at
+  // the BOTTOM. The tabs NAVIGATE between popovers: Reference opens the field-drill, Specific reopens the value
+  // picker. `smart.tab` ("specific"|"ref") marks which popover this is. Expression sits at the bottom of both.
+  const smartTabNow = (smart && smart.tab) || "specific";
+  const SMART_PENCIL = <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 00-3-3L5 17v3z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M13.5 8.5l2 2" stroke="currentColor" strokeWidth="1.8"/></svg>;
+  const smartTabs = smart ? (
+    <div className="flex items-center p-0.5 rounded-lg gap-0.5 shrink-0" style={{background:"var(--bg)", border:"1px solid var(--border2)"}}>
+      {[["specific",SMART_PENCIL,"Specific value"],["ref",<BracesGlyph/>,"Reference a field"]].map(([id,ic,tip])=>{ const on = smartTabNow===id;
+        return <button key={id} title={tip} onClick={()=>{ if(smartTabNow===id) return; id==="ref" ? (smart.onReference && smart.onReference()) : (smart.onSpecific && smart.onSpecific()); }}
+          className="rounded-md flex items-center justify-center transition-colors"
+          style={{ width:"30px", height:"30px", fontSize:"14px", lineHeight:1, ...(on ? {background:"var(--pop-bg)", color:"var(--accent2)", boxShadow:"var(--shadow-sm)"} : {color:"var(--muted)", background:"transparent"}) }}>
+          {/* fixed 16×16 box so the pencil SVG and the "{ }" text glyph have the SAME footprint → no height jiggle */}
+          <span className="flex items-center justify-center" style={{ width:"16px", height:"16px", lineHeight:1 }}>{ic}</span>
+        </button>; })}
     </div>
   ) : null;
-  const smartBody = smart ? (
-    <div className="p-1.5 flex flex-col gap-0.5">
-      {[["ref",<BracesGlyph/>,"Reference a field","another record's live value"],
-        ["expr",<FxGlyph/>,"Expression","build a formula"]].map(([id,glyph,lab,sub],ix)=>(
-        <button key={id} onMouseEnter={()=>{ if(!noHover) setKbIdx(ix); }} onClick={()=>{ id==="ref" ? smart.onReference() : smart.onExpression(); }}
-          className={"w-full text-left flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-colors " + (noHover ? "" : (kbIdx===ix ? "bg-[var(--pop-hover)]" : "hover:bg-[var(--pop-hover)]"))}>
-          <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 font-mono text-[14px]" style={{background:"var(--panel2)", color:"var(--accent2)"}}>{glyph}</span>
+  // header for the inputType (Specific) popovers — kept IDENTICAL to the default-branch header (same px-3.5 pt-3
+  // pb-1.5 padding + text-[12px]) so switching Specific ⇄ Reference never changes the heading size or position.
+  const smartHeader = smart ? (
+    <div className="px-3.5 pt-3 pb-2 sticky top-0 z-10 flex items-center justify-between gap-2" style={{background:"var(--pop-bg)", borderBottom:"1px solid var(--border)"}}>
+      <span className="text-[12px] font-semibold truncate" style={{color:"var(--text)"}}>{smart.title || (smartTabNow==="ref" ? "Reference" : "Specific value")}</span>
+      {smartTabs}
+    </div>
+  ) : null;
+  // sticky "Expression" card — ONLY on the REFERENCE tab (not Specific), with a FULL-WIDTH separator above it.
+  const smartExprFooter = (smart && smartTabNow==="ref") ? (
+    <div className="sticky bottom-0 z-10" style={{background:"var(--pop-bg)"}}>
+      <div style={{borderTop:"1px solid var(--border)"}} />
+      <div className="px-2 pb-2 pt-2">
+        <button onClick={()=>smart.onExpression && smart.onExpression()} className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition-colors hover:bg-[var(--pop-hover)]" style={{border:"1px solid var(--border2)"}}>
+          <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 font-mono text-[14px]" style={{background:"var(--panel2)", color:"var(--accent2)"}}><FxGlyph/></span>
           <span className="flex flex-col min-w-0">
-            <span className="text-[12.5px] font-medium leading-tight" style={{color:"var(--text)"}}>{lab}</span>
-            <span className="text-[11px] leading-tight" style={{color:"var(--faint)"}}>{sub}</span>
+            <span className="text-[12.5px] font-medium leading-tight" style={{color:"var(--text)"}}>Expression</span>
+            <span className="text-[11px] leading-tight" style={{color:"var(--faint)"}}>build a formula</span>
           </span>
         </button>
-      ))}
+      </div>
     </div>
   ) : null;
   if (inputType==="tokens" || inputType==="multi") {
@@ -1973,7 +1982,6 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
     const done = ()=>{ onPick({ id: multiVal.length?multiVal:null, label:"" }); onClose(); };
     return wrap(<>
       {smartHeader}
-      {smart && smartTab==="smart" ? smartBody :
       <div className="p-2.5">
         {title && <div className="text-[10px] uppercase tracking-wider mb-2 px-1" style={{color:"var(--faint)"}}>{title} <span style={{opacity:.7}}>· pick one or more</span></div>}
         {inputType==="tokens"
@@ -1986,13 +1994,13 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
                 </button>; })}
             </div>}
         <button onClick={done} className="mt-2 w-full rounded-lg py-1.5 text-sm font-medium transition-shadow" style={{background:"var(--accent)",color:"#fff", ...(inputType==="multi" && kbIdx===(choices||[]).length ? {boxShadow:"0 0 0 2px var(--pop-bg), 0 0 0 4px var(--accent)"} : {})}}>Done</button>
-      </div>}
+      </div>
+      {smartExprFooter}
     </>, smart ? SMART_W : "w-56");
   }
   if (inputType) {
     return wrap(<>
       {smartHeader}
-      {smart && smartTab==="smart" ? smartBody :
       <div className="p-3">
         {title && <div className="text-[10px] uppercase tracking-wider mb-2" style={{color:"var(--faint)"}}>{title}</div>}
         <input type={inputType} autoFocus value={val} onChange={e=>setVal(e.target.value)}
@@ -2000,7 +2008,8 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
           style={{background:"var(--panel)",border:"1px solid var(--border2)",color:"var(--text)"}}/>
         <button onClick={()=>{ if(val){ onPick({id:val,label:val}); onClose(); } }}
           className="mt-2.5 w-full rounded-lg py-1.5 text-sm font-medium" style={{background:"var(--accent)",color:"#fff"}}>Set</button>
-      </div>}
+      </div>
+      {smartExprFooter}
     </>, smart ? SMART_W : "w-56");
   }
 
@@ -2027,7 +2036,7 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
   // solidIcons (the "what happens next" menu): keep the light tinted tile, but render the glyph FILLED
   const tileStyle = (i) => ({ background:(TONES[i.tone]||["var(--muted)","var(--panel2)"])[1], color:(TONES[i.tone]||["var(--muted)","var(--panel2)"])[0] });
   const itemBody = (i) => i.sub ? (
-    <span className="flex items-center gap-2.5 min-w-0">
+    <span className="flex items-center gap-2.5 min-w-0 flex-1">
       {i.icon && <span className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0" + (solidIcons?" solid-ico":"")} style={tileStyle(i)}>{i.icon}</span>}
       <span className="flex flex-col min-w-0">
         <span className="text-[12.5px] font-medium leading-tight" style={{color:"var(--text)"}}>{i.label}</span>
@@ -2035,7 +2044,7 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
       </span>
     </span>
   ) : (
-    <span className="flex items-center gap-3 min-w-0">{i.icon && <span style={{color:"var(--muted)"}}>{i.icon}</span>}<span className="truncate">{i.label}</span></span>
+    <span className="flex items-center gap-3 min-w-0 flex-1">{i.icon && <span style={{color:"var(--muted)"}}>{i.icon}</span>}<span className="truncate">{i.label}</span></span>
   );
   // Quick Help (rendered in the rail by the parent): base = the menu's node help; item = the specific
   // hovered/highlighted option (only when it differs from base).
@@ -2054,11 +2063,12 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
   }
   return (<>
     {wrap(<>
-    {(help||title||back) && <div className="px-3.5 pt-3 pb-1.5 flex items-center gap-1.5">
+    {(help||title||back||smart) && <div className={"px-3.5 pt-3 pb-2 flex items-center gap-1.5" + (smart?" sticky top-0 z-10":"")} style={smart?{background:"var(--pop-bg)", borderBottom:"1px solid var(--border)"}:undefined}>
       {back && <button onClick={back} title="Back" className="flex items-center justify-center w-5 h-5 rounded-md hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
       </button>}
-      <span className="text-[12px] font-semibold" style={{color:"var(--text)"}}>{(help && help.title) || title}</span>
+      <span className="text-[12px] font-semibold truncate" style={{color:"var(--text)"}}>{(help && help.title) || title}</span>
+      {smart && <span className="ml-auto shrink-0">{smartTabs}</span>}
     </div>}
     {!noSearch &&
       <div className="px-2.5 pt-1 pb-2">
@@ -2100,6 +2110,7 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
       })}
     </div>
     {footer && <div className="border-t p-1.5" style={{borderColor:"var(--border)"}}>{footer}</div>}
+    {smartExprFooter}
     </>)}
     {/* contextual Quick Help — floats next to the picker (hidden for plain input popovers; fully suppressed
         during the guided tour to avoid competing highlights) */}
@@ -2192,7 +2203,7 @@ function Slot({ value, placeholder, onClick, onClear, innerRef, open, dataAnchor
                  ...(open ? { zIndex:40, boxShadow:"0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), var(--shadow-sm)" } : {}) }}>
         {/* glyph (left, never clipped) · label (middle, clips with ellipsis) · × (right, never clipped, animated) */}
         <span className="shrink-0 inline-flex items-center text-[0.9em] leading-none" style={{ color: open?"var(--accent2)":"var(--muted)" }}>{smartKind==="expr" ? <FxGlyph/> : smartKind==="ref" ? <BracesGlyph/> : "✦"}</span>
-        <span className="min-w-0 flex-1 leading-none" style={{ maxWidth:"130px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{labelText}</span>
+        <span className="min-w-0 flex-1 leading-none" style={{ maxWidth: open ? "none" : "150px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{labelText}</span>
         {removable && (
           <span role="button" aria-label="Remove value" title="Remove"
             onClick={(e)=>{ e.stopPropagation(); e.preventDefault(); onClear(); }}
@@ -3900,15 +3911,19 @@ function App() {
   // `commit(value)` so the same flow serves inline conditions AND branch-lane conditions.
   // right chevron marking a DRILLABLE (object) field row — selecting it descends into its sub-fields.
   const REF_CHEV = <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-  const openSmartRef = (path, slotKey, el, anchorKey, commit) => {
+  const openSmartRef = (path, slotKey, el, anchorKey, commit, chrome) => {
     const scope = recordsInScope(path); if(!scope.length) return;
-    const anc = anchorKey ? {anchorKey} : {};
-    // breadcrumb header (e.g. "Incident › Priority") so you see how deep you've drilled.
+    // anchor via the badge's LIVE data-anchor (re-queried each frame) so the popover RE-POSITIONS as the open
+    // badge grows / wraps to a 2nd line — a captured element ref doesn't track the badge moving down.
+    const ak = anchorKey || (el && el.getAttribute && el.getAttribute("data-anchor")) || null;
+    const anc = ak ? {anchorKey: ak} : {};
+    // breadcrumb shown as the popover TITLE (e.g. "Incident › Priority") so you see how deep you've drilled.
     const crumb = (rec, steps) => [rec.label.replace(/^the\s+/i,""), ...steps.map(s=>s.label)].join(" › ");
+    // smart chrome on the ref drill: the Reference tab is ACTIVE; Specific/Expression come from `chrome` (the
+    // value popover). NOTE: NO breadcrumb FOOTER in this version — the sticky Expression card lives there instead.
+    const sm = (rec, steps) => ({ tab:"ref", title: "Reference", onSpecific: chrome && chrome.onSpecific, onExpression: chrome && chrome.onExpression });
     // ONE drill level. `fields` = rows shown, `steps` = the path picked so far, `goBack` = the level above.
-    // Object fields (enum/user/multi) drill deeper (chevron); leaf fields commit the final path. Each pick
-    // commits the partial path immediately so the sentence BADGE updates live as you drill.
-    // each drillable field shows its sub-field COUNT (tag) + chevron; the FOOTER shows the path drilled so far.
+    // Object fields (enum/user/multi) drill deeper (chevron + sub-field count tag); leaf fields commit the path.
     const drillStep = (rec, fields, steps, goBack) => { setOpenSlot(slotKey);
       open(el, fields.map(ff=>{ const s = refSubfields(ff.type); return { id:ff.id, label:ff.label, tag: s?String(s.length):undefined, rightIcon: s ? REF_CHEV : undefined }; }),
         (i)=>{ const ff = fields.find(x=>x.id===i.id) || {id:i.id, label:i.label};
@@ -3916,11 +3931,11 @@ function App() {
           commit({ recordId:rec.id, recordLabel:rec.label, steps:nextSteps }); // live draft → badge updates each step
           const subs = refSubfields(ff.type);
           if (subs){ drillStep(rec, subs, nextSteps, ()=>drillStep(rec, fields, steps, goBack)); return true; } }, // drill (stay open)
-        crumb(rec, steps), {...anc, wide:true, back: goBack, footer: <span className="block truncate text-[11px]" style={{color:"var(--faint)"}}>{crumb(rec, steps)}</span> }); };
+        "Reference", {...anc, wide:true, back: goBack, smart: sm(rec, steps) }); };
     const recStep = () => { setOpenSlot(slotKey);
       open(el, scope.map(r=>({id:r.id, label:r.label})),
         (i)=>{ const rec=scope.find(x=>x.id===i.id); drillStep(rec, recordFieldsFor(rec.module)||[], [], scope.length>1?recStep:undefined); return true; },
-        "Reference which record", {...anc, noSearch:true}); };
+        "Reference which record", {...anc, noSearch:true, smart: { tab:"ref", title:"Reference", onSpecific: chrome && chrome.onSpecific, onExpression: chrome && chrome.onExpression }}); };
     if (scope.length===1) drillStep(scope[0], recordFieldsFor(scope[0].module)||[], [], undefined); else recStep();
   };
   // EXPRESSION → opens the right-rail Expression Builder (not an inline input). exprEdit holds the
@@ -3972,12 +3987,13 @@ function App() {
     if (scope.length===1) drillStep(scope[0], recordFieldsFor(scope[0].module)||[], [], undefined); else recStep();
   };
   // build the `smart` config for a value popover (null when no record is in scope = nothing to reference)
-  const smartCfg = (path, curVal, slotKey, el, anchorKey, commit, label) => {
+  const smartCfg = (path, curVal, slotKey, el, anchorKey, commit, label, reopenSpecific) => {
     const scope = recordsInScope(path); if(!scope.length) return null;
-    return { init: (curVal && typeof curVal==="object" && !Array.isArray(curVal)) ? "smart" : "specific",
-      slotKey, onTab: (tab)=> setSmartPreview(tab==="smart" ? slotKey : null), // preview a badge in the sentence while on the Smart tab
-      onReference:  ()=> openSmartRef(path, slotKey, el, anchorKey, (ref)=>commit({ref})),
-      onExpression: ()=> openExprBuilder(commit, curVal, label, scope, slotKey) };
+    const onExpression = ()=> openExprBuilder(commit, curVal, label, scope, slotKey);
+    // value popover = the SPECIFIC tab; the icon tabs navigate to Reference (the drill) / back to Specific,
+    // and Expression sits in the sticky footer of both.
+    return { tab:"specific", slotKey, onSpecific: reopenSpecific, onExpression,
+      onReference: ()=> openSmartRef(path, slotKey, el, anchorKey, (ref)=>commit({ref}), { onSpecific: reopenSpecific, onExpression }) };
   };
   // open the value picker for a clause, anchored to a given element, by field type.
   const openClauseValue = (path, ci, fieldId, el, chain, anchorKey, opOverride) => {
@@ -3987,7 +4003,7 @@ function App() {
     const setter = (i)=>{ updateClause(path, ci, {value:i.id});
       if (chain) setTimeout(()=>openBranchAddAt(path, branchAddRefs.current[pathKey(path)]), 50); };
     const cl = nodeAt(flow, path)?.clauses?.[ci]; const curVal = cl?.value; const op = opOverride!==undefined ? opOverride : cl?.op;
-    const smart = smartCfg(path, curVal, slotKey, el, anchorKey, (v)=>updateClause(path, ci, {value:v}), f.label);
+    const smart = smartCfg(path, curVal, slotKey, el, anchorKey, (v)=>updateClause(path, ci, {value:v}), f.label, ()=>openClauseValue(path, ci, fieldId, el, chain, anchorKey, opOverride));
     const o = { ...(anchorKey ? {anchorKey} : {}), ...(smart ? {smart} : {}) };
     if (f.type==="date" && isRelDateOp(op)) return open(el, [], setter, f.label, {...o, inputType:"number"}); // relative → a number (unit is its own slot)
     if (f.type==="text" && (op==="contains"||op==="does not contain")) return open(el, [], setter, f.label, {...o, inputType:"tokens", selected:curVal}); // any of
@@ -4118,7 +4134,7 @@ function App() {
     setOpenSlot(slotKey);
     const setter=(x)=>updatePathClause(path,pi,ci,{value:x.id});
     const cl = node.paths[pi].clauses[ci]; const curVal = cl.value; const op = opOverride!==undefined ? opOverride : cl.op;
-    const smart = smartCfg(path, curVal, slotKey, el, null, (v)=>updatePathClause(path,pi,ci,{value:v}), f.label);
+    const smart = smartCfg(path, curVal, slotKey, el, null, (v)=>updatePathClause(path,pi,ci,{value:v}), f.label, ()=>pickPathValueEl(path, node, pi, ci, el, fieldId, opOverride));
     const o = smart ? {smart} : {};
     if(f.type==="date" && isRelDateOp(op)) return open(el, [], setter, f.label, {...o, inputType:"number"});
     if(f.type==="text" && (op==="contains"||op==="does not contain")) return open(el, [], setter, f.label, {...o, inputType:"tokens", selected:curVal});
@@ -4288,7 +4304,7 @@ function App() {
       if (val.ref) { const parts = refPathLabels(val.ref); const full = parts.join(" › ");
         // while the picker is OPEN (expand) → full live path. Once committed (closed) and long → middle-truncate,
         // keeping the record + the final field so you still see where it starts and what it resolves to.
-        if (!expand && parts.length>=3 && full.length>34) return parts[0] + " › … › " + parts[parts.length-1];
+        if (!expand && parts.length>=3 && full.length>20) return parts[0] + " › … › " + parts[parts.length-1];
         return full; }
       if (val.expr!=null) return exprText(val.expr);
       return ""; // unknown object shape — never render a raw object
@@ -5725,7 +5741,13 @@ function App() {
                     </div>
                   )}
                 </div>
-                <div className="shrink-0 border-t px-4 py-3" style={{borderColor:"var(--border)"}}>
+                <div className="shrink-0 border-t px-4 py-3 flex flex-col gap-2" style={{borderColor:"var(--border)"}}>
+                  {/* always-available launcher for the interactive walkthrough — the intro popup only shows once
+                      (lwb_intro_v5), so returning users replay the tour from here. */}
+                  <button onClick={()=>{ setRefOpen(false); startWalk(); }} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[12.5px] font-semibold transition-all hover:-translate-y-0.5" style={{ background:"var(--accent)", color:"#fff", boxShadow:"0 8px 20px -10px var(--accent)" }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7"/><path d="M10 9l5 3-5 3V9z" fill="currentColor"/></svg>
+                    Take the walkthrough
+                  </button>
                   <button onClick={()=>{ setRefOpen(false); setStep(0); setGuideOpen(true); }} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[12.5px] font-medium transition-colors hover:brightness-110" style={{ background:"color-mix(in srgb, var(--accent) 14%, transparent)", color:"var(--accent2)" }}>
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.6 1 1.3 1 2.1h6c0-.8.4-1.5 1-2.1A6 6 0 0012 3z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     How it works
