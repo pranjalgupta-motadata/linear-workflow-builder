@@ -1,13 +1,17 @@
 # Internal working notes — not for public publish
 CLAUDE.md
 HANDOFF.md
+NODE-RULES.md
+TASKS.md
 Feature Details/
+
+# Local-only experiment builds (NOT published — only up to v5.1 goes live)
+index-v5.1.html
+index-v5.2.html
+index-v6-wip-backup.html
 
 # OS / editor cruft
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
-
-# v6 branching build — local only, NOT published
-index-v6.html
