@@ -328,16 +328,11 @@ const USECASE_DOCS = {
     ],
   },
 };
-// ── QA review checklist (sidebar) — each item loads a pre-made scenario so a change can be eyeballed
-//    fast (no recreating), then dismissed with the ✓. Pure dev aid; trim this list as items close. ──
-const QA_TESTS = [
-  { id:"qa_actionref", label:"Action fields → Reference via the dropdown (no icon)",
-    note:"Open an Update/Create action → Set up › → click a field VALUE (any type) → it opens the SAME Specific | Reference dropdown as conditions, NO Expression, NO external { } icon. Reference tab → “Reference which record” now shows a SUBTEXT under each record (e.g. ‘the record that triggered this workflow’ / ‘fetched in an earlier Get step’). Pick a record → the next (field) step shows that record as the heading (breadcrumb, e.g. ‘Incident’ → ‘Incident › Priority’). Commit → the value shows the ref path (× to revert). ⚠️ EYEBALL the click-to-open field look (single-source, easy to tune). ALSO check: the GET node sentence now has proper spaces (‘1 Hardware Asset where a field’).",
-    doc:{ triggers:[{ id:"t1", typeId:"created", vals:{ module:"Incident" } }], flow:[{ id:"g1", kind:"get", qty:"1", module:"Hardware Asset", sort:null, clauses:[] }, { id:"a1", kind:"action", action:"update", fields:[] }] } },
-  { id:"qa_esc_universal", label:"Esc closes EVERY side section + hint on the ×",
-    note:"Open the form drawer → press Esc → it closes. Repeat for the Expression Builder rail (open a value → Expression…), the Node-reference panel (💡), and Keyboard shortcuts (⌘) — Esc closes each. Hover the × at the top of any side section → a “Close · Esc” hint shows below it. (A popover layered over a panel still closes first on Esc.)",
-    doc:{ triggers:[{ id:"t1", typeId:"created", vals:{ module:"Incident" } }], flow:[{ id:"a1", kind:"action", action:"update", fields:[] }] } },
-];
+// ── QA review checklist (sidebar) — DEV AID ONLY: gated by !IS_LIVE so it NEVER renders on the published
+//    site (*.github.io), only locally. Each item loads a pre-made scenario for fast eyeballing, dismissed
+//    with the ✓. Add new items here while iterating; they auto-clear on publish via the IS_LIVE gate.
+//    (Currently empty — the action-field + universal-Esc items were resolved & cleared 2026-06-28.)
+const QA_TESTS = [];
 
 const USECASE_META = {
   usecase_1: { name:"Use Case 1 — Route Incidents by Category",
@@ -5507,7 +5502,7 @@ function App() {
             </React.Fragment>
           );
         })}
-        {activeSuite==="automation" && QA_TESTS.some(t=>!qaDone.includes(t.id)) && (
+        {!IS_LIVE && activeSuite==="automation" && QA_TESTS.some(t=>!qaDone.includes(t.id)) && (
           <div className="mt-3 pt-2" style={{borderTop:"1px solid var(--side-bd)"}}>
             <div className="px-3 mb-1.5 flex items-center justify-between">
               <div className="text-[10px] font-semibold uppercase tracking-[0.12em]" style={{color:"var(--faint)"}}>QA — load &amp; verify</div>
