@@ -77,6 +77,14 @@
   .exprbox{ border:1px solid var(--border2); transition:border-color .15s ease; }
   .exprbox:hover{ border-color:var(--faint); }
   .exprbox:focus-within{ border-color:var(--muted); }
+  /* keyboard-only focus ring — actionable buttons/options ONLY; never .slot sentence words or inputs/textarea/select (they carry their own focus affordance; this was the autofocus-blue-ring regression) */
+  button:not(.slot):focus-visible, [role="button"]:not(.slot):focus-visible, [role="option"]:focus-visible{ outline:2px solid color-mix(in srgb, var(--accent) 50%, transparent); outline-offset:2px; }
+  /* instant hover tooltip (no native-title delay) — opt in with data-tip="…" */
+  [data-tip]{ position:relative; }
+  [data-tip]:hover::after{ content:attr(data-tip); position:absolute; left:50%; bottom:calc(100% + 7px); transform:translateX(-50%); white-space:nowrap; background:var(--pop-bg); color:var(--text); border:1px solid var(--border2); font-size:11px; font-weight:500; line-height:1; padding:5px 9px; border-radius:8px; pointer-events:none; z-index:60; box-shadow:var(--shadow-pop); }
+  /* downward variant — for tips on elements at the TOP of an overflow-hidden panel (e.g. the side-section close ×) */
+  [data-tip-below]{ position:relative; }
+  [data-tip-below]:hover::after{ content:attr(data-tip-below); position:absolute; left:50%; top:calc(100% + 7px); transform:translateX(-50%); white-space:nowrap; background:var(--pop-bg); color:var(--text); border:1px solid var(--border2); font-size:11px; font-weight:500; line-height:1; padding:5px 9px; border-radius:8px; pointer-events:none; z-index:60; box-shadow:var(--shadow-pop); }
   .pop-enter{animation:pop .12s ease-out}
   @keyframes pop{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
   .drawer-in{animation:drawerin .28s cubic-bezier(.2,.8,.2,1)}
@@ -97,7 +105,7 @@
   /* clickable controls show the hand cursor. !important so it wins over Tailwind's runtime-injected base layer
      (vendor/tailwindcss.js injects its <style> AFTER this block, so plain rules can lose on source order). */
   button:not(:disabled),[role=button],[role=option],summary,label[for],.slot,.tour-clickable{ cursor:pointer !important; }
-  button:disabled,[aria-disabled="true"]{ cursor:default !important; }
+  button:disabled,[aria-disabled="true"]{ cursor:default !important; opacity:.5; }
   /* popover/menu option rows + sentence slots are clearly selectable → hand cursor */
   [data-pop-root] button:not(:disabled),[data-pop-root] [role=option],[data-pop-root] [role=button]{ cursor:pointer !important; }
   input[type=time],input[type=date]{color-scheme:dark}
@@ -320,6 +328,17 @@ const USECASE_DOCS = {
     ],
   },
 };
+// ── QA review checklist (sidebar) — each item loads a pre-made scenario so a change can be eyeballed
+//    fast (no recreating), then dismissed with the ✓. Pure dev aid; trim this list as items close. ──
+const QA_TESTS = [
+  { id:"qa_actionref", label:"Action fields → Reference via the dropdown (no icon)",
+    note:"Open an Update/Create action → Set up › → click a field VALUE (any type) → it opens the SAME Specific | Reference dropdown as conditions, NO Expression, NO external { } icon. Reference tab → “Reference which record” now shows a SUBTEXT under each record (e.g. ‘the record that triggered this workflow’ / ‘fetched in an earlier Get step’). Pick a record → the next (field) step shows that record as the heading (breadcrumb, e.g. ‘Incident’ → ‘Incident › Priority’). Commit → the value shows the ref path (× to revert). ⚠️ EYEBALL the click-to-open field look (single-source, easy to tune). ALSO check: the GET node sentence now has proper spaces (‘1 Hardware Asset where a field’).",
+    doc:{ triggers:[{ id:"t1", typeId:"created", vals:{ module:"Incident" } }], flow:[{ id:"g1", kind:"get", qty:"1", module:"Hardware Asset", sort:null, clauses:[] }, { id:"a1", kind:"action", action:"update", fields:[] }] } },
+  { id:"qa_esc_universal", label:"Esc closes EVERY side section + hint on the ×",
+    note:"Open the form drawer → press Esc → it closes. Repeat for the Expression Builder rail (open a value → Expression…), the Node-reference panel (💡), and Keyboard shortcuts (⌘) — Esc closes each. Hover the × at the top of any side section → a “Close · Esc” hint shows below it. (A popover layered over a panel still closes first on Esc.)",
+    doc:{ triggers:[{ id:"t1", typeId:"created", vals:{ module:"Incident" } }], flow:[{ id:"a1", kind:"action", action:"update", fields:[] }] } },
+];
+
 const USECASE_META = {
   usecase_1: { name:"Use Case 1 — Route Incidents by Category",
     desc:"When an incident is created, the workflow must automatically read the Category field of the ticket and assign it to the appropriate technician group mapped to that category. For example, a network-related incident must go to the Network Support Group, a hardware issue must go to the Hardware Support Group, and an application issue must go to the Application Support Group." },
@@ -1033,6 +1052,8 @@ const G = {
   trigger: <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/></svg>,                                  // lightning = the event
   condition: <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2.5" transform="rotate(45 12 12)"/></svg>, // diamond (matches the canvas marker + popover)
   action: <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>,                                                    // play = do it
+  get: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 8l8-4 8 4-8 4-8-4zM4 12l8 4 8-4M4 16l8 4 8-4" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>,   // stacked layers = fetch records
+  delay: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M7 3h10M7 21h10M8 3v3l4 4 4-4V3M8 21v-3l4-4 4 4v3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>,  // hourglass = wait
 };
 const NODE_HELP = {
   when: {
@@ -1049,6 +1070,21 @@ const NODE_HELP = {
     title:"Action", color:"var(--c-then)", bg:"var(--c-then-bg)", graphic:G.action,
     body:"Tell the workflow what to do, automatically. Add as many as you need, one after another.",
     eg:"Like — assign it to a team, or send an email.",
+  },
+  get: {
+    title:"Get records", color:"var(--muted)", bg:"var(--panel2)", graphic:G.get,
+    body:"Fetch one or more records up front — the steps below then run for each one you pulled in.",
+    eg:"Like — every open incident from the same requester.",
+  },
+  delay: {
+    title:"Wait", color:"var(--muted)", bg:"var(--panel2)", graphic:G.delay,
+    body:"Pause the workflow — for a set duration, until a date/time, or until a condition becomes true.",
+    eg:"Like — wait 2 hours, or until priority becomes Urgent.",
+  },
+  branch: {
+    title:"Branch", color:"var(--c-if)", bg:"var(--c-if-bg)", graphic:G.condition,
+    body:"Split the flow into parallel paths, each with its own check and steps, plus an optional Otherwise.",
+    eg:"Like — route by category: Network, Hardware, Software.",
   },
 };
 // per-item help for the "what happens next" menu — the docked Quick Help follows what you hover/highlight.
@@ -1617,35 +1653,148 @@ const treeFindPath = (nodes, id, base=[]) => {
   return null;
 };
 
-/* MultiSelect — a multiple-selection dropdown (checklist). Expands INLINE (pushes content) so it is
-   never clipped by the scrollable rail form. Value is stored as an array (or null when empty). */
-function MultiSelect({ options, value, onChange, placeholder }) {
-  const [open, setOpen] = React.useState(false);
-  const sel = Array.isArray(value) ? value : [];
-  const toggle = (v) => { const next = sel.includes(v) ? sel.filter(x=>x!==v) : [...sel, v]; onChange(next.length ? next : null); };
+// [Phase A · C4] ONE avatar — user initials (round) or group glyph (tile). The single source for every
+// people/team picker (EntitySelect, the entity picker configs, the assign card).
+const initials = (n)=> (n||"").split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join("") || "?";
+const GROUP_GLYPH = (<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3" stroke="currentColor" strokeWidth="1.7"/><path d="M3.5 19a5.5 5.5 0 0111 0M16 6.6a3 3 0 010 5.8M17.5 19a5.5 5.5 0 00-1.6-3.9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>);
+function Avatar({ kind="user", name }) {
+  return kind==="group"
+    ? <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{background:"var(--panel2)", color:"var(--muted)"}}>{GROUP_GLYPH}</span>
+    : <span className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-semibold shrink-0" style={{background:"var(--avatar-bg)", color:"var(--avatar-fg)"}}>{initials(name)}</span>;
+}
+
+// [Phase A · C5] ONE search box — the single search input everywhere (accent border + magnifier).
+function SearchBox({ value, onChange, placeholder="Search", autoFocus, onKeyDown, inputRef }) {
   return (
-    <div className="flex flex-col gap-1">
-      <button onClick={()=>setOpen(o=>!o)} className="w-full rounded-lg px-2.5 py-2 text-[13px] flex items-center gap-1.5 flex-wrap text-left"
-        style={{ background:"var(--panel2)", border:"1px solid var(--border2)", color:"var(--text)" }}>
-        {sel.length ? sel.map(v=><span key={v} className="text-[11.5px] px-1.5 py-0.5 rounded-md" style={{background:"var(--panel)", border:"1px solid var(--border2)", color:"var(--text)"}}>{v}</span>)
-                    : <span style={{color:"var(--faint)"}}>{placeholder||"choose one or more…"}</span>}
-        <svg className={"ml-auto shrink-0 transition-transform "+(open?"rotate-180":"")} width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+    <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{border:"1px solid var(--accent)", background:"var(--pop-bg)"}}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2"/><path d="M21 21l-4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+      <input ref={inputRef} autoFocus={autoFocus} value={value} onChange={onChange} onKeyDown={onKeyDown} placeholder={placeholder}
+        className="w-full bg-transparent outline-none text-[12px] placeholder:text-[var(--faint)]" style={{color:"var(--text)"}}/>
+    </div>
+  );
+}
+
+// [Phase D] Badge — the ONE node role badge (When / Check if / Then / Get / Wait / Or if). Identical
+// style everywhere; only colour/bg differ per role. (connBadge AND/OR toggles are buttons, not this.)
+function Badge({ color="var(--faint)", bg="var(--panel2)", className="", children }) {
+  return <span className={"text-[10px] font-semibold uppercase tracking-[0.1em] px-2 py-2 leading-none rounded-md whitespace-nowrap "+className} style={{color, background:bg}}>{children}</span>;
+}
+
+// [Phase D] CloseBtn — the ONE panel/modal close (×). title overridable (e.g. "Skip"); extras via className.
+function CloseBtn({ onClick, title="Close", className="", kbd }) {
+  return <button onClick={onClick} title={title} {...(kbd ? {"data-tip-below": title+" · "+kbd} : {})} className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors hover:bg-[var(--pop-hover)] "+className} style={{color:"var(--muted)"}}>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+  </button>;
+}
+
+// [Phase D] DeleteBtn — the ONE red-tint clause/node delete (×), padding:5px. title + onClick per site.
+function DeleteBtn({ onClick, title, className="" }) {
+  return <button onClick={onClick} title={title} className={"rounded-md flex items-center justify-center transition-colors hover:bg-[rgba(248,81,73,0.18)] text-[var(--faint)] hover:text-[var(--red)] "+className} style={{padding:"5px"}}>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+  </button>;
+}
+
+/* [Phase B] Picker — the ONE drawer select. Modes via props:
+   • multi (inline checklist, array value) ............ MultiSelect
+   • entity "user"|"group" (avatar/glyph card rows) .. EntitySelect
+   • plain single-select (+ optional search) ......... Dropdown
+   The three names below are thin wrappers — call-sites unchanged. MultiSelect's INLINE expansion
+   (never clipped by the scroll form) is preserved via the `multi` branch (DO-NOT-BREAK). */
+function Picker({ options, value, onChange, placeholder, multi=false, entity=null, search=false }) {
+  const [open, setOpen] = React.useState(false);
+  const [q, setQ] = React.useState("");
+  const ref = React.useRef(null);
+  React.useEffect(()=>{ if(!open || multi) return; const h=(e)=>{ if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h, true); return ()=>document.removeEventListener("mousedown", h, true); }, [open, multi]);
+  React.useEffect(()=>{ if(!open) setQ(""); }, [open]);
+  const entRow = (o)=> (<>
+    <Avatar kind={entity} name={o.name} />
+    <span className="flex flex-col min-w-0 flex-1 leading-tight gap-0.5 text-left">
+      <span className="text-[13px] font-medium truncate" style={{color:"var(--text)"}}>{o.name}</span>
+      {o.sub && <span className="text-[11.5px] truncate" style={{color:"var(--muted)"}}>{o.sub}</span>}
+    </span>
+  </>);
+
+  // ── MULTI — inline checklist (preserves inline-expansion) ──
+  if (multi) {
+    const sel = Array.isArray(value) ? value : [];
+    const toggle = (v) => { const next = sel.includes(v) ? sel.filter(x=>x!==v) : [...sel, v]; onChange(next.length ? next : null); };
+    return (
+      <div className="flex flex-col gap-1">
+        <button onClick={()=>setOpen(o=>!o)} className="w-full rounded-lg px-2.5 py-2 text-[13px] flex items-center gap-1.5 flex-wrap text-left"
+          style={{ background:"var(--panel2)", border:"1px solid var(--border2)", color:"var(--text)" }}>
+          {sel.length ? sel.map(v=><span key={v} className="text-[11.5px] px-1.5 py-0.5 rounded-md" style={{background:"var(--panel)", border:"1px solid var(--border2)", color:"var(--text)"}}>{v}</span>)
+                      : <span style={{color:"var(--faint)"}}>{placeholder||"choose one or more…"}</span>}
+          <svg className={"ml-auto shrink-0 transition-transform "+(open?"rotate-180":"")} width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </button>
+        {open && (
+          <div className="rounded-lg overflow-hidden" style={{ background:"var(--pop-bg)", border:"1px solid var(--border2)" }}>
+            {options.map(v=>{ const on = sel.includes(v);
+              return (
+                <button key={v} onClick={()=>toggle(v)} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-[13px] text-left transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--text)"}}>
+                  <span className="w-4 h-4 rounded flex items-center justify-center shrink-0" style={{ border:"1.5px solid "+(on?"var(--accent)":"var(--border2)"), background:on?"var(--accent)":"transparent" }}>
+                    {on && <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-11" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  </span>
+                  {v}
+                </button>
+              ); })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── SINGLE — entity (avatar cards) or plain, absolute dropdown, optional search ──
+  const sel = options.find(o=>o.id===value);
+  const ql = q.trim().toLowerCase();
+  const filtered = (search && ql) ? options.filter(o=>(o.label||o.name||"").toLowerCase().includes(ql)) : options;
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={()=>setOpen(o=>!o)} className={"w-full flex items-center rounded-lg px-3 py-2.5 text-left transition-colors hover:brightness-110 "+(entity?"gap-2.5":"gap-2 text-[13.5px]")} style={{border:"1px solid var(--border2)", background: entity?"var(--panel)":"var(--panel2)"}}>
+        {entity
+          ? (sel ? entRow(sel) : (<>
+              <span className={"shrink-0 flex items-center justify-center w-8 h-8 "+(entity==="group"?"rounded-lg":"rounded-full")} style={{background:"var(--panel2)", color:"var(--faint)"}}>
+                {entity==="group"
+                  ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3" stroke="currentColor" strokeWidth="1.7"/><path d="M3.5 19a5.5 5.5 0 0111 0M16 6.6a3 3 0 010 5.8M17.5 19a5.5 5.5 0 00-1.6-3.9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>
+                  : <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.2" stroke="currentColor" strokeWidth="1.7"/><path d="M5.5 20a6.5 6.5 0 0113 0" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>}
+              </span>
+              <span className="flex flex-col min-w-0 flex-1 gap-1.5 text-left">
+                <span className="text-[13px]" style={{color:"var(--faint)"}}>{placeholder}</span>
+                <span className="rounded" style={{width:"58%", height:"7px", background:"var(--panel2)"}}/>
+              </span>
+            </>))
+          : <span className="flex-1 truncate" style={{color: sel?"var(--text)":"var(--faint)"}}>{sel?sel.label:placeholder}</span>}
+        <svg className={"shrink-0 transition-transform "+(open?"rotate-180":"")} width="16" height="16" viewBox="0 0 24 24" fill="none" style={{color:"var(--muted)"}}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
       </button>
       {open && (
-        <div className="rounded-lg overflow-hidden" style={{ background:"var(--pop-bg)", border:"1px solid var(--border2)" }}>
-          {options.map(v=>{ const on = sel.includes(v);
-            return (
-              <button key={v} onClick={()=>toggle(v)} className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-[13px] text-left transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--text)"}}>
-                <span className="w-4 h-4 rounded flex items-center justify-center shrink-0" style={{ border:"1.5px solid "+(on?"var(--accent)":"var(--border2)"), background:on?"var(--accent)":"transparent" }}>
-                  {on && <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-11" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                </span>
-                {v}
-              </button>
-            ); })}
+        <div className="absolute z-50 left-0 right-0 mt-1 rounded-xl overflow-hidden" style={{background:"var(--pop-bg)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-pop)"}}>
+          {search && <div className="p-2" style={{borderBottom:"1px solid var(--border)"}}><SearchBox autoFocus value={q} onChange={e=>setQ(e.target.value)} /></div>}
+          <div className="max-h-64 overflow-y-auto py-1">
+            {filtered.map(o=>{ const on=o.id===value;
+              return <button key={o.id} type="button" onClick={()=>{ onChange(o.id); setOpen(false); }} className={"w-full flex items-center gap-2.5 px-3 py-2 text-[13.5px] text-left transition-colors "+(on?"":"hover:bg-[var(--pop-hover)]")} style={{color:"var(--text)", ...(on?{background:"color-mix(in srgb, var(--accent) 12%, transparent)"}:{})}}>
+                {entity ? entRow(o) : <span className="flex-1 truncate">{o.label}</span>}
+                {on && <svg className="shrink-0 ml-auto" width="14" height="14" viewBox="0 0 24 24" fill="none" style={{color:"var(--accent2)"}}><path d="M5 12l5 5 9-11" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+              </button>; })}
+            {!filtered.length && <div className="px-3 py-3 text-[12.5px]" style={{color:"var(--faint)"}}>No matches</div>}
+          </div>
         </div>
       )}
     </div>
   );
+}
+
+function MultiSelect({ options, value, onChange, placeholder }) {
+  return <Picker multi options={options} value={value} onChange={onChange} placeholder={placeholder} />;
+}
+
+/* EntitySelect — person/group picker (avatar/glyph card rows). Thin wrapper over Picker. */
+function EntitySelect({ kind, options, value, onChange, placeholder }) {
+  return <Picker entity={kind} options={options} value={value} onChange={onChange} placeholder={placeholder} />;
+}
+
+/* Dropdown — single-select (+ optional search). Thin wrapper over Picker. */
+function Dropdown({ options, value, onChange, placeholder, search }) {
+  return <Picker options={options} value={value} onChange={onChange} placeholder={placeholder} search={search} />;
 }
 
 /* TokenInput — free-form "type and add" multiple input (Cc emails, Tags). Value stored as an array. */
@@ -1683,9 +1832,7 @@ function KeyValRows({ value, onChange, keyPh, valPh }) {
         <div key={i} className="flex items-center gap-1.5">
           <input value={r.k} onChange={e=>set(i,{k:e.target.value})} placeholder={keyPh||"key"} className={inCls} style={inSty}/>
           <input value={r.v} onChange={e=>set(i,{v:e.target.value})} placeholder={valPh||"value"} className={inCls} style={inSty}/>
-          <button onClick={()=>rm(i)} title="Remove" className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center hover:bg-[var(--pop-hover)] hover:text-[var(--red)]" style={{color:"var(--faint)"}}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-          </button>
+          <DeleteBtn onClick={()=>rm(i)} title="Remove" className="shrink-0" />
         </div>
       ))}
       <button onClick={add} className="self-start flex items-center gap-1.5 text-[12.5px] font-medium transition-colors" style={{color:"var(--muted)"}}
@@ -1721,7 +1868,7 @@ function AttachedCondition({ value, onChange, open, fields }) {
   );
   // and↔or toggle, styled so it clearly looks changeable (chevron + hover)
   const Toggle = ({ ci, label }) => (
-    <button onClick={()=>toggleJoiner(ci)} title="Click to switch and / or"
+    <button onClick={()=>toggleJoiner(ci)} data-tip="Toggle AND / OR"
       className="shrink-0 inline-flex items-center gap-0.5 text-[13px] font-semibold rounded-md px-1.5 py-0.5 transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--c-if)"}}>{label}<Chev/></button>
   );
   const groups = [];
@@ -1741,9 +1888,7 @@ function AttachedCondition({ value, onChange, open, fields }) {
           {c.field && <button onClick={(e)=>pickOp(ci,e.currentTarget)} className="text-[14px] px-0.5 rounded hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}>{c.op||"is"}</button>}
           {c.field && <Pill value={c.value} placeholder={valuePlaceholder(f?.type)} onClick={(e)=>pickValue(ci,e.currentTarget)} />}
         </div>
-        <button onClick={()=>remove(ci)} title="Remove" className="shrink-0 w-6 h-6 rounded-md flex items-center justify-center opacity-0 group-hover/cl:opacity-100 transition-opacity hover:bg-[var(--pop-hover)] hover:text-[var(--red)]" style={{color:"var(--faint)"}}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-        </button>
+        <DeleteBtn onClick={()=>remove(ci)} title="Remove" className="shrink-0 opacity-0 group-hover/cl:opacity-100 transition-opacity" />
       </div>
     );
   };
@@ -1753,7 +1898,7 @@ function AttachedCondition({ value, onChange, open, fields }) {
         /* OR-group card — light bg, no border, YELLOW left rail. The OR connector lives INSIDE the card header. */
         <div key={gi} className="rounded-lg" style={{ background:"var(--panel2)", borderLeft:"2px solid var(--c-if)", padding:"7px 10px 8px 12px" }}>
           {gi>0 && (
-            <button onClick={()=>toggleJoiner(g[0])} title="Click to switch or / and"
+            <button onClick={()=>toggleJoiner(g[0])} data-tip="Toggle AND / OR"
               className="inline-flex items-center gap-0.5 text-[11px] font-bold uppercase tracking-wider rounded px-1.5 py-0.5 mb-1.5 transition-colors hover:brightness-110" style={{color:"var(--c-if)", background:"var(--c-if-bg)"}}>or<Chev/></button>
           )}
           {g.map((ci, idx)=>rowEl(ci, idx, gi))}
@@ -1826,7 +1971,7 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
       const list = (noSearch ? bb : bb.filter(i => i.header || i.label.toLowerCase().includes(qq) || (i.sub && i.sub.toLowerCase().includes(qq)) || (i.keywords && i.keywords.toLowerCase().includes(qq))))
         .filter(i => !i.header && !i.disabled && !i.divider);
       if (!list.length) return;
-      e.preventDefault();
+      e.preventDefault(); e.stopPropagation(); // keep Enter/Arrows inside the popover — don't let them reach the canvas (which would open "what happens next")
       if (e.key === "Enter") { const ai = Math.min(active, list.length-1); const it = list[ai]; if (it) { if(!onPick(it, ai)) onClose(); } return; }
       setHovItem(null); // keyboard nav drives help via the highlighted item, not a stale hover
       setActive(a => { const cur = Math.min(a, list.length-1);
@@ -1963,7 +2108,7 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
     </div>
   ) : null;
   // sticky "Expression" card — ONLY on the REFERENCE tab (not Specific), with a FULL-WIDTH separator above it.
-  const smartExprFooter = (smart && smartTabNow==="ref") ? (
+  const smartExprFooter = (smart && smart.onExpression && smartTabNow==="ref") ? (
     <div className="sticky bottom-0 z-10" style={{background:"var(--pop-bg)"}}>
       <div style={{borderTop:"1px solid var(--border)"}} />
       <div className="px-2 pb-2 pt-2">
@@ -2037,7 +2182,9 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
   const tileStyle = (i) => ({ background:(TONES[i.tone]||["var(--muted)","var(--panel2)"])[1], color:(TONES[i.tone]||["var(--muted)","var(--panel2)"])[0] });
   const itemBody = (i) => i.sub ? (
     <span className="flex items-center gap-2.5 min-w-0 flex-1">
-      {i.icon && <span className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0" + (solidIcons?" solid-ico":"")} style={tileStyle(i)}>{i.icon}</span>}
+      {i.avatar
+        ? <span className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-semibold shrink-0" style={{background:"var(--avatar-bg)", color:"var(--avatar-fg)"}}>{i.avatar}</span>
+        : i.icon && <span className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0" + (solidIcons?" solid-ico":"")} style={tileStyle(i)}>{i.icon}</span>}
       <span className="flex flex-col min-w-0">
         <span className="text-[12.5px] font-medium leading-tight" style={{color:"var(--text)"}}>{i.label}</span>
         <span className="text-[11px] leading-tight truncate" style={{color:"var(--faint)"}}>{i.sub}</span>
@@ -2072,15 +2219,10 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
     </div>}
     {!noSearch &&
       <div className="px-2.5 pt-1 pb-2">
-        <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{border:"1px solid var(--accent)", background:"var(--pop-bg)"}}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2"/><path d="M21 21l-4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-          <input autoFocus value={q} onChange={e=>{setQ(e.target.value); setActive(0);}} placeholder="Search"
-            onKeyDown={e=>{ if(e.key==="Backspace" && q==="" && back){ e.preventDefault(); back(); } }}
-            className="w-full bg-transparent outline-none text-[12px] placeholder:text-[var(--faint)]" />
-        </div>
+        <SearchBox autoFocus value={q} onChange={e=>{setQ(e.target.value); setActive(0);}} onKeyDown={e=>{ if(e.key==="Backspace" && q==="" && back){ e.preventDefault(); back(); } }} />
       </div>}
     <div className="max-h-72 overflow-y-auto overscroll-contain py-1 px-1.5">
-      {filtered.length===0 && <div className="px-3 py-2 text-[12px]" style={{color:"var(--faint)"}}>No results found</div>}
+      {filtered.length===0 && <div className="px-3 py-2 text-[12px]" style={{color:"var(--faint)"}}>No matches</div>}
       {filtered.map((i,k)=>{
         if (i.divider) return <div key={"d"+k} className="my-1.5 mx-2" style={{borderTop:"1px solid var(--border2)"}} />;
         if (i.header) return <div key={"h"+k} className="px-2.5 pt-3 pb-1 text-[11px] font-medium" style={{color:"var(--faint)"}}>{i.header}</div>;
@@ -2740,7 +2882,7 @@ function ExpressionBuilder({ text, setText, onAddRef, onDone, onClose, label }) 
         <div className="text-[14px] font-semibold" style={{color:"var(--text)"}}>Expression Builder</div>
         <a href="#" onClick={e=>e.preventDefault()} className="inline-flex items-center gap-0.5 text-[12px] font-medium" style={{color:"var(--accent2)"}}>Doc
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M14 4h6v6M20 4l-9 9M9 5H5v14h14v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></a>
-        <button onClick={onClose} className="ml-auto w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></button>
+        <CloseBtn onClick={onClose} kbd="Esc" className="ml-auto" />
       </div>
       {/* expression canvas — the HERO of the panel: a recessed code-editor surface, labelled + roomy */}
       <div className="px-4 pt-3 pb-3.5 shrink-0 border-b" style={{borderColor:"var(--border)"}}>
@@ -2769,10 +2911,7 @@ function ExpressionBuilder({ text, setText, onAddRef, onDone, onClose, label }) 
           {/* left: search + tabs + list */}
           <div className="w-[38%] shrink-0 border-r flex flex-col min-h-0" style={{borderColor:"var(--border)"}}>
             <div className="p-2.5 shrink-0">
-              <div className="flex items-center gap-2 rounded-lg px-2.5 py-1.5" style={{border:"1px solid var(--border2)", background:"var(--panel)"}}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2"/><path d="M21 21l-4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search" className="w-full bg-transparent outline-none text-[12.5px] placeholder:text-[var(--faint)]"/>
-              </div>
+              <SearchBox value={q} onChange={e=>setQ(e.target.value)} />
               <div className="flex gap-3 mt-2 px-0.5">
                 {[["all","All"],["functions","Functions"],["operators","Operators"]].map(([id,lab])=>{ const on=tab===id;
                   return <button key={id} onClick={()=>setTab(id)} className="text-[12.5px] font-medium pb-1 transition-colors" style={{ color:on?"var(--accent2)":"var(--muted)", borderBottom:on?"2px solid var(--accent2)":"2px solid transparent" }}>{lab}</button>; })}
@@ -2990,17 +3129,17 @@ function ExpressionBuilder({ text, setText, onAddRef, onDone, onClose, label }) 
               )
             ) : (
               <>
-                {/* function / operator search view (insertView "fn" or "op") */}
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <button onClick={()=>{ setInsertView("root"); setInsertHi(0); }} className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
-                  <input ref={searchInputRef} autoFocus value={insertFnQ} onChange={e=>{ setInsertFnQ(e.target.value); setInsertHi(0); }} placeholder={insertView==="op" ? "Search operators…" : "Search functions…"}
-                    className="flex-1 min-w-0 rounded-lg px-2.5 py-1.5 text-[12.5px] outline-none" style={{background:"var(--panel)", border:"1px solid var(--border2)", color:"var(--text)"}}/>
+                {/* function / operator search — CANONICAL dropdown layout: [‹ back + heading] on top, search below */}
+                <div className="flex items-center gap-1.5 mb-2">
+                  <button onClick={()=>{ setInsertView("root"); setInsertHi(0); }} title="Back" className="shrink-0 flex items-center justify-center w-5 h-5 rounded-md transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+                  <span className="text-[12px] font-semibold truncate" style={{color:"var(--text)"}}>{insertView==="op" ? "Operators" : "Functions"}</span>
                 </div>
+                <div className="mb-1.5"><SearchBox inputRef={searchInputRef} autoFocus value={insertFnQ} onChange={e=>{ setInsertFnQ(e.target.value); setInsertHi(0); }} placeholder={insertView==="op" ? "Search operators" : "Search functions"} /></div>
                 <div className="overflow-y-auto thin-scroll" style={{maxHeight:180}}>
                   {insertView==="op" ? (
                     insertOpMatches.length===0
-                      ? <div className="text-[12px] px-2 py-1.5" style={{color:"var(--faint)"}}>No operators match.</div>
+                      ? <div className="text-[12px] px-2 py-1.5" style={{color:"var(--faint)"}}>No operators match</div>
                       : /* GROUP by cat (Comparison/Logical/Arithmetic). EXPR_OPS is authored in cat order so the
                            filtered slice is already grouped — emit a header on cat change; `i` (running flat index)
                            stays aligned with currentMenuItems(). Headers are non-navigable divs. */
@@ -3015,7 +3154,7 @@ function ExpressionBuilder({ text, setText, onAddRef, onDone, onClose, label }) 
                         ))
                   ) : (
                     insertFnMatches.length===0
-                      ? <div className="text-[12px] px-2 py-1.5" style={{color:"var(--faint)"}}>No functions match.</div>
+                      ? <div className="text-[12px] px-2 py-1.5" style={{color:"var(--faint)"}}>No functions match</div>
                       : /* GROUP by cat (String/Date/Math). EXPR_FUNCS is authored in cat order so the (sliced)
                            filtered list is already grouped — emit a header on cat change; running flat `i` stays
                            aligned with currentMenuItems(). Headers are non-navigable divs. */
@@ -3074,7 +3213,9 @@ function App() {
   const pickSuite = (s) => { setActiveSuite(s.id); setActiveModule((s.modules[0]||{}).id); };
   // editable document (trigger + flow tree) behind an undo/redo history
   const [doc, setDoc] = useState({ triggers:[], flow:[] });
+  const [qaDone, setQaDone] = useState([]); // dismissed QA-checklist item ids (sidebar dev aid)
   const triggers = doc.triggers, flow = doc.flow;
+  const flowRef = useRef(flow); flowRef.current = flow; // always-current flow → deferred callbacks (rAF/popovers) never read a stale closure
   // the workflow's module (from the first trigger) gates the action menu, recipients and channels (§5.3)
   const workflowModuleId = () => moduleIdFromName(triggers[0] && triggers[0].vals && triggers[0].vals.module);
   const actionCat = actionCatalogFor(workflowModuleId());
@@ -3637,11 +3778,24 @@ function App() {
     const newPath = [...path, idx];
     setFlow(f => treeInsertAt(f, path, idx, node));
     setFocusKey(pathKey(newPath));
+    // auto-open the first path's field picker (matches condition/get/delay add). rAF so it opens AFTER
+    // the add-menu's onClose fires (a synchronous open() gets cleared instantly); anchorKey re-resolves
+    // to the new branch's field slot once it renders. [S3 fix]
+    const _pid = node.paths[0].id;
+    setOpenSlot(`${pathKey(newPath)}:p0:c0:field`);
+    requestAnimationFrame(()=> open(null, flowMenu(node),
+      (i)=>{ const t=flowFD(node,i.id)?.type||"enum"; updatePathClause(newPath, 0, 0, {field:i.id, op:defaultOp(t), value:null});
+             requestAnimationFrame(()=>openPathOpByKey(newPath, node, 0, 0, _pid, i.id, t)); },
+      "Which field", {wide:true, help:NODE_HELP.condition, anchorKey:`pcond:${_pid}:0`}));
   };
   // ── DELAY — two types: mode "time" ("wait for {n}{unit}" / "wait until {date|field}") and
   //    mode "event" ("wait until {condition} becomes true"). ──
   const DELAY_UNITS = ["minutes","hours","days"];
-  const pickDelayAmount = (path, node, e) => { setOpenSlot(`${pathKey(path)}:amount`); open(e?.currentTarget||null, [], (i)=>update(path,{amount:i.id}), "Amount", e?{inputType:"number"}:{inputType:"number", anchorKey:`damt:${node.id}`}); };
+  const pickDelayAmount = (path, node, e) => { // amount accepts a Specific number OR a smart value ({ref}/{expr}) — same taxonomy as condition values
+    const slotKey = `${pathKey(path)}:amount`; setOpenSlot(slotKey);
+    const el = e?.currentTarget||null; const ak = `damt:${node.id}`; const commit = (v)=>update(path,{amount:v});
+    const smart = smartCfg(path, node.amount, slotKey, el, e?null:ak, commit, "Amount", ()=>pickDelayAmount(path,node,e));
+    open(el, [], (i)=>commit(i.id), "Amount", { inputType:"number", ...(e?{}:{anchorKey:ak}), ...(smart?{smart}:{}) }); };
   const pickDelayUnit = (path, node, e) => { setOpenSlot(`${pathKey(path)}:unit`); open(e.currentTarget, DELAY_UNITS.map(u=>({id:u,label:u})), (i)=>update(path,{unit:i.id}), "Unit", {noSearch:true, selected:node.unit}); };
   // condition-mode timeout ("up to {N} {unit}") + calendar/business-hours (the Advanced disclosure)
   const pickDelayMaxAmount = (path, node, e) => { setOpenSlot(`${pathKey(path)}:maxamt`); open(e?.currentTarget||null, [], (i)=>update(path,{maxAmount:i.id}), "Up to", e?{inputType:"number"}:{inputType:"number", anchorKey:`dmax:${node.id}`}); };
@@ -3651,7 +3805,7 @@ function App() {
   const pickWaitKind = (path, node, e, fallbackEl) => { setOpenSlot(`${pathKey(path)}:kind`);
     open(e?.currentTarget||fallbackEl||null, [{id:"for",label:"a duration of time"},{id:"until",label:"a date & time"}],
       (i)=>{ update(path,{mode:i.id});
-        if(i.id==="for"){ setOpenSlot(`${pathKey(path)}:amount`); requestAnimationFrame(()=>open(null, [], (x)=>update(path,{amount:x.id}), "Amount", {inputType:"number", anchorKey:`damt:${node.id}`})); }
+        if(i.id==="for"){ requestAnimationFrame(()=>pickDelayAmount(path,node,null)); }
         else { setOpenSlot(`${pathKey(path)}:date`); requestAnimationFrame(()=>open(null, [], (x)=>update(path,{date:x.id}), "Pick a date", {inputType:"date", anchorKey:`wdate:${node.id}`})); }
       }, "Wait for…", {noSearch:true, selected:node.mode||undefined, anchorKey:`wkind:${node.id}`});
   };
@@ -3921,7 +4075,9 @@ function App() {
     const crumb = (rec, steps) => [rec.label.replace(/^the\s+/i,""), ...steps.map(s=>s.label)].join(" › ");
     // smart chrome on the ref drill: the Reference tab is ACTIVE; Specific/Expression come from `chrome` (the
     // value popover). NOTE: NO breadcrumb FOOTER in this version — the sticky Expression card lives there instead.
-    const sm = (rec, steps) => ({ tab:"ref", title: "Reference", onSpecific: chrome && chrome.onSpecific, onExpression: chrome && chrome.onExpression });
+    const sm = (rec, steps) => ({ tab:"ref", title: crumb(rec, steps), onSpecific: chrome && chrome.onSpecific, onExpression: chrome && chrome.onExpression });
+    // subtext on the record rows so the "which record" step reads as more than a bare reference list.
+    const recSub = (r) => r.from==="trigger" ? "the record that triggered this workflow" : r.from==="get" ? "fetched in an earlier Get step" : "created in an earlier step";
     // ONE drill level. `fields` = rows shown, `steps` = the path picked so far, `goBack` = the level above.
     // Object fields (enum/user/multi) drill deeper (chevron + sub-field count tag); leaf fields commit the path.
     const drillStep = (rec, fields, steps, goBack) => { setOpenSlot(slotKey);
@@ -3931,9 +4087,9 @@ function App() {
           commit({ recordId:rec.id, recordLabel:rec.label, steps:nextSteps }); // live draft → badge updates each step
           const subs = refSubfields(ff.type);
           if (subs){ drillStep(rec, subs, nextSteps, ()=>drillStep(rec, fields, steps, goBack)); return true; } }, // drill (stay open)
-        "Reference", {...anc, wide:true, back: goBack, smart: sm(rec, steps) }); };
+        crumb(rec, steps), {...anc, wide:true, back: goBack, smart: sm(rec, steps) }); }; // title = breadcrumb so the chosen record stays visible while you pick its field
     const recStep = () => { setOpenSlot(slotKey);
-      open(el, scope.map(r=>({id:r.id, label:r.label})),
+      open(el, scope.map(r=>({id:r.id, label:r.label, sub:recSub(r)})),
         (i)=>{ const rec=scope.find(x=>x.id===i.id); drillStep(rec, recordFieldsFor(rec.module)||[], [], scope.length>1?recStep:undefined); return true; },
         "Reference which record", {...anc, noSearch:true, smart: { tab:"ref", title:"Reference", onSpecific: chrome && chrome.onSpecific, onExpression: chrome && chrome.onExpression }}); };
     if (scope.length===1) drillStep(scope[0], recordFieldsFor(scope[0].module)||[], [], undefined); else recStep();
@@ -4034,6 +4190,43 @@ function App() {
   const pickClauseUnit = (path, ci, e) => { setOpenSlot(`${pathKey(path)}:c${ci}:unit`); open(e.currentTarget, REL_DATE_UNITS.map(u=>({id:u,label:u})), (i)=>updateClause(path, ci, {unit:i.id}), "Unit", {noSearch:true, selected:nodeAt(flow,path)?.clauses?.[ci]?.unit}); };
   const pickPathUnit = (path, node, pi, ci, e) => { setOpenSlot(`${pathKey(path)}:p${pi}:c${ci}:unit`); open(e.currentTarget, REL_DATE_UNITS.map(u=>({id:u,label:u})), (i)=>updatePathClause(path, pi, ci, {unit:i.id}), "Unit", {noSearch:true, selected:node.paths[pi].clauses[ci].unit}); };
   const pickClauseValue = (path, node, ci, e) => openClauseValue(path, ci, node.clauses[ci].field, e.currentTarget, false);
+  // ACTION-FIELD value picker (form-edit drawer) — the SAME Specific|Reference dropdown conditions use, but
+  // REFERENCE-ONLY (no Expression) and with NO external icon. The Specific tab is the right editor per field type
+  // (option list / person / group / typed input); the Reference tab drills a record field (the LOCKED ref UX).
+  // commit receives a literal value (i.id) or a {ref}. `fieldCtrl` is the resting control that opens this.
+  const openFieldValue = (dpath, fd, curVal, commit, slotKey, el) => {
+    setOpenSlot(slotKey);
+    const reopen = () => openFieldValue(dpath, fd, curVal, commit, slotKey, el);
+    const smart = recordsInScope(dpath).length
+      ? { tab:"specific", slotKey, onSpecific: reopen,
+          onReference: ()=> openSmartRef(dpath, slotKey, el, null, (ref)=>commit({ref}), { onSpecific: reopen }) } // NO onExpression → no Expression card
+      : null;
+    const o = smart ? {smart} : {};
+    const set = (i)=> commit(i.id);
+    const sel = (typeof curVal==="string") ? curVal : undefined;
+    const t = fd.type;
+    if (t==="user")  return open(el, SAMPLE_USERS.map(u=>({id:u.name, label:u.name, sub:u.email, avatar:initials(u.name)})), set, fd.label, {...o, selected:sel});
+    if (t==="group" || fd.values===SAMPLE_GROUPS) return open(el, SAMPLE_GROUPS.map(g=>({id:g, label:g})), set, fd.label, {...o, selected:sel});
+    if (t==="select" || t==="enum") return open(el, (fd.options||fd.values||[]).map(x=>({id:x, label:x})), set, fd.label, {...o, selected:sel});
+    if (t==="number")   return open(el, [], set, fd.label, {...o, inputType:"number"});
+    if (t==="date")     return open(el, [], set, fd.label, {...o, inputType:"date"});
+    if (t==="datetime") return open(el, [], set, fd.label, {...o, inputType:"datetime-local"});
+    return open(el, [], set, fd.label, {...o, inputType:"text"}); // text / textarea
+  };
+  // the resting control for an action field value: a dropdown-styled button showing the value (or a ref badge + ×).
+  const fieldCtrl = (dpath, fd, v, commit, slotKey, ph) => {
+    const sk = smartKindOf(v); const opened = openSlot===slotKey; const disp = valueDisplay(v, opened);
+    return <button type="button" data-anchor={slotKey} onClick={(e)=>openFieldValue(dpath, fd, v, commit, slotKey, e.currentTarget)}
+      className="w-full rounded-lg pl-3 pr-2.5 py-2.5 text-[13.5px] flex items-center gap-2 text-left transition-colors hover:bg-[var(--pop-hover)]"
+      style={{ background:"var(--panel2)", border:"1px solid "+(opened?"var(--accent2)":"var(--border2)"), color: disp?"var(--text)":"var(--faint)" }}>
+      {sk==="ref" && <span className="shrink-0 font-mono text-[12px]" style={{color:"var(--accent2)"}}>{"{ }"}</span>}
+      <span className="flex-1 min-w-0 truncate">{disp || ph || "choose…"}</span>
+      {sk
+        ? <span role="button" title="Remove reference" onClick={(e)=>{ e.stopPropagation(); clearSmartValue(commit, slotKey); }} className="shrink-0 w-5 h-5 rounded flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--faint)"}}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
+        : <svg className="shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+    </button>;
+  };
   // CLICK a SET smart-value badge → reopen its editor DIRECTLY (no Specific/Smart toggle popover):
   // ref → the reference picker seeded with scope; expr → the Expression Builder seeded with the current
   // string. Falls back to the normal value picker (with the toggle) for an unset / non-smart slot.
@@ -4159,21 +4352,18 @@ function App() {
   // assign target picker — two categories: relative People (pick directly) and "Pick specific"
   // (drill into a searchable user list w/ name+email, or a group list), swapping in place with back.
   const TGT_CHEV = (<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>);
-  const userListConfig = (path, anchor, anchorKey, back) => ({
-    anchor, anchorKey, back, wide:true, title:"Choose a user",
-    items: SAMPLE_USERS.map(u=>({ id:u.name, label:u.name, sub:u.email })),
-    onPick:(i)=>update(path,{arg:i.id}),
+  // [Phase A · C3] ONE entity-picker config. kind "user" | "group"; the 3 named configs below are thin wrappers
+  // (call-sites unchanged). initials + GROUP_GLYPH are the module-scope single source (see Avatar / C4).
+  const entityListConfig = (path, anchor, anchorKey, back, { kind="user", title, onPick }) => ({
+    anchor, anchorKey, back, wide:true, title: title || (kind==="group" ? "Choose a group" : "Choose a user"),
+    items: kind==="group"
+      ? SAMPLE_GROUPS.map(g=>({ id:g, label:g, sub:((g.length*3+5)%8+3)+" members", icon:GROUP_GLYPH }))
+      : SAMPLE_USERS.map(u=>({ id:u.name, label:u.name, sub:u.email, avatar:initials(u.name) })),
+    onPick: onPick || ((i)=>update(path,{arg:i.id})),
   });
-  const groupListConfig = (path, anchor, anchorKey, back) => ({
-    anchor, anchorKey, back, wide:true, title:"Choose a group",
-    items: SAMPLE_GROUPS.map(g=>({ id:g, label:g })),
-    onPick:(i)=>update(path,{arg:i.id}),
-  });
-  const groupManagerListConfig = (path, anchor, anchorKey, back) => ({
-    anchor, anchorKey, back, wide:true, title:"Manager of which group",
-    items: SAMPLE_GROUPS.map(g=>({ id:g, label:g })),
-    onPick:(i)=>update(path,{arg:`${i.id}'s manager`}),
-  });
+  const userListConfig         = (path, anchor, anchorKey, back) => entityListConfig(path, anchor, anchorKey, back, { kind:"user" });
+  const groupListConfig        = (path, anchor, anchorKey, back) => entityListConfig(path, anchor, anchorKey, back, { kind:"group" });
+  const groupManagerListConfig = (path, anchor, anchorKey, back) => entityListConfig(path, anchor, anchorKey, back, { kind:"group", title:"Manager of which group", onPick:(i)=>update(path,{arg:`${i.id}'s manager`}) });
   const assignTargetConfig = (path, anchor, anchorKey) => ({
     anchor, anchorKey, wide:true, title:"Assign to",
     items: [
@@ -4200,7 +4390,13 @@ function App() {
     const a = actionCatAll.byId[actionId]; if(!a || !a.arg || (!el && !anchorKey)) return;
     setOpenSlot(`${pathKey(path)}:arg`);
     if (actionId==="assign") { setPop(assignTargetConfig(path, el, anchorKey)); return; }
-    open(el, a.arg.map(v=>({id:v,label:v})), (i)=>update(path,{arg:i.id}), a.label, {...(anchorKey?{anchorKey}:{}), selected:nodeAt(flow,path)?.arg});
+    open(el, a.arg.map(v=>({id:v,label:v})), (i)=>{
+        // once the arg is set, AUTO-OPEN the form the FIRST time (if this action has a form & isn't set up yet).
+        // Read the node from flowRef (LIVE) — the node was created after this picker's closure was captured.
+        const node = nodeAt(flowRef.current, path); const patch = { arg:i.id };
+        if (node && ((a && a.details) || formSpecFor(node.action)) && !node.formAutoOpened && !node.confirmed){ patch.formAutoOpened = true; requestAnimationFrame(()=>openFormFlow(path, node.id, node.action)); }
+        update(path, patch);
+      }, a.label, {...(anchorKey?{anchorKey}:{}), selected:nodeAt(flow,path)?.arg});
   };
   const openArgByKey = (path, actionId, key) => openArg(path, actionId, null, key);
   // pick an action; if it takes a value, auto-open the arg picker next
@@ -4208,8 +4404,10 @@ function App() {
   // adding a new action and re-picking an existing one). Form-editor leaves wire up later.
   const pickLeaf = (path, leaf) => {
     const n = nodeAt(flow, path); const nodeId = n && n.id;
-    update(path, { action: leaf.a, arg:null });
-    if (actionCatAll.byId[leaf.a] && actionCatAll.byId[leaf.a].arg) requestAnimationFrame(()=>openArgByKey(path, leaf.a, `aarg:${nodeId}`));
+    update(path, { action: leaf.a, arg:null, formAutoOpened:false }); // re-enable the one-time auto-open for the new action
+    const adef = actionCatAll.byId[leaf.a];
+    if (adef && adef.arg) requestAnimationFrame(()=>openArgByKey(path, leaf.a, `aarg:${nodeId}`));
+    else if ((adef && adef.details) || formSpecFor(leaf.a)) requestAnimationFrame(()=>openFormFlow(path, nodeId, leaf.a)); // no arg + form → source pick (if record-acting) then form
   };
   const leafAvail = (lf, avail) => avail ? avail.has(lf.a) : !!actionCatAll.byId[lf.a]; // available given the modules in scope
   // tooltip text for an unavailable item: which modules it IS available for
@@ -4270,7 +4468,9 @@ function App() {
     const newPath = [...parentPath, idx];
     setFlow(f => treeInsertAt(f, parentPath, idx, node));
     setFocusKey(pathKey(newPath));
-    if (actionCatAll.byId[leaf.a] && actionCatAll.byId[leaf.a].arg) requestAnimationFrame(()=>openArgByKey(newPath, leaf.a, `aarg:${node.id}`));
+    const adef = actionCatAll.byId[leaf.a];
+    if (adef && adef.arg) requestAnimationFrame(()=>openArgByKey(newPath, leaf.a, `aarg:${node.id}`));
+    else if ((adef && adef.details) || formSpecFor(leaf.a)) requestAnimationFrame(()=>openFormFlow(newPath, node.id, leaf.a)); // no arg + form → source pick (if record-acting) then form
   };
   const openAddActionMenu = (parentPath, anchor, back, index) => {
     setOpenSlot(null);
@@ -4283,11 +4483,11 @@ function App() {
   const recordsInScope = (path) => {
     const recs = [];
     const mod = triggers[0] && triggers[0].vals && triggers[0].vals.module;
-    if (mod) recs.push({ id:"__trigger", label:`the ${mod}`, module:mod });
+    if (mod) recs.push({ id:"__trigger", label:`the ${mod}`, module:mod, from:"trigger" });
     const topIdx = typeof path[0]==="number" ? path[0] : flow.length;
     for (let j=0; j<topIdx; j++){ const n = flow[j];
-      if (n.kind==="action" && n.action==="create" && n.arg) recs.push({ id:n.id, label:`the ${n.arg}`, module:n.arg });
-      else if (n.kind==="get" && n.module) recs.push({ id:n.id, label:`the ${n.module}`, module:n.module });
+      if (n.kind==="action" && n.action==="create" && n.arg) recs.push({ id:n.id, label:`the ${n.arg}`, module:n.arg, from:"create" });
+      else if (n.kind==="get" && n.module) recs.push({ id:n.id, label:`the ${n.module}`, module:n.module, from:"get" });
     }
     return recs;
   };
@@ -4337,9 +4537,9 @@ function App() {
   // render the {verb, tpl} sentence into slots/words: leading verb = clickable action slot; {record} = the
   // record slot (or an implicit Word); {arg} = the action's arg slot; everything else = fixed Words.
   const renderRecordSentence = (sent, node, def, path, scope, showRec, k) => {
-    const recEl = showRec
-      ? <Slot tone="action" value={recordLabel(scope, node.record)} placeholder="the record" open={openSlot===`${k}:record`} onClick={(e)=>pickRecord(path,scope,e)} />
-      : <Word>{scope.length ? scope[scope.length-1].label : "the record"}</Word>;
+    // the record is ALWAYS a clickable slot (underlined) now — even with a single source — so it reads as the
+    // conscious, changeable source it is. Clicking it reopens the source picker (one option or many).
+    const recEl = <Slot tone="action" value={recordLabel(scope, node.record)} placeholder="the record" open={openSlot===`${k}:record`} onClick={(e)=>pickRecord(path,scope,e)} />;
     const argEl = <Slot tone="action" value={node.arg} placeholder={def.argPlaceholder || "…"} open={openSlot===`${k}:arg`} dataAnchor={`aarg:${node.id}`} innerRef={(el)=>{ if(el) argSlotRefs.current[k]=el; }} onClick={(e)=>pickArg(path,node,e)} />;
     const parts = sent.tpl.split(/(\{record\}|\{arg\})/).filter(p=>p!=="");
     return (
@@ -4350,6 +4550,23 @@ function App() {
           : <Word key={pi}>{p.trim()}</Word>)}
       </span>
     );
+  };
+
+  // After an action is added/configured, route into its FORM. Record-acting actions (update/send/etc.) first show
+  // a SOURCE picker — which record it acts on — ALWAYS, even with one source, so the choice is conscious; then the
+  // form opens. Non-record forms (create / http / plugin) open the form directly.
+  const openFormFlow = (path, nodeId, actionId) => {
+    const def = actionCatAll.byId[actionId]; const spec = formSpecFor(actionId);
+    if (!((def && def.details) || spec)) return;                       // no form → nothing to open
+    const scope = recordsInScope(path);
+    if (recordActionSentence({action:actionId}, def, true) && scope.length) {
+      setOpenSlot(`${pathKey(path)}:record`);
+      open(null, scope.map(r=>({id:r.id, label:r.label})),
+        (i)=>{ update(path, { record:i.id }); requestAnimationFrame(()=>setDrawer(nodeId)); },
+        "Which record?", { anchorKey:`act:${nodeId}`, noSearch:true, selected: nodeAt(flow,path)?.record });
+    } else {
+      setDrawer(nodeId);
+    }
   };
 
   const isComplete = hasTrigger && hasAction(flow);
@@ -4427,7 +4644,7 @@ function App() {
   };
   useEffect(() => {
     const onKey = (e) => {
-      if (pop || exprEdit || drawer) return; // a popover / expression rail / form drawer owns the keyboard while open
+      if (pop || exprEdit || drawer || refOpen || helpOpen) return; // a popover / any right-side panel owns the keyboard while open
       const tag = (e.target.tagName||"").toLowerCase();
       if (tag==="input" || tag==="textarea") return;
       const nav = navList();
@@ -4456,6 +4673,18 @@ function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+  // Esc = the UNIVERSAL side-section closer — works for the form drawer, the Expression rail, Node reference, and
+  // Keyboard shortcuts (whichever is open). The main keydown handler bails while a right panel owns the keyboard, and
+  // the backdrop blocks click-outside by design, so Esc was the missing dismissal. Guarded by !pop so a popover layered
+  // over a panel (e.g. a reference drill) closes FIRST; closeAnyRightPanel mirrors each panel's own cancel (the
+  // Expression rail reverts to its prior value). Internal panel menus (the Expression `/`-menu) stopPropagation, so
+  // their Esc is handled before this window listener fires.
+  useEffect(() => {
+    if (!(drawer || exprEdit || refOpen || helpOpen)) return;
+    const onEsc = (e) => { if (e.key==="Escape" && !pop) { e.preventDefault(); closeAnyRightPanel(); } };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [drawer, exprEdit, refOpen, helpOpen, pop]);
 
   /* ---- markers ---- */
   const MARK = {
@@ -4502,8 +4731,7 @@ function App() {
       <div onClick={onClick} className={"relative flex items-start gap-4 " + (onClick ? "cursor-pointer" : "")}>
         <div className={"flex-1 min-w-0 text-[17.5px]" + (wideContent ? " flex items-start gap-1" : "")} style={{lineHeight:`${HEAD}px`, wordSpacing:"2px"}}>
           {head && <span className={"relative group/help inline-flex items-center align-top mr-2.5" + (wideContent ? " shrink-0" : "")} style={{height:`${HEAD}px`}}>
-            <span className={"text-[10px] font-semibold uppercase tracking-[0.1em] px-2 py-2 leading-none rounded-md whitespace-nowrap inline-flex items-center " + (help ? "cursor-help" : "")}
-              style={{color:headColor||"var(--faint)", background:headBg||"var(--panel2)"}}>{head}</span>
+            <Badge color={headColor||"var(--faint)"} bg={headBg||"var(--panel2)"} className={"inline-flex items-center " + (help ? "cursor-help" : "")}>{head}</Badge>
             {help && <div className="absolute z-30 left-0 top-full mt-2 w-72 p-3.5 rounded-xl opacity-0 pointer-events-none group-hover/help:opacity-100 transition-opacity"
               style={{background:"var(--pop-bg)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-sm)"}}>
               <HelpCard help={help} />
@@ -4622,7 +4850,7 @@ function App() {
   // the AND/OR joiner shown between clauses — an underlined editable word (like a slot), not a badge.
   // Click to toggle and ↔ or.
   const CombinerChip = ({ combiner, onClick }) => (
-    <button onClick={onClick} title="Switch and / or"
+    <button onClick={onClick} data-tip="Toggle AND / OR"
       className="slot mx-1 align-baseline font-medium" style={{ color:"var(--c-if)" }}>
       {(combiner||"and")}
     </button>
@@ -4671,7 +4899,7 @@ function App() {
     if(main.length) groups.unshift(main);
     // the connector badge is a plain and/or toggle on the clause's own `conn`; grouping just follows the rule above.
     const connBadge = (ci) => { const cur = node.clauses[ci].conn || "and";
-      return <button onClick={(e)=>{ e.stopPropagation(); setFlow(f=>{ const n=nodeAt(f,path); const cls=(n&&n.clauses)||[]; const patch={ clauses: cls.map((c,j)=> j===ci ? {...c, conn:(c.conn||"and")==="and"?"or":"and"} : c) }; if(!n.cardMode && cls.length>=2) patch.cardMode=(cls[1]&&cls[1].conn)||"and"; return treeUpdate(f,path,patch); }); }} title="Switch and / or"
+      return <button onClick={(e)=>{ e.stopPropagation(); setFlow(f=>{ const n=nodeAt(f,path); const cls=(n&&n.clauses)||[]; const patch={ clauses: cls.map((c,j)=> j===ci ? {...c, conn:(c.conn||"and")==="and"?"or":"and"} : c) }; if(!n.cardMode && cls.length>=2) patch.cardMode=(cls[1]&&cls[1].conn)||"and"; return treeUpdate(f,path,patch); }); }} data-tip="Toggle AND / OR"
         className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] px-2 py-2 leading-none rounded-md whitespace-nowrap transition-colors hover:bg-[var(--pop-hover)] hover:text-[var(--text)]"
         style={{ color:"var(--muted)", background:"var(--panel2)" }}>{cur}{COND_CHEV}</button>; };
     const clauseEls = (ci) => {
@@ -4714,7 +4942,10 @@ function App() {
         {/* the "Check if" badge belongs ONLY to the real CHECK IF condition node (wide). Get "where" / flat shows nothing. */}
         {!(ci===0 && !wide) && <span className="shrink-0 flex items-center" style={{width:"72px", height:`${HEAD}px`, justifyContent: (flushLeft||isBoundary)?"flex-start":"flex-end"}}>
           {ci===0
-            ? <span className="text-[10px] font-semibold uppercase tracking-[0.1em] px-2 py-2 leading-none rounded-md whitespace-nowrap" style={{ color:"var(--c-if)", background:"var(--c-if-bg)" }}>Check if</span>
+            ? <span className="relative group/help inline-flex items-center">
+                <Badge color="var(--c-if)" bg="var(--c-if-bg)" className="cursor-help">Check if</Badge>
+                <div className="absolute z-30 left-0 top-full mt-2 w-72 p-3.5 rounded-xl opacity-0 pointer-events-none group-hover/help:opacity-100 transition-opacity" style={{background:"var(--pop-bg)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-sm)"}}><HelpCard help={NODE_HELP.condition} /></div>
+              </span>
             : (isBoundary ? connBadge(ci) : null)}
         </span>}
         {/* sentence tokens (field · op · value) flow as ONE inline run → wrapped lines (incl. a long multi-value
@@ -4738,9 +4969,7 @@ function App() {
           <button onClick={(e)=>{ e.stopPropagation(); copyClause(path, ci); }} title="Duplicate condition" className="rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] text-[var(--faint)] hover:text-[var(--text)]" style={{padding:"5px"}}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15V5a2 2 0 012-2h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
           </button>
-          <button onClick={(e)=>{ e.stopPropagation(); removeClause(path, ci); }} title={clauses.length>1?"Remove condition":"Clear condition"} className="rounded-md flex items-center justify-center transition-colors hover:bg-[rgba(248,81,73,0.18)] text-[var(--faint)] hover:text-[var(--red)]" style={{padding:"5px"}}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-          </button>
+          <DeleteBtn onClick={(e)=>{ e.stopPropagation(); removeClause(path, ci); }} title={clauses.length>1?"Remove condition":"Clear condition"} />
         </span>
       </div>
       );
@@ -4778,7 +5007,7 @@ function App() {
     clauses.forEach((c,ci)=>{ if(ci===0 || (c.conn||"and")===mode) main.push(ci); else groups.push([ci]); });
     if(main.length) groups.unshift(main);
     const connBadge = (ci) => { const cur = node.clauses[ci].conn || "and";
-      return <button onClick={(e)=>{ e.stopPropagation(); setFlow(f=>{ const n=nodeAt(f,path); const cls=(n&&n.clauses)||[]; const patch={ clauses: cls.map((c,j)=> j===ci ? {...c, conn:(c.conn||"and")==="and"?"or":"and"} : c) }; if(!n.cardMode && cls.length>=2) patch.cardMode=(cls[1]&&cls[1].conn)||"and"; return treeUpdate(f,path,patch); }); }} title="Switch and / or"
+      return <button onClick={(e)=>{ e.stopPropagation(); setFlow(f=>{ const n=nodeAt(f,path); const cls=(n&&n.clauses)||[]; const patch={ clauses: cls.map((c,j)=> j===ci ? {...c, conn:(c.conn||"and")==="and"?"or":"and"} : c) }; if(!n.cardMode && cls.length>=2) patch.cardMode=(cls[1]&&cls[1].conn)||"and"; return treeUpdate(f,path,patch); }); }} data-tip="Toggle AND / OR"
         className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] px-2 py-2 leading-none rounded-md whitespace-nowrap transition-colors hover:bg-[var(--pop-hover)] hover:text-[var(--text)]"
         style={{ color:"var(--muted)", background:"var(--panel2)" }}>{cur}{COND_CHEV}</button>; };
     const clauseEls = (ci) => {
@@ -4807,7 +5036,7 @@ function App() {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
         </span>}
         {ci===0
-          ? <span className="shrink-0 flex items-center gap-x-2" style={{height:`${HEAD}px`}}><span className="text-[10px] font-semibold uppercase tracking-[0.1em] px-2 py-2 leading-none rounded-md whitespace-nowrap" style={{color:"var(--text)", background:"var(--panel2)"}}>WAIT</span><Word>until</Word></span>
+          ? <span className="shrink-0 flex items-center gap-x-2" style={{height:`${HEAD}px`}}><Badge color="var(--text)" bg="var(--panel2)">WAIT</Badge><Word>until</Word></span>
           : <span className="shrink-0 flex items-center" style={{width:"72px", height:`${HEAD}px`, justifyContent: isBoundary?"flex-start":"flex-end"}}>{isBoundary ? connBadge(ci) : null}</span>}
         {/* sentence tokens flow as ONE inline run; WITHIN-group connector is inline-left (first child); BETWEEN-group
             connector sits left in the gutter (above). "+ new condition" is the LAST inline child. */}
@@ -4825,9 +5054,7 @@ function App() {
           <button onClick={(e)=>{ e.stopPropagation(); copyClause(path, ci); }} title="Duplicate condition" className="rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] text-[var(--faint)] hover:text-[var(--text)]" style={{padding:"5px"}}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15V5a2 2 0 012-2h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
           </button>
-          <button onClick={(e)=>{ e.stopPropagation(); removeClause(path, ci); }} title={clauses.length>1?"Remove condition":"Clear condition"} className="rounded-md flex items-center justify-center transition-colors hover:bg-[rgba(248,81,73,0.18)] text-[var(--faint)] hover:text-[var(--red)]" style={{padding:"5px"}}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-          </button>
+          <DeleteBtn onClick={(e)=>{ e.stopPropagation(); removeClause(path, ci); }} title={clauses.length>1?"Remove condition":"Clear condition"} />
         </span>
       </div>
       );
@@ -4849,7 +5076,7 @@ function App() {
     const k = pathKey(path), pobj = node.paths[pi];
     const clauses = pobj.clauses || [];
     const connBadge = (ci) => { const cur = pobj.clauses[ci].conn || "and";
-      return <button onClick={(e)=>{ e.stopPropagation(); updatePathClause(path, pi, ci, { conn: cur==="and"?"or":"and" }); }} title="Switch and / or"
+      return <button onClick={(e)=>{ e.stopPropagation(); updatePathClause(path, pi, ci, { conn: cur==="and"?"or":"and" }); }} data-tip="Toggle AND / OR"
         className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] px-2 py-2 leading-none rounded-md whitespace-nowrap transition-colors hover:bg-[var(--pop-hover)] hover:text-[var(--text)]"
         style={{ color:"var(--muted)", background:"var(--panel2)" }}>{cur}{COND_CHEV}</button>; };
     const clauseEls = (ci) => {
@@ -4869,7 +5096,10 @@ function App() {
           <div key={ci} className="group/cl flex flex-wrap items-start gap-x-2.5 rounded-lg transition-colors hover:bg-[var(--c-if-h)]" style={{minHeight:`${HEAD}px`, padding:"0 8px", margin:"0 -8px"}}>
             <span className="shrink-0 flex items-center justify-end" style={{width:"72px", height:`${HEAD}px`}}>
               {ci===0
-                ? <span className="text-[10px] font-semibold uppercase tracking-[0.1em] px-2 py-2 leading-none rounded-md whitespace-nowrap" style={{ color:"var(--c-if)", background:"var(--c-if-bg)" }}>{pi===0?"Check if":"Or if"}</span>
+                ? <span className="relative group/help inline-flex items-center">
+                    <Badge color="var(--c-if)" bg="var(--c-if-bg)" className="cursor-help">{pi===0?"Check if":"Or if"}</Badge>
+                    <div className="absolute z-30 left-0 top-full mt-2 w-72 p-3.5 rounded-xl opacity-0 pointer-events-none group-hover/help:opacity-100 transition-opacity" style={{background:"var(--pop-bg)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-sm)"}}><HelpCard help={NODE_HELP.branch} /></div>
+                  </span>
                 : connBadge(ci)}
             </span>
             {/* sentence tokens flow as ONE inline run → wrapped lines return to the LEFT MARGIN (paragraph wrap) */}
@@ -4938,7 +5168,7 @@ function App() {
         const head = acted ? "And" : "Then"; acted = true;
         const isLast = opts.last && i===nodes.length-1;
         const scope = recordsInScope(path);
-        const showRec = scope.length > 1; // hide the "where" slot when there's only one record
+        const showRec = true; // record is ALWAYS a clickable slot, even with one source (S6) — reads as a conscious source
         // node-level "good to go": has a form/card, every required field filled, AND confirmed via Done
         const _spec = formSpecFor(node.action), _data = node.data||{}, _rows = node.fields||[];
         const _stagesOK = !_spec || !_spec.stages || ((_data.stages||[]).length>0 && (_data.stages||[]).every(st=>_spec.stages.fields.filter(f3=>!f3.opt).every(f3=>st[f3.k])));
@@ -4947,7 +5177,7 @@ function App() {
         const nodeGood = !!(_hasCard && _complete && node.confirmed);
         return (
           <Station key={node.id} marker={MARK.action} isLast={isLast} head={head} headColor="var(--c-then)" headBg="var(--c-then-bg)" hoverBg="var(--c-then-h)" help={NODE_HELP.action} editing={drawer===node.id}
-            innerRef={(el)=>setRowRef(k, el)} removeLabel="Clear action" onCopy={()=>copyNode(path)} onInsert={isTrunk ? null : insertBelow} gapBottom={isTrunk?0:undefined} dnd={dnd(node.id)}
+            innerRef={(el)=>setRowRef(k, el)} removeLabel="Remove action" onCopy={()=>copyNode(path)} onInsert={isTrunk ? null : insertBelow} gapBottom={isTrunk?0:undefined} dnd={dnd(node.id)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)} onRemove={()=>remove(path)}>
             {node.action === "assign" ? (<>
               {/* multi-slot "sentence" action: assign {record?} to {target} */}
@@ -5018,31 +5248,52 @@ function App() {
                 const sc = recordsInScope(path);
                 const modName = node.action==="create" ? node.arg : (()=>{ const r=sc.find(x=>x.id===node.record)||sc[sc.length-1]; return r?r.label.replace(/^the\s+/i,""):(triggers[0]&&triggers[0].vals&&triggers[0].vals.module); })();
                 const recF = recordFieldsFor(modName);
-                const verb = node.action==="create" ? ("Create a "+(node.arg||"record")) : ("Update the "+(modName||"record"));
+                // field CHANGES as a compact readable run: "Field → Value · Field → Value · +N more" (first 2 + count).
                 const fl = rows.filter(fv=>fv.field);
-                return verb + (fl.length ? " with " + fl.map(fv=>{ const fd=recF.find(x=>x.id===fv.field); const val=Array.isArray(fv.value)?fv.value.join(", "):fv.value; return (fd?fd.label:"field")+" = "+(val||"…"); }).join(", ") : "");
+                if (!fl.length) return "";
+                const changes = fl.map(fv=>{ const fd=recF.find(x=>x.id===fv.field); const val=Array.isArray(fv.value)?fv.value.join(", "):fv.value; return (fd?fd.label:"field")+" → "+(val||"…"); });
+                const N=2;
+                return changes.slice(0,N).join("  ·  ") + (changes.length>N ? `  ·  +${changes.length-N} more` : "");
               })();
               const subtitle = cardSummary || countLine;
+              // when not configured: ONE line, just the prompt (no subtext)
+              const prompt = spec ? "Choose options" : "Choose fields";
               // "Good to go" only once the user has confirmed the form via Done (and it is still complete)
               const good = complete && node.confirmed;
               const cardEditing = drawer===node.id; // this card's form is open → highlight it, lift above the dim
               return (
-                <span onClick={(e)=>{ e.stopPropagation(); setDrawer(node.id); }}
+                <span onClick={(e)=>{ e.stopPropagation(); setDrawer(cardEditing ? null : node.id); }}
                   onMouseEnter={(e)=>{ if(!cardEditing){ e.currentTarget.style.background="var(--pop-hover)"; e.currentTarget.style.boxShadow="var(--shadow-sm)"; } }}
                   onMouseLeave={(e)=>{ if(!cardEditing){ e.currentTarget.style.background="var(--panel)"; e.currentTarget.style.boxShadow="none"; } }}
                   className="mt-2.5 relative flex items-center gap-3 rounded-xl border px-3 py-2.5 cursor-pointer transition-all max-w-[420px]"
                   style={{ borderColor: cardEditing?"var(--text)":(good?"var(--rdy-bd)":"var(--border2)"), borderWidth: cardEditing?"1.5px":"1px", background:"var(--panel)", ...(cardEditing?{zIndex:40, boxShadow:"var(--shadow-pop)"}:{}) }}>
-                  <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{background:"var(--panel2)", color:"var(--muted)"}}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="4.5" y="3" width="15" height="18" rx="2.5" stroke="currentColor" strokeWidth="1.6"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                  {/* left icon: a CHECK once configured (the tick lives HERE, not next to "Edit"); the GEAR while not set up (accent = action). */}
+                  <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{background: good?"var(--rdy-bg)":"var(--panel2)", color: good?"var(--rdy-fg)":"var(--muted)"}}>
+                    {good
+                      ? <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-11" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      : <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.7"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1M18.7 18.7l-2.1-2.1M7.4 7.4L5.3 5.3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>}
                   </span>
-                  <span className="flex flex-col min-w-0 flex-1 gap-0.5">
-                    <span className="text-[13px] font-medium leading-tight truncate" style={{color:"var(--text)"}}>{title}</span>
-                    <span className="text-[11.5px] leading-tight truncate" style={{color:"var(--muted)"}} title={subtitle}>{subtitle}</span>
+                  {/* ONE readable line — configured shows the field-change summary, not-configured shows the prompt (no title/subtitle split, so it reads linearly) */}
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[13px] leading-tight truncate" style={{color:"var(--text)"}} title={good?subtitle:undefined}>{good ? subtitle : prompt}</span>
                   </span>
-                  <span className="shrink-0 text-xs px-2 py-0.5 rounded-full"
-                    style={{ background: good?"var(--rdy-bg)":"var(--drf-bg)", color: good?"var(--rdy-fg)":"var(--drf-fg)", border:`1px solid ${good?"var(--rdy-bd)":"var(--drf-bd)"}` }}>
-                    {good ? "Good to go" : "Incomplete"}
-                  </span>
+                  {/* RIGHT = an ACTION: while this form is OPEN → "Close ×"; else "Set up ›" (not configured) → "✓ Edit" (done). */}
+                  {cardEditing ? (
+                    <span className="shrink-0 inline-flex items-center gap-1 text-[12px] font-medium rounded-md px-2 py-1 -mr-1 transition-colors hover:bg-[var(--pop-hover)] hover:text-[var(--text)]" style={{color:"var(--muted)"}}>
+                      Close
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                    </span>
+                  ) : good ? (
+                    <span className="shrink-0 inline-flex items-center gap-1 text-[12px] font-medium" style={{color:"var(--muted)"}}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 00-3-3L5 17v3z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><path d="M13.5 8.5l2 2" stroke="currentColor" strokeWidth="1.7"/></svg>
+                      Edit
+                    </span>
+                  ) : (
+                    <span className="shrink-0 inline-flex items-center gap-0.5 text-[12px] font-semibold" style={{color:"var(--accent2)"}}>
+                      Set up
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </span>
+                  )}
                 </span>
               );
             })()}
@@ -5069,7 +5320,7 @@ function App() {
       if (node.kind === "delay") {
         const isLast = opts.last && i===nodes.length-1;
         return (
-          <Station key={node.id} marker={MARK.delay} isLast={isLast} head={node.mode==="event"?undefined:"Wait"} headColor="var(--text)" headBg="var(--panel2)" hoverBg={node.mode==="event"?"transparent":"var(--panel2)"} wideContent={node.mode==="event"}
+          <Station key={node.id} marker={MARK.delay} isLast={isLast} head={node.mode==="event"?undefined:"Wait"} headColor="var(--text)" headBg="var(--panel2)" hoverBg={node.mode==="event"?"transparent":"var(--panel2)"} wideContent={node.mode==="event"} help={NODE_HELP.delay}
             padY={node.mode==="event"?0:undefined} markerY={node.mode==="event"?(PAD+HEAD/2):undefined}
             innerRef={(el)=>setRowRef(k, el)} removeLabel={node.mode==="event"?undefined:"Remove wait"} onCopy={node.mode==="event"?undefined:()=>copyNode(path)} onInsert={isTrunk ? null : insertBelow} gapBottom={isTrunk?0:undefined} dnd={dnd(node.id)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)} onRemove={node.mode==="event"?undefined:()=>remove(path)}>
@@ -5100,7 +5351,7 @@ function App() {
                     </span>
                   : <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
                       <button onClick={(e)=>{ e.stopPropagation(); pickWaitKind(path,node,e); }} title="Change to a date / duration" className="slot align-baseline font-medium" style={{color:"var(--text)"}}>for</button>
-                      <Slot value={node.amount} placeholder="0" open={openSlot===`${k}:amount`} dataAnchor={`damt:${node.id}`} onClick={(e)=>pickDelayAmount(path,node,e)} />
+                      <Slot value={valueDisplay(node.amount, openSlot===`${k}:amount`)} smartKind={smartKindOf(node.amount)} placeholder="0" open={openSlot===`${k}:amount`} dataAnchor={`damt:${node.id}`} onClick={(e)=>pickDelayAmount(path,node,e)} onClear={smartKindOf(node.amount)?()=>update(path,{amount:null}):undefined} />
                       <Slot value={node.unit} placeholder="hours" open={openSlot===`${k}:unit`} onClick={(e)=>pickDelayUnit(path,node,e)} />
                       <Word>as per</Word>
                       <Slot value={node.hours==="business"?"business hours":"calendar hours"} placeholder="calendar hours" open={openSlot===`${k}:hours`} onClick={(e)=>pickDelayHours(path,node,e)} />
@@ -5114,7 +5365,7 @@ function App() {
       if (node.kind === "get") {
         const isLast = opts.last && i===nodes.length-1;
         return (
-          <Station key={node.id} marker={MARK.get} isLast={isLast} head="Get" headColor="var(--text)" headBg="var(--panel2)" hoverBg="var(--panel2)" wideContent
+          <Station key={node.id} marker={MARK.get} isLast={isLast} head="Get" headColor="var(--text)" headBg="var(--panel2)" hoverBg="var(--panel2)" wideContent help={NODE_HELP.get}
             innerRef={(el)=>setRowRef(k, el)} onInsert={isTrunk ? null : insertBelow} gapBottom={isTrunk?0:undefined} dnd={dnd(node.id)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)}>
             {(() => { const single = String(node.qty).trim()==="1"; // single record (qty 1) → no sort; "where" inline
@@ -5128,15 +5379,16 @@ function App() {
                 {single ? (()=>{ const c=(node.clauses||[])[0]||{}; const f=flowFD(node, c.field); const rel=f?.type==="date" && isRelDateOp(c.op);
                   return (
                   <span className="flex-1 min-w-0 self-center clause-flow" style={{minHeight:`${HEAD}px`, lineHeight:`${HEAD}px`}}>
-                    <Slot value={node.qty} placeholder="how many" open={openSlot===`${k}:qty`} dataAnchor={`gqty:${node.id}`} onClick={(e)=>pickGetQty(path,node,e)} />
+                    {/* ONE inline run (display:block) → literal {" "} spaces between slots (word-spacing styles them); the flex gap doesn't reach inside here */}
+                    <Slot value={node.qty} placeholder="how many" open={openSlot===`${k}:qty`} dataAnchor={`gqty:${node.id}`} onClick={(e)=>pickGetQty(path,node,e)} />{" "}
                     <Slot value={node.module} placeholder="records" open={openSlot===`${k}:module`} dataAnchor={`gmod:${node.id}`} onClick={(e)=>pickGetModule(path,node,e)} />
-                    {showWhere && <>
-                      <Word>where</Word>
+                    {showWhere && <>{" "}
+                      <Word>where</Word>{" "}
                       <Slot value={f?.label} placeholder="a field" open={openSlot===`${k}:c0:field`} dataAnchor={`cond:${node.id}:0`} innerRef={(el)=>{ if(el) condSlotRefs.current[`${node.id}:0`]=el; }} onClick={(e)=>pickClauseField(path,node,0,e)} />
-                      {c.field && <Slot value={c.op} placeholder="is" open={openSlot===`${k}:c0:op`} dataAnchor={`cop:${node.id}:0`} onClick={(e)=>pickClauseOp(path,node,0,e)} />}
+                      {c.field && <>{" "}<Slot value={c.op} placeholder="is" open={openSlot===`${k}:c0:op`} dataAnchor={`cop:${node.id}:0`} onClick={(e)=>pickClauseOp(path,node,0,e)} /></>}
                       {c.field && (rel
-                        ? <><Slot value={c.value} placeholder="0" open={openSlot===`${k}:c0:value`} dataAnchor={`cval:${node.id}:0`} innerRef={(el)=>{ if(el) valueSlotRefs.current[`${node.id}:0`]=el; }} onClick={(e)=>pickClauseValue(path,node,0,e)} /><Slot value={c.unit||"days"} placeholder="days" open={openSlot===`${k}:c0:unit`} onClick={(e)=>pickClauseUnit(path,0,e)} /></>
-                        : <Slot wrap={Array.isArray(c.value)} value={valueDisplay(c.value, openSlot===`${k}:c0:value`)} smartKind={valueSmartKind(c, `${k}:c0:value`)} placeholder={valuePlaceholder(f?.type)} open={openSlot===`${k}:c0:value`} dataAnchor={`cval:${node.id}:0`} innerRef={(el)=>{ if(el) valueSlotRefs.current[`${node.id}:0`]=el; }} onClick={(e)=>reopenClauseSmart(path,node,0,e)} onClear={()=>clearSmartValue((v)=>updateClause(path,0,{value:v}), `${k}:c0:value`)} />)}
+                        ? <>{" "}<Slot value={c.value} placeholder="0" open={openSlot===`${k}:c0:value`} dataAnchor={`cval:${node.id}:0`} innerRef={(el)=>{ if(el) valueSlotRefs.current[`${node.id}:0`]=el; }} onClick={(e)=>pickClauseValue(path,node,0,e)} />{" "}<Slot value={c.unit||"days"} placeholder="days" open={openSlot===`${k}:c0:unit`} onClick={(e)=>pickClauseUnit(path,0,e)} /></>
+                        : <>{" "}<Slot wrap={Array.isArray(c.value)} value={valueDisplay(c.value, openSlot===`${k}:c0:value`)} smartKind={valueSmartKind(c, `${k}:c0:value`)} placeholder={valuePlaceholder(f?.type)} open={openSlot===`${k}:c0:value`} dataAnchor={`cval:${node.id}:0`} innerRef={(el)=>{ if(el) valueSlotRefs.current[`${node.id}:0`]=el; }} onClick={(e)=>reopenClauseSmart(path,node,0,e)} onClear={()=>clearSmartValue((v)=>updateClause(path,0,{value:v}), `${k}:c0:value`)} /></>)}
                     </>}
                   </span>
                   ); })() : <>
@@ -5159,9 +5411,7 @@ function App() {
                   <button onClick={(e)=>{ e.stopPropagation(); copyNode(path); }} title="Duplicate" className="rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] text-[var(--faint)] hover:text-[var(--text)]" style={{padding:"5px"}}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15V5a2 2 0 012-2h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
                   </button>
-                  <button onClick={(e)=>{ e.stopPropagation(); remove(path); }} title="Remove get" className="rounded-md flex items-center justify-center transition-colors hover:bg-[rgba(248,81,73,0.18)] text-[var(--faint)] hover:text-[var(--red)]" style={{padding:"5px"}}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                  </button>
+                  <DeleteBtn onClick={(e)=>{ e.stopPropagation(); remove(path); }} title="Remove get" />
                 </span>
               </span>
               {/* MULTI record (sort shown) → "where …" stays on its own SECOND line (existing layout) */}
@@ -5223,7 +5473,7 @@ function App() {
           {/* branch-level affordances */}
           <div className="relative flex items-center gap-3" style={{ marginLeft:"60px", paddingLeft:"4px", paddingBottom:`${GAP}px` }}>
             {!branchIsTerminal && <div className="absolute" style={{ left:"-51px", top:0, bottom:0, width:"1px", background:"var(--border2)" }}/>}
-            <button onClick={()=>addPath(path)} className="text-[12px] font-medium transition-colors hover:brightness-125" style={{color:"var(--c-if)"}}>+ add branch</button>
+            <button onClick={()=>addPath(path)} className="text-[12px] font-medium transition-colors hover:brightness-110" style={{color:"var(--c-if)"}}>+ add branch</button>
           </div>
         </React.Fragment>
       );
@@ -5257,6 +5507,27 @@ function App() {
             </React.Fragment>
           );
         })}
+        {activeSuite==="automation" && QA_TESTS.some(t=>!qaDone.includes(t.id)) && (
+          <div className="mt-3 pt-2" style={{borderTop:"1px solid var(--side-bd)"}}>
+            <div className="px-3 mb-1.5 flex items-center justify-between">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.12em]" style={{color:"var(--faint)"}}>QA — load &amp; verify</div>
+              <span className="text-[10px] font-semibold" style={{color:"var(--faint)"}}>{QA_TESTS.filter(t=>!qaDone.includes(t.id)).length}</span>
+            </div>
+            {QA_TESTS.filter(t=>!qaDone.includes(t.id)).map(t=>(
+              <div key={t.id} className="group/qa mb-1 rounded-lg px-2.5 py-2 transition-colors hover:bg-[var(--side-item-active-bg)]">
+                <div className="flex items-start gap-2">
+                  <button onClick={()=>setDoc(JSON.parse(JSON.stringify(t.doc)))} className="flex-1 min-w-0 text-left">
+                    <div className="text-[12.5px] font-medium leading-snug" style={{color:"var(--side-item)"}}>{t.label}</div>
+                    <div className="text-[11px] leading-snug mt-0.5" style={{color:"var(--faint)"}}>{t.note}</div>
+                  </button>
+                  <button onClick={()=>setQaDone(d=>[...d,t.id])} title="Mark verified — remove" className="shrink-0 w-5 h-5 rounded-md flex items-center justify-center opacity-0 group-hover/qa:opacity-100 transition-opacity hover:bg-[var(--pop-hover)]" style={{color:"var(--faint)"}}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-11" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </>
   );
@@ -5348,7 +5619,7 @@ function App() {
           </div>
         </div>
         <button onClick={(e)=>openVersions(e.currentTarget)} title="Switch experiment build"
-          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[12px] font-medium transition-colors hover:brightness-125"
+          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[12px] font-medium transition-colors hover:brightness-110"
           style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--muted)"}}>
           {(BUILDS.find(b=>b.file===currentBuild)?.label) || "Working"}
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -5361,7 +5632,7 @@ function App() {
             </button>{enabled?"Enabled":"Disabled"}
           </label>
           <button onClick={()=>setTheme(theme==="dark"?"light":"dark")} title="Toggle theme"
-            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:brightness-125"
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:brightness-110"
             style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--muted)"}}>
             {theme==="dark"
               ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -5463,6 +5734,10 @@ function App() {
               : (()=>{ const r = dScope.find(x=>x.id===dnode.record) || dScope[dScope.length-1]; return r ? r.label.replace(/^the\s+/i,"") : (triggers[0] && triggers[0].vals && triggers[0].vals.module); })();
             const recFields = recordFieldsFor(dModName);
             const setF = (i, patch) => update(dpath, { fields: dfields.map((x,ix)=>ix===i?{...x,...patch}:x) });
+            // [S1] wrap ANY field-value input with smart-value support: a Reference/Expression toggle, and a
+            // smart badge once a {ref}/{expr} is set. `vertical` top-aligns the toggle (for textarea).
+            // [action smart values] each field VALUE renders via `fieldCtrl` → opens the Specific|Reference dropdown
+            // (reference-only, no Expression, no external icon). See openFieldValue/fieldCtrl near openClauseValue.
             const addF = () => update(dpath, { fields: [...dfields, { field:null, value:null }] });
             const rmF  = (i) => update(dpath, { fields: dfields.filter((_,ix)=>ix!==i) });
             const dspec = formSpecFor(dnode.action);
@@ -5473,8 +5748,13 @@ function App() {
             const setStage = (i2, kk, val) => setD("stages", dstages.map((s3,ix)=> ix===i2 ? { ...s3, [kk]: val } : s3));
             const addStage = () => { setD("stages", [...dstages, { dtype:"Unanimous" }]); setOpenSecs(s2=>({ ...s2, ["stage:"+dstages.length]:true })); };
             const rmStage = (i2) => setD("stages", dstages.filter((_,ix)=>ix!==i2));
-            const inCls = "w-full rounded-lg px-2.5 py-2 text-[13px] outline-none";
+            const inCls = "w-full rounded-lg px-3 py-2.5 text-[13.5px] outline-none";
             const inSty = { background:"var(--panel2)", border:"1px solid var(--border2)", color:"var(--text)" };
+            // native <select> → appearance-none + a custom chevron with comfortable right spacing (no cramped browser arrow)
+            const selCls = "w-full rounded-lg pl-3 pr-9 py-2.5 text-[13.5px] outline-none appearance-none cursor-pointer";
+            const selSty = { backgroundColor:"var(--panel2)", border:"1px solid var(--border2)", color:"var(--text)",
+              backgroundImage:`url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238a8a93' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>")`,
+              backgroundRepeat:"no-repeat", backgroundPosition:"right 12px center" };
             const title = dspec ? dspec.title : (dnode.action==="create" ? `Create ${dnode.arg||"record"}` : dnode.action==="update" ? "Update record" : "Details");
             const sub   = dspec ? dspec.sub   : (dnode.action==="update" ? "Choose the fields to change and their new values" : "Fill the fields for this action");
             // unified plain-English summary (shown as its own bordered section right below the header)
@@ -5484,7 +5764,7 @@ function App() {
                   const segs=[{t:isC?"Create a":"Update the"},{t:(isC?(dnode.arg||"record"):(dModName||"record")),em:true},{t:isC?"with":"— set"}];
                   const rows2 = dfields.length ? dfields : [{}];
                   rows2.forEach((fv,i)=>{ if(i>0) segs.push({t:"·"});
-                    const fd = fv.field && recFields.find(x=>x.id===fv.field); const val = Array.isArray(fv.value)?fv.value.join(", "):fv.value;
+                    const fd = fv.field && recFields.find(x=>x.id===fv.field); const val = valueDisplay(fv.value); // [S1] handles {ref}/{expr}/array/literal
                     segs.push(fd ? {t:fd.label,em:true} : {t:"field",dim:true});
                     segs.push({t:"to"});
                     segs.push(val ? {t:val,em:true} : {t:"a value",dim:true}); });
@@ -5496,10 +5776,7 @@ function App() {
                     <div className="text-[14.5px] font-semibold truncate" style={{color:"var(--text)"}}>{title}</div>
                     <div className="text-[11.5px] truncate" style={{color:"var(--muted)"}}>{sub}</div>
                   </div>
-                  <button onClick={()=>setDrawer(null)} title="Close"
-                    className="ml-auto w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  </button>
+                  <CloseBtn onClick={()=>setDrawer(null)} kbd="Esc" className="ml-auto" />
                 </div>
                 {/* SUMMARY — its own section right below the header, separated by a bottom border */}
                 {summarySegs && (
@@ -5514,7 +5791,7 @@ function App() {
                     </div>
                   </div>
                 )}
-                <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3">
+                <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-5">
                   {dspec ? (()=>{
                     // spec-driven form. Required fields (no `sec`) stay always visible; optional fields are
                     // grouped into COLLAPSIBLE sections with a fill-count — progressive-disclosure-ish.
@@ -5523,19 +5800,20 @@ function App() {
                       if (fd.showIf && !fd.showIf(D)) return null; // conditional field (e.g. relation type only for Asset/CI)
                       const v = D[fd.k] || "";
                       const set = (val)=>SET(fd.k, val||null);
+                      // action field VALUES support References via the Specific|Reference dropdown (fieldCtrl) — top-level
+                      // data only; repeatable stage sub-forms keep their plain inline editors (no record references there).
+                      const refOK = (SET===setD);
+                      const fk = `dspec:${dnode.id}:${fd.k}`;
                       let ctrl;
                       if (fd.type==="select")
-                        ctrl = (<select className={inCls} style={inSty} value={v} onChange={e=>set(e.target.value)}>
-                          <option value="">Select…</option>
-                          {(fd.options||[]).map(o=><option key={o} value={o}>{o}</option>)}
-                        </select>);
+                        ctrl = refOK ? fieldCtrl(dpath, fd, v, set, fk, fd.ph||"Select…")
+                          : <Dropdown search={(fd.options||[]).length>8} placeholder={fd.ph||"Select…"} value={v} options={(fd.options||[]).map(o=>({id:o,label:o}))} onChange={set} />;
                       else if (fd.type==="user")
-                        ctrl = (<select className={inCls} style={inSty} value={v} onChange={e=>set(e.target.value)}>
-                          <option value="">Unassigned</option>
-                          {SAMPLE_USERS.map(u2=><option key={u2.name} value={u2.name}>{u2.name}</option>)}
-                        </select>);
+                        ctrl = refOK ? fieldCtrl(dpath, fd, v, set, fk, "choose a person…")
+                          : <EntitySelect kind="user" value={v} onChange={set} options={SAMPLE_USERS.map(u2=>({id:u2.name, name:u2.name, sub:u2.email}))} placeholder="choose a person…" />;
                       else if (fd.type==="textarea")
-                        ctrl = <textarea rows={3} className={inCls} style={inSty} value={v} placeholder={fd.ph||""} onChange={e=>set(e.target.value)}/>;
+                        ctrl = refOK ? fieldCtrl(dpath, fd, v, set, fk, fd.ph||"enter text…")
+                          : <textarea rows={3} className={inCls} style={inSty} value={v} placeholder={fd.ph||""} onChange={e=>set(e.target.value)}/>;
                       else if (fd.type==="richtext")
                         ctrl = (<div className="rounded-lg overflow-hidden" style={{border:"1px solid var(--border2)", background:"var(--panel2)"}}>
                           <textarea rows={5} className="w-full px-2.5 py-2 text-[13px] outline-none bg-transparent resize-y" style={{color:"var(--text)"}} value={v} placeholder={fd.ph||""} onChange={e=>set(e.target.value)}/>
@@ -5553,9 +5831,7 @@ function App() {
                       else if (fd.type==="duration")
                         ctrl = (<div className="flex gap-2">
                           <input type="number" className={inCls+" flex-1 min-w-0"} style={inSty} value={v} placeholder="0" onChange={e=>set(e.target.value)}/>
-                          <select className={inCls+" w-24 shrink-0"} style={inSty} value={D[fd.k+"_unit"]||"Hours"} onChange={e=>SET(fd.k+"_unit", e.target.value)}>
-                            {["Minutes","Hours","Days"].map(u2=><option key={u2}>{u2}</option>)}
-                          </select>
+                          <div className="w-28 shrink-0"><Dropdown value={D[fd.k+"_unit"]||"Hours"} options={["Minutes","Hours","Days"].map(u2=>({id:u2,label:u2}))} onChange={(x)=>SET(fd.k+"_unit", x)} /></div>
                         </div>);
                       else if (fd.type==="daterange") {
                         const v2 = D[fd.k2] || "";
@@ -5601,7 +5877,8 @@ function App() {
                           Attach files
                         </button>);
                       else
-                        ctrl = <input className={inCls} style={inSty} type={fd.type==="date"?"date":fd.type==="datetime"?"datetime-local":fd.type==="number"?"number":"text"} value={v} placeholder={fd.ph||""} onChange={e=>set(e.target.value)}/>;
+                        ctrl = refOK ? fieldCtrl(dpath, fd, v, set, fk, fd.ph||"value")
+                          : <input className={inCls} style={inSty} type={fd.type==="date"?"date":fd.type==="datetime"?"datetime-local":fd.type==="number"?"number":"text"} value={v} placeholder={fd.ph||""} onChange={e=>set(e.target.value)}/>;
                       return (
                         <div key={fd.k} className={(fd.half?"col-span-1":"col-span-2")+" flex flex-col gap-1.5 min-w-0"}>
                           {fd.type!=="daterange" && <label className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{color:"var(--faint)"}}>{fd.label}{!fd.opt && <span className="ml-0.5" style={{color:"var(--red)"}}>*</span>}</label>}
@@ -5656,15 +5933,14 @@ function App() {
                       const fd = recFields.find(x=>x.id===fv.field);
                       const used = dfields.map(x=>x.field).filter((x,ix)=>ix!==i); // hide fields already chosen in other rows
                       return (
-                        <div key={i} className="rounded-xl border p-3 flex flex-col gap-2" style={{borderColor:"var(--border2)", background:"var(--panel2)"}}>
+                        <div key={i} className={"flex flex-col gap-3" + (i<dfields.length-1 ? " pb-6 border-b" : "")} style={i<dfields.length-1 ? {borderColor:"var(--border)"} : undefined}>
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] font-semibold uppercase tracking-[0.1em]" style={{color:"var(--faint)"}}>Field {i+1}</span>
                             <button onClick={()=>rmF(i)} className="text-[11px] font-medium hover:brightness-125" style={{color:"var(--red)"}}>remove</button>
                           </div>
-                          <select className={inCls} style={inSty} value={fv.field||""} onChange={e=>setF(i,{field:e.target.value||null, value:null})}>
-                            <option value="">choose a field…</option>
-                            {recFields.filter(f=>!used.includes(f.id)).map(f=><option key={f.id} value={f.id}>{f.label}{f.req?" *":""}</option>)}
-                          </select>
+                          <Dropdown search placeholder="choose a field…" value={fv.field}
+                            options={recFields.filter(f=>!used.includes(f.id)).map(f=>({id:f.id, label:f.label+(f.req?" *":"")}))}
+                            onChange={v=>setF(i,{field:v, value:null})} />
                           {fd && (
                             fd.multi  // predefined multi-select dropdown
                             ? <MultiSelect options={fd.values||[]} value={fv.value} onChange={v=>setF(i,{value:v})} placeholder="choose one or more…" />
@@ -5677,23 +5953,19 @@ function App() {
                                     style={{ background:on?"var(--c-then)":"var(--panel)", color:on?"#fff":"var(--muted)" }}>{opt}</button>; })}
                               </div>
                             : fd.type==="textarea"
-                            ? <textarea className={inCls} style={{...inSty, minHeight:"72px", resize:"vertical"}} value={fv.value||""} placeholder="enter text…" onChange={e=>setF(i,{value:e.target.value||null})}/>
-                            : fd.type==="user"  // person dropdown
-                            ? <select className={inCls} style={inSty} value={fv.value||""} onChange={e=>setF(i,{value:e.target.value||null})}>
-                                <option value="">choose a person…</option>
-                                {SAMPLE_USERS.map(u=><option key={u.name} value={u.name}>{u.name} — {u.email}</option>)}
-                              </select>
+                            ? fieldCtrl(dpath, fd, fv.value, (val)=>setF(i,{value:val}), `dval:${dnode.id}:${i}`, "enter text…")
+                            : fd.type==="user"  // person → avatar card picker (initials + name + email)
+                            ? fieldCtrl(dpath, fd, fv.value, (val)=>setF(i,{value:val}), `dval:${dnode.id}:${i}`, "choose a person…")
                             : fd.type==="attach"
                             ? <button className="rounded-lg px-3 py-2 text-[13px] flex items-center gap-2 transition-colors hover:bg-[var(--pop-hover)] self-start" style={{border:"1px dashed var(--border2)", color:"var(--muted)"}}>
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M21 12.5l-8 8a5 5 0 01-7-7l8-8a3 3 0 014 4l-8 8a1 1 0 01-1.5-1.5l7-7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
                                 Attach a file
                               </button>
+                            : fd.type==="enum" && fd.values===SAMPLE_GROUPS  // group → team card picker
+                            ? fieldCtrl(dpath, fd, fv.value, (val)=>setF(i,{value:val}), `dval:${dnode.id}:${i}`, "choose a group…")
                             : fd.type==="enum"
-                            ? <select className={inCls} style={inSty} value={fv.value||""} onChange={e=>setF(i,{value:e.target.value||null})}>
-                                <option value="">choose a value…</option>
-                                {(fd.values||[]).map(v=><option key={v} value={v}>{v}</option>)}
-                              </select>
-                            : <input className={inCls} style={inSty} type={fd.type==="number"?"number":fd.type==="date"?"date":"text"} value={fv.value||""} placeholder="value" onChange={e=>setF(i,{value:e.target.value||null})}/>) }
+                            ? fieldCtrl(dpath, fd, fv.value, (val)=>setF(i,{value:val}), `dval:${dnode.id}:${i}`, "choose a value…")
+                            : fieldCtrl(dpath, fd, fv.value, (val)=>setF(i,{value:val}), `dval:${dnode.id}:${i}`, "value")) }
                         </div>
                       );
                     })}
@@ -5717,7 +5989,7 @@ function App() {
                 <div className="px-4 h-14 shrink-0 flex items-center gap-2 border-b" style={{borderColor:"var(--border)"}}>
                   {doc && <button onClick={()=>setRefSel(null)} title="Back" className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>}
                   <div className="text-[14px] font-semibold truncate" style={{color: doc?doc.color:"var(--text)"}}>{doc ? doc.name : "Node reference"}</div>
-                  <button onClick={()=>setRefOpen(false)} className="ml-auto w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></button>
+                  <CloseBtn onClick={()=>setRefOpen(false)} kbd="Esc" className="ml-auto" />
                 </div>
                 <div className="flex-1 overflow-y-auto">
                   {doc ? (
@@ -5761,7 +6033,7 @@ function App() {
             <div className="h-full w-full flex flex-col">
               <div className="px-4 h-14 shrink-0 flex items-center gap-2 border-b" style={{borderColor:"var(--border)"}}>
                 <div className="text-[14px] font-semibold" style={{color:"var(--text)"}}>Keyboard shortcuts</div>
-                <button onClick={()=>setHelpOpen(false)} className="ml-auto w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></button>
+                <CloseBtn onClick={()=>setHelpOpen(false)} kbd="Esc" className="ml-auto" />
               </div>
               <div className="flex-1 overflow-y-auto px-4 py-3">
                 {[
@@ -5796,9 +6068,7 @@ function App() {
           <div className="guidein w-[560px] max-w-full rounded-2xl overflow-hidden flex flex-col" style={{background:"var(--panel2)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-pop)"}} onMouseDown={e=>e.stopPropagation()}>
             <div className="flex items-start justify-between gap-4 px-6 py-5" style={{borderBottom:"1px solid var(--border)"}}>
               <div className="text-[16px] font-semibold leading-snug" style={{color:"var(--text)"}}>{USECASE_META[activeModule].name}</div>
-              <button onClick={()=>setUcPopup(false)} className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}} title="Close">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-              </button>
+              <CloseBtn onClick={()=>setUcPopup(false)} />
             </div>
             <div className="px-6 py-5 overflow-y-auto">
               <div className="text-[10px] uppercase tracking-[0.14em] mb-2" style={{color:"var(--faint)"}}>Requirement</div>
@@ -5881,7 +6151,7 @@ function App() {
               title={pubBlocked ? "Add a trigger and at least one action to publish" : (published?"Unpublish this workflow":"Publish this workflow")}
               className={"inline-flex items-center px-4 h-8 rounded-lg text-[13px] font-semibold transition-all " + (pubBlocked ? "cursor-not-allowed" : "hover:-translate-y-0.5")}
               style={ pubBlocked
-                ? { background:"var(--panel2)", border:"1px solid var(--border2)", color:"var(--faint)" }
+                ? { background:"var(--panel2)", border:"1px solid var(--border2)", color:"var(--text)" }
                 : published
                 ? { background:"transparent", border:"1px solid var(--border2)", color:"var(--muted)" }
                 : { background:"var(--accent)", color:"#fff", boxShadow:"0 8px 20px -12px var(--accent)" } }>
@@ -5908,9 +6178,7 @@ function App() {
           <div className="guidein relative w-[520px] max-w-full max-h-[calc(100vh-2rem)] overflow-hidden rounded-[20px]"
             style={{background:"var(--panel2)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-pop)"}} onMouseDown={e=>e.stopPropagation()}>
             {/* dismiss × (floats over the hero) */}
-            <button onClick={()=>setIntroOpen(false)} title="Skip" className="absolute right-3 top-3 z-20 w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </button>
+            <CloseBtn onClick={()=>setIntroOpen(false)} title="Skip" className="absolute right-3 top-3 z-20" />
 
             {/* ── SURFACE 1: HERO ZONE (~50% — clean minimal dark recessed surface, NO colour washes) ── */}
             <div className="relative overflow-hidden" style={{ height:"258px", background:"var(--bg)" }}>
