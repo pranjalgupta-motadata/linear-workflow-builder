@@ -9,10 +9,16 @@ CONSOLIDATION.md
 DO-NOT-BREAK.md
 Feature Details/
 
-# Local-only experiment builds (NOT published — only up to v5.1 goes live)
-index-v5.1.html
+# Local-only experiment builds (NOT published). v5.1 is now a committed snapshot (prior live);
+# v5.2 IS the live root (index.html). v6 / v7 stay local.
 index-v5.2.html
+index-v7.html
 index-v6-wip-backup.html
+
+# Dev tooling — Playwright visual/pixel review harness (tools/shot.cjs) + its deps + screenshots. Not published.
+tools/
+package-lock.json
+node_modules/
 
 # OS / editor cruft
 .DS_Store

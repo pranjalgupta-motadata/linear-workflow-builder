@@ -19,7 +19,6 @@
     --c-when:#7aa2ff; --c-when-bg:#16213d; --c-when-h:#10192b;
     --c-if:#e3b341;   --c-if-bg:#2a2410;   --c-if-h:#1d1a11;
     --c-then:#5fd07e; --c-then-bg:#13241b; --c-then-h:#101e16;
-    --c-branch:#ff8a4c; --c-branch-bg:#2a1b10;
     --grain:#ffffff12;
     --canvas-glow:color-mix(in srgb, var(--accent) 7%, transparent);
     --rdy-bg:#16241c; --rdy-fg:#3fb950; --rdy-bd:#2c5237;
@@ -39,7 +38,6 @@
     --c-when:#2563eb; --c-when-bg:#e8f0ff; --c-when-h:#f4f8ff;
     --c-if:#c2820a;   --c-if-bg:#fbf1d6;   --c-if-h:#fcf8ee;
     --c-then:#15a04a; --c-then-bg:#e7f6ed; --c-then-h:#f3faf6;
-    --c-branch:#ea580c; --c-branch-bg:#ffedd5;
     --grain:#0000000d;
     --canvas-glow:color-mix(in srgb, var(--accent) 4%, transparent);
     --rdy-bg:#e6f5ec; --rdy-fg:#1a7f37; --rdy-bd:#a7d8ba;
@@ -1012,10 +1010,11 @@ const ADD_MENU = [
   { header:"Required" },
   { id:"action",    label:"Add action",    tag:"do", tone:"then", icon:I.play,    sub:"Do something automatically — assign, notify, update" },
   { header:"Flow control" },
-  { id:"condition", label:"Add condition", tag:"if", tone:"if", icon:I.diamond,  sub:"Continue only when a check is true" },
+  { id:"condition", label:"Add condition", tag:"if", tone:"if", icon:I.diamond,  sub:"Continue only when a check is true",
+    rightIcon:(<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>) },
   { id:"condition_group", label:"Condition group", tag:"or", tone:"if", icon:I.diamond, sub:"Add an OR alternative to the previous check" },
-  { id:"branching", label:"Add branching", tag:"split", tone:"branch", sub:"Split the flow into parallel paths",
-    icon:(<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><rect x="3" y="16" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><rect x="15" y="16" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><path d="M12 8v3.5M6 16v-2.5h12V16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>) },
+  { id:"trigger",   label:"Add trigger",   tag:"or", tone:"when", icon:I.bolt,     sub:"Add another way to start the workflow (OR)",
+    rightIcon:(<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>) },
   { header:"Timing & data" },
   { id:"delay",     label:"Add wait",      tone:"util", icon:I.hourglass, sub:"Pause for a time, a date, or until a condition" },
   { id:"get",       label:"Get records",   tone:"util", icon:I.records,   sub:"Fetch many records — steps below run for each" },
@@ -1033,18 +1032,13 @@ const COND_KIND_MENU = [
     ) },
 ];
 // menu shown by a branch's own "+" affordance
-// SAME rich shape as ADD_MENU (icon tiles + section headers) so the branch add-step menu looks identical to "What happens next".
 const BRANCH_MENU = [
-  { header:"Required" },
-  { id:"action",    label:"Add action",    tag:"do", tone:"then", icon:I.play,    sub:"Do something automatically — assign, notify, update" },
-  { header:"Flow control" },
-  { id:"condition", label:"Add condition", tag:"if", tone:"if", icon:I.diamond,  sub:"Continue only when a check is true" },
-  { id:"branching", label:"Add a parallel path", tag:"split", tone:"branch", sub:"Another branch alongside this one",
-    icon:(<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><rect x="3" y="16" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><rect x="15" y="16" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><path d="M12 8v3.5M6 16v-2.5h12V16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>) },
-  { header:"Timing & data" },
-  { id:"delay",     label:"Add wait",      tone:"util", icon:I.hourglass, sub:"Pause for a time, a date, or until a condition" },
-  { id:"get",       label:"Get records",   tone:"util", icon:I.records,   sub:"Fetch records to act on" },
-  { id:"loop",      label:"Loop",          tone:"util", tag:"soon", disabled:true, icon:I.loop, sub:"Repeat steps once for each item in a list" },
+  { id:"action",    label:"Add action" },
+  { id:"condition", label:"Add condition" },
+  { id:"merge",     label:"Merge",      tag:"soon", disabled:true },
+  { id:"loop",      label:"Loop",       tag:"soon", disabled:true },
+  { id:"delay",     label:"Add wait",  tag:"soon", disabled:true },
+  { id:"get",       label:"Get",        tag:"soon", disabled:true },
 ];
 
 // plain-language help for newbies, with a small graphic. Shown at the top of each
@@ -1055,7 +1049,6 @@ const G = {
   action: <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>,                                                    // play = do it
   get: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 8l8-4 8 4-8 4-8-4zM4 12l8 4 8-4M4 16l8 4 8-4" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>,   // stacked layers = fetch records
   delay: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M7 3h10M7 21h10M8 3v3l4 4 4-4V3M8 21v-3l4-4 4 4v3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>,  // hourglass = wait
-  branch: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><rect x="3" y="16" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><rect x="15" y="16" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><path d="M12 8v3.5M6 16v-2.5h12V16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>,  // one node → two = split
 };
 const NODE_HELP = {
   when: {
@@ -1095,13 +1088,10 @@ const ADD_HELP = {
   action:    NODE_HELP.action,
   condition: NODE_HELP.condition,
   trigger:   NODE_HELP.when,
-  branching: { title:"Branching", color:"var(--c-branch)", bg:"var(--c-branch-bg)", graphic:G.branch,
-    body:"Split the flow into parallel paths — each path runs its own steps. Use it to do several things side by side, or handle cases differently.",
-    eg:"Like — route by category: Network, Hardware, Software." },
   merge:     UTIL("Merge", "Bring separate branches back together into a single path before continuing."),
   loop:      UTIL("Loop", "Repeat the steps inside it once for every item in a list."),
-  delay:     NODE_HELP.delay, // real Wait help (hourglass graphic) — was UTIL → wrongly showed the Action graphic + "Coming soon"
-  get:       NODE_HELP.get,   // real Get help (stacked-layers graphic) — was UTIL → wrongly showed the Action graphic + "Coming soon"
+  delay:     UTIL("Wait", "Pause the workflow — for a duration, until a date/time, or until a condition becomes true — before the next step runs."),
+  get:       UTIL("Get", "Fetch one or many records so later steps can act on them — output can be multiple tickets."),
 };
 // per-ACTION help (the "this option" layer while the action picker / its sub-menus are open). Keyed by
 // group id AND leaf action id. graphic = the action's own glyph so the rail tile is meaningful.
@@ -1362,17 +1352,11 @@ const NODE_DOCS = [
     ],
   },
   {
-    id:"branch", name:"Branching",
-    icon:(<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><rect x="3" y="16" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><rect x="15" y="16" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><path d="M12 8v3.5M6 16v-2.5h12V16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>),
-    color:"var(--c-branch)", bg:"var(--c-branch-bg)",
-    meaning:"Splits the flow into parallel paths — each path runs its own steps, so the workflow can do several things side by side or handle cases differently.",
-    function:"Forks the trunk into two or more paths. Each path holds its own steps — an action, a wait, a get, a condition — and you can add another path any time. An optional Otherwise path catches everything else; steps placed after the branch run once the paths come back together.",
-    use:"When the workflow should run multiple things in parallel, or take meaningfully different routes per case (Urgent vs. routine, or per category).",
-    avoid:"When a single inline Condition is enough — don't branch just to gate one path; that adds visual noise.",
-    types:[
-      {name:"Parallel paths", desc:"Two or more paths that each run their own steps. Add a path any time from a lane's add-step menu."},
-      {name:"Otherwise", desc:"An optional catch-all path that runs when none of the others apply."},
-    ],
+    id:"branch", name:"Branch", icon:I.diamond, color:"var(--c-if)", bg:"var(--c-if-bg)",
+    meaning:"The fork a Condition escalates into — two or more paths, each with its own check and its own steps, plus an optional Otherwise.",
+    function:"Divides the flow so different outcomes get different handling. Each path holds an independent condition plus the actions that follow it; the engine takes whichever path matches. An optional Otherwise path catches everything else.",
+    use:"When the workflow should do meaningfully different things depending on the case — e.g. Urgent vs. routine, or per category.",
+    avoid:"When a single inline Condition is enough. Don't branch just to gate one path — that adds visual noise.",
   },
   {
     id:"action", name:"Action", icon:I.play, color:"var(--c-then)", bg:"var(--c-then-bg)",
@@ -2188,7 +2172,7 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
   const selCount = selectable.length;
   let si = -1;
   // item content — rich (icon tile + label + one-line subtext) when the item has a `sub`, else the plain row
-  const TONES = { when:["var(--c-when)","var(--c-when-bg)"], if:["var(--c-if)","var(--c-if-bg)"], then:["var(--c-then)","var(--c-then-bg)"], branch:["var(--c-branch)","var(--c-branch-bg)"], util:["var(--accent)","var(--panel2)"] };
+  const TONES = { when:["var(--c-when)","var(--c-when-bg)"], if:["var(--c-if)","var(--c-if-bg)"], then:["var(--c-then)","var(--c-then-bg)"], util:["var(--accent)","var(--panel2)"] };
   // solidIcons (the "what happens next" menu): keep the light tinted tile, but render the glyph FILLED
   const tileStyle = (i) => ({ background:(TONES[i.tone]||["var(--muted)","var(--panel2)"])[1], color:(TONES[i.tone]||["var(--muted)","var(--panel2)"])[0] });
   const itemBody = (i) => i.sub ? (
@@ -3241,14 +3225,7 @@ function App() {
       if(n.kind==="action"&&n.action==="create"&&n.arg){ const id=moduleIdFromName(n.arg); if(id) ids.add(id); }
       else if(n.kind==="get"&&n.module){ const id=moduleIdFromName(n.module); if(id) ids.add(id); } }
     return ids; };
-  // actions that ACT ON a record in scope (the trigger/created/got record) — these stay gated by moduleIdsInScope.
-  const RECORD_DEP_ACTIONS = new Set(["update","close","archive","assign","set_auto_assignment"]);
-  const availActionIds = (path) => { const set=new Set();
-    // UNIVERSAL actions (create / get / notify / HTTP / plugin / approval / integration / task) are NOT record-module-gated,
-    // so they're available even in a periodic/time-based workflow that has no record module in scope. Record-acting ops still need one.
-    Object.keys(actionCatalogFor(null).byId).forEach(a=>{ if(!RECORD_DEP_ACTIONS.has(a)) set.add(a); });
-    moduleIdsInScope(path).forEach(mid=>Object.keys(actionCatalogFor(mid).byId).forEach(a=>set.add(a)));
-    return set; };
+  const availActionIds = (path) => { const set=new Set(); moduleIdsInScope(path).forEach(mid=>Object.keys(actionCatalogFor(mid).byId).forEach(a=>set.add(a))); return set; };
   // CONDITION field catalog for a node: a Get filters its OWN module; everything else (CHECK IF / branch /
   // delay-event) filters the workflow's trigger module. Drives the field menu + value picker + labels.
   const flowCat = (node) => conditionFieldsFor(node && node.kind==="get" ? node.module : (triggers[0] && triggers[0].vals && triggers[0].vals.module));
@@ -3788,79 +3765,24 @@ function App() {
     setFlow(f => { const n = nodeAt(f, condPath); return treeUpdate(f, condPath, { clauses:[...(n.clauses||[]), { field:null, op:"is", value:null, or:true }] }); });
     openCondFieldPicker(condPath, prev.id, ci, fallbackEl);
   };
-  // A branch lane no longer ALWAYS starts with a condition. When you add a branch (or a parallel path) you
-  // CHOOSE the lane's FIRST node — condition / action / get / wait (NOT trigger, NOT nested branching). The
-  // choice drives the lane's colour + behaviour: condition → the gold gate header (pathClauses); action →
-  // green; get/wait → neutral. condition-first stores a gate (paths[].clauses, today's exact look); the
-  // others store the node as children[0] of a clauses-LESS lane so it renders as the lane's first real row.
-  const makeLane = (firstStep) => {
-    const pId = nid();
-    if (firstStep==="condition") return { id:pId, clauses:[{ field:null, op:"is", value:null }], combiner:"and", children:[] };
-    let first = null;
-    if (firstStep==="action") first = { id:nid(), kind:"action", action:null, arg:null }; // a placeholder "THEN · choose an action" row (parallels the empty CHECK IF) — the picker fills it in
-    if (firstStep==="get")    first = { id:nid(), kind:"get", module:null, qty:null, sort:null, clauses:[{ field:null, op:"is", value:null }] };
-    if (firstStep==="delay")  first = { id:nid(), kind:"delay", mode:null, amount:null, unit:"hours", hours:"calendar", bizHours:null, date:null, time:null };
-    return { id:pId, children: first ? [first] : [] };
-  };
-  // open the picker for a freshly-created lane's first node (after it has rendered). branchPath = the branch
-  // node's path; pi = the lane's index in paths[]. For condition we drive paths[pi].clauses (same as the old
-  // flow); for get/wait the node already sits at children[0]; for action we open the action menu on the lane.
-  const openLaneFirst = (branchPath, pi, lane, firstStep, branchNode, anchorEl) => {
-    const lanePath = [...branchPath, {path:pi}]; const pId = lane.id; setFocusKey(pathKey(lanePath));
-    // anchorEl = the chooser's own anchor (the "What happens next" / BranchAdd element). Pass it as the popover's
-    // FALLBACK anchor so it positions IMMEDIATELY (the anchorKey then refines to the new node once it renders) —
-    // exactly what the trunk add-helpers do. Opening with anchor:null means nothing to measure → the popover
-    // self-closes after 700ms (the "didn't auto-open" bug). [auto-advance is core UX — keep the fallback]
-    if (firstStep==="condition") {
-      setOpenSlot(`${pathKey(branchPath)}:p${pi}:c0:field`);
-      requestAnimationFrame(()=> open(anchorEl||null, flowMenu(branchNode),
-        (i)=>{ const t=flowFD(branchNode,i.id)?.type||"enum"; updatePathClause(branchPath, pi, 0, {field:i.id, op:defaultOp(t), value:null});
-               requestAnimationFrame(()=>openPathOpByKey(branchPath, branchNode, pi, 0, pId, i.id, t)); },
-        "Which field", {wide:true, help:NODE_HELP.condition, anchorKey:`pcond:${pId}:0`}));
-    } else if (firstStep==="action") {
-      // the placeholder action row ("THEN · choose an action") already renders at children[0]; open the action
-      // picker anchored to its slot (pickLeaf sets the action on THIS node — node-first, like the condition).
-      const aPath=[...lanePath,0]; setOpenSlot(`${pathKey(aPath)}:action`);
-      requestAnimationFrame(()=> setPop(actionMenuConfig(aPath, anchorEl||null, null, `act:${lane.children[0].id}`)));
-    } else if (firstStep==="get") {
-      // null event → pickGetQty positions via its own anchorKey (gqty:) — the trunk's proven addGetAndPick recipe.
-      const gP=[...lanePath,0]; setOpenSlot(`${pathKey(gP)}:qty`); requestAnimationFrame(()=> pickGetQty(gP, lane.children[0], null));
-    } else if (firstStep==="delay") {
-      // pickWaitKind takes a fallbackEl 4th arg (the trunk passes it) → position immediately, anchorKey 'wkind:' refines.
-      const wP=[...lanePath,0]; setOpenSlot(`${pathKey(wP)}:kind`); requestAnimationFrame(()=> pickWaitKind(wP, lane.children[0], null, anchorEl||null));
-    }
-  };
-  const addBranchAndPick = (path, fallbackEl, index, firstStep) => {
-    const step = firstStep || "condition"; // back-compat: a call with no first-step defaults to the gate condition
-    const lane = makeLane(step);
-    const node = { id:nid(), kind:"branch", paths:[lane], otherwise:null };
+  const addBranchAndPick = (path, fallbackEl, index) => {
+    const node = { id:nid(), kind:"branch",
+      paths:[{ id:nid(), clauses:[{ field:null, op:"is", value:null }], combiner:"and", children:[] }],
+      otherwise:null };
     const idx = index===undefined ? childrenAt(flow, path).length : index;
-    const branchPath = [...path, idx];
+    const newPath = [...path, idx];
     setFlow(f => treeInsertAt(f, path, idx, node));
-    openLaneFirst(branchPath, 0, lane, step, node, fallbackEl);
+    setFocusKey(pathKey(newPath));
+    // auto-open the first path's field picker (matches condition/get/delay add). rAF so it opens AFTER
+    // the add-menu's onClose fires (a synchronous open() gets cleared instantly); anchorKey re-resolves
+    // to the new branch's field slot once it renders. [S3 fix]
+    const _pid = node.paths[0].id;
+    setOpenSlot(`${pathKey(newPath)}:p0:c0:field`);
+    requestAnimationFrame(()=> open(null, flowMenu(node),
+      (i)=>{ const t=flowFD(node,i.id)?.type||"enum"; updatePathClause(newPath, 0, 0, {field:i.id, op:defaultOp(t), value:null});
+             requestAnimationFrame(()=>openPathOpByKey(newPath, node, 0, 0, _pid, i.id, t)); },
+      "Which field", {wide:true, help:NODE_HELP.condition, anchorKey:`pcond:${_pid}:0`}));
   };
-  const addPathAndPick = (branchPath, anchor, firstStep) => { // add a parallel lane to an EXISTING branch
-    const bnode = nodeAt(flow, branchPath); if(!bnode) return;
-    const step = firstStep || "condition";
-    const lane = makeLane(step);
-    const pi = (bnode.paths||[]).length;
-    setFlow(f => treeUpdate(f, branchPath, (()=>{ const n=nodeAt(f,branchPath); return { paths:[...(n.paths||[]), lane] }; })()));
-    openLaneFirst(branchPath, pi, lane, step, bnode, anchor);
-  };
-  // the FIRST-STEP chooser (swap-in-place, with back) — shown when adding a branch or a parallel path.
-  const branchFirstStepMenuConfig = (anchor, back, onChoose, title) => ({
-    anchor, back, title: title||"Start this branch with…", wide:true, solidIcons:true, itemsAsNodes:true,
-    items: [
-      { header:"Most common" },
-      { id:"condition", label:"A condition", tag:"if", tone:"if",   icon:I.diamond,   sub:"Run this path only when a check passes",             help:NODE_HELP.condition },
-      { id:"action",    label:"An action",   tag:"do", tone:"then", icon:I.play,      sub:"Do something in this path — assign, notify, update", help:NODE_HELP.action },
-      { header:"Timing & data" },
-      { id:"delay",     label:"A wait",       tone:"util",          icon:I.hourglass, sub:"Pause before this path's steps",                     help:NODE_HELP.delay },
-      { id:"get",       label:"Get records",  tone:"util",          icon:I.records,   sub:"Fetch records this path will act on",                help:NODE_HELP.get },
-    ],
-    help: (typeof ADD_HELP!=="undefined" && ADD_HELP.branching) || NODE_HELP.condition, // base = Branching; the chosen first step shows as "This option"
-    onPick:(i)=>{ onChoose(i.id); },
-  });
   // ── DELAY — two types: mode "time" ("wait for {n}{unit}" / "wait until {date|field}") and
   //    mode "event" ("wait until {condition} becomes true"). ──
   const DELAY_UNITS = ["minutes","hours","days"];
@@ -4076,7 +3998,7 @@ function App() {
       anchor, back, title:"Add condition", wide:true,
       items: COND_KIND_MENU.map(it=> it.id ? {...it, help:COND_HELP[it.id], icon: it.id==="inline"?gxInline:gxBranch} : it),
       help: NODE_HELP.condition, // base = the Condition node; the type (Inline/Branching) shows as "This option"
-      onPick:(i)=>{ if (i.id==="inline") addConditionAndPick(path, anchor, index); else addBranchAndPick(path, anchor, index, "condition"); },
+      onPick:(i)=>{ if (i.id==="inline") addConditionAndPick(path, anchor, index); else addBranchAndPick(path, anchor, index); },
     };
   };
   // "Add delay" swaps to choose the delay TYPE (time-based vs event-based)
@@ -4084,9 +4006,9 @@ function App() {
     anchor, back, title:"Wait", wide:true,
     items: [
       { id:"time",  label:"for time or date", icon:I.hourglass, sub:"Pause for a duration, or until a date/time",
-        help:{ title:"for time or date", color:"var(--ink-mid)", bg:"var(--panel2)", graphic:G.delay, body:"Pause for a fixed duration (e.g. “wait for 2 hours”, counted on calendar or business hours) — or wait till a specific date & time." } },
+        help:{ title:"for time or date", color:"var(--ink-mid)", bg:"var(--panel2)", graphic:G.action, body:"Pause for a fixed duration (e.g. “wait for 2 hours”, counted on calendar or business hours) — or wait till a specific date & time." } },
       { id:"event", label:"for event", icon:I.bolt,     sub:"Resume when a condition becomes true",
-        help:{ title:"for event", color:"var(--ink-mid)", bg:"var(--panel2)", graphic:G.delay, body:"Pause until a condition you define becomes true. Reads “Wait until {condition}”." } },
+        help:{ title:"for event", color:"var(--ink-mid)", bg:"var(--panel2)", graphic:G.action, body:"Pause until a condition you define becomes true. Reads “Wait until {condition}”." } },
     ],
     help: ADD_HELP.delay, // base = the Wait node; the kind (time/date vs condition) shows as "This option"
     onPick:(i)=>{ if (i.id==="time") addDelayAndPick(path, anchor, index); else addDelayEventAndPick(path, anchor, index); },
@@ -4096,15 +4018,9 @@ function App() {
     // when the start is periodic. "Condition group" shows only when the step BEFORE the insert point is a CHECK IF.
     anchor,
     items: (()=>{ const sibs = childrenAt(flow, path); const insIdx = index===undefined ? sibs.length : index;
-      const canGroup = !!(sibs[insIdx-1] && sibs[insIdx-1].kind==="condition");
-      const noRecord = recordsInScope(path).length===0; // periodic/time trigger with no Create/Get above → no record yet
-      let list = ADD_MENU.filter(it => it.id!=="condition_group" || canGroup);
-      if (noRecord) {
-        // no record in scope → promote "Get records" into the REQUIRED section (you fetch records first to act on them);
-        // "Add action" stays (functional actions — create / notify / HTTP / plugin — still work without a record).
-        const getItem = list.find(it=>it.id==="get");
-        if (getItem){ list = list.filter(it=>it.id!=="get"); const ai = list.findIndex(it=>it.id==="action"); if(ai>=0) list.splice(ai+1, 0, {...getItem, sub:"Fetch records first — most actions act on a record"}); }
-      }
+      const atTrigger = path.length===0 && insIdx===0; const canGroup = !!(sibs[insIdx-1] && sibs[insIdx-1].kind==="condition");
+      let list = (atTrigger && !firstIsPeriodic()) ? ADD_MENU : ADD_MENU.filter(it=>it.id!=="trigger");
+      list = list.filter(it => it.id!=="condition_group" || canGroup);
       return list.map(it => it.id ? {...it, help:ADD_HELP[it.id]} : it); })(),
     title:"Add step", wide:true, solidIcons:true, itemsAsNodes:true,
     help: { title:"What happens next", color:"var(--c-then)", bg:"var(--c-then-bg)", graphic:G.action,
@@ -4112,8 +4028,7 @@ function App() {
     onPick:(i, idx)=>{
       const backToMain = ()=>setPop({ ...mainMenuConfig(path, anchor, index), initActive: idx }); // back lands on the item you came from
       if (i.id==="trigger") { setPop(triggerMenuConfig(anchor, backToMain)); return true; } // swap in place, with back
-      if (i.id==="condition") { addConditionAndPick(path, anchor, index); return; } // inline CHECK IF gate (branching is now its own top-level item)
-      if (i.id==="branching") { setPop(branchFirstStepMenuConfig(anchor, backToMain, (step)=>addBranchAndPick(path, anchor, index, step))); return true; } // ask what the lane STARTS with (condition/action/get/wait), then split into a parallel path
+      if (i.id==="condition") { setPop(condKindMenuConfig(path, anchor, backToMain, index)); return true; } // swap to inline/branching
       if (i.id==="condition_group") { addOrGroupAndPick(path, anchor, index); return; }
       if (i.id==="delay") { setPop(delayKindMenuConfig(path, anchor, backToMain, index)); return true; } // swap to time/event
       if (i.id==="get")   { addGetAndPick(path, anchor, index); return; }
@@ -4127,11 +4042,8 @@ function App() {
     setBranchMenuPath(pathKey(path));
     open(anchor, BRANCH_MENU.map(it=>it.id?{...it, help:ADD_HELP[it.id]}:it), (i)=>{
       if (i.id==="action") { openAddActionMenu(path, anchor, ()=>openBranchAddAt(path, anchor)); return true; }
-      if (i.id==="delay")  { setPop(delayKindMenuConfig(path, anchor, ()=>openBranchAddAt(path, anchor))); return true; }
-      if (i.id==="get")    { addGetAndPick(path, anchor); return; }
-      if (i.id==="branching") { setBranchMenuPath(null); setPop(branchFirstStepMenuConfig(anchor, ()=>openBranchAddAt(path, anchor), (step)=>addPathAndPick(path.slice(0,-1), anchor, step), "Start this path with…")); return true; } // add a PARALLEL lane to the parent branch — also chooses its first node (lane path → branch path)
-      addConditionAndPick(path, anchor); // "Add condition" → inline CHECK IF inside the lane
-    }, "Add step in this branch", {itemsAsNodes:true, solidIcons:true, wide:true});
+      addConditionAndPick(path, anchor);
+    }, "Add step in this branch", {noSearch:true, itemsAsNodes:true});
   };
   const openBranchAdd = (path, e) => openBranchAddAt(path, e.currentTarget);
 
@@ -4360,26 +4272,25 @@ function App() {
   const removePath = (path, pi) => setFlow(f => {
     const n = nodeAt(f, path); if(!n) return f;
     let paths = n.paths.filter((_,k)=>k!==pi);
-    // collapse a branch when it's down to one path and no otherwise: a gated lane folds back to an inline
-    // CHECK IF + its steps; a clauses-less lane (action/get/wait-first) just inlines its steps to the trunk.
+    // collapse a branch back to an inline condition when it's down to one path and no otherwise
     if (paths.length===1 && !n.otherwise) {
       const only = paths[0];
-      const lead = (only.clauses && only.clauses.length) ? [{ id:nid(), kind:"condition", clauses:only.clauses, combiner:only.combiner }] : [];
+      const cond = { id:nid(), kind:"condition", clauses:only.clauses, combiner:only.combiner };
       const parent = path.slice(0,-1), idx = path[path.length-1];
       const siblings = childrenAt(f, parent);
-      const kept = [...siblings.slice(0,idx), ...lead, ...(only.children||[]), ...siblings.slice(idx+1)];
+      const kept = [...siblings.slice(0,idx), cond, ...(only.children||[]), ...siblings.slice(idx+1)];
       return treeSetLevel(f, parent, kept);
     }
     return treeUpdate(f, path, { paths });
   });
   const removeOtherwise = (path) => setFlow(f => {
     const n = nodeAt(f, path); if(!n) return f;
-    if ((n.paths||[]).length===1) { // collapse back to inline condition (or just steps for a clauses-less lane)
+    if ((n.paths||[]).length===1) { // collapse back to inline condition
       const only = n.paths[0];
-      const lead = (only.clauses && only.clauses.length) ? [{ id:nid(), kind:"condition", clauses:only.clauses, combiner:only.combiner }] : [];
+      const cond = { id:nid(), kind:"condition", clauses:only.clauses, combiner:only.combiner };
       const parent = path.slice(0,-1), idx = path[path.length-1];
       const siblings = childrenAt(f, parent);
-      const kept = [...siblings.slice(0,idx), ...lead, ...(only.children||[]), ...siblings.slice(idx+1)];
+      const kept = [...siblings.slice(0,idx), cond, ...(only.children||[]), ...siblings.slice(idx+1)];
       return treeSetLevel(f, parent, kept);
     }
     return treeUpdate(f, path, { otherwise:null });
@@ -4388,8 +4299,7 @@ function App() {
   const addPathClauseAndPick = (path, node, pi, conn) => {
     const p = node.paths[pi]; const ci = (p.clauses||[]).length;
     setFlow(f => treeUpdate(f, path, (()=>{ const n=nodeAt(f,path);
-      const paths = n.paths.map((pp,k)=> { if(k!==pi) return pp; const nc=[...pp.clauses, {field:null,op:"is",value:null, conn:conn||"and"}];
-        const cm = pp.cardMode || (nc.length===2 ? (conn||"and") : pp.cardMode); return {...pp, clauses:nc, ...(cm?{cardMode:cm}:{})}; }); return { paths }; })()));
+      const paths = n.paths.map((pp,k)=> k===pi ? {...pp, clauses:[...pp.clauses, {field:null,op:"is",value:null, conn:conn||"and"}]} : pp); return { paths }; })()));
     setOpenSlot(`${pathKey(path)}:p${pi}:c${ci}:field`);
     requestAnimationFrame(()=> open(condSlotRefs.current[`${p.id}:0`], flowMenu(node),
       (i)=>{ const t=flowFD(node,i.id)?.type||"enum"; updatePathClause(path, pi, ci, {field:i.id,op:defaultOp(t),value:null});
@@ -4672,9 +4582,8 @@ function App() {
       } else if (n.kind==="condition") {
         out.push({ type:"cond", depth, text: condText(n) });
       } else if (n.kind==="branch") {
-        (n.paths||[]).forEach((p,pi)=>{ const g = (p.clauses||[]).some(c=>c.field); // clauses-less lanes (action/get/wait-first) have no "if" line
-          if (g) out.push({ type:"cond", depth, text: (pi===0?"":"or path: ") + condText(p) });
-          summaryLines(p.children, depth + (g?1:0)).forEach(x=>out.push(x)); });
+        (n.paths||[]).forEach((p,pi)=>{ out.push({ type:"cond", depth, text: (pi===0?"":"or path: ") + condText(p) });
+          summaryLines(p.children, depth+1).forEach(x=>out.push(x)); });
         if (n.otherwise) { out.push({ type:"cond", depth, text:"otherwise" });
           summaryLines(n.otherwise.children, depth+1).forEach(x=>out.push(x)); }
       }
@@ -4909,28 +4818,24 @@ function App() {
 
   /* branch opener — reveals a full add-step NODE on hover (icon + "Add step in this branch"), matching the
      main flow's InsertZone ghost-card. Stays revealed while its add-menu is open (no collapse-jump). */
-  const BranchAdd = ({ path, branchId, empty }) => {
+  const BranchAdd = ({ path, branchId }) => {
     const addOpen = branchMenuPath === pathKey(path); // this branch's add-menu is open → stay expanded
-    const visible = !!empty || addOpen; // EMPTY lane → the node TEXT is always visible (like the trunk "Add step"); lane WITH steps → just the + icon, text on hover
-    const cardCenter = PAD + 21; // vertical centre of the 42px card (matches the trunk add-step geometry)
     return (
     <div ref={(el)=>{ if(el) branchAddRefs.current[pathKey(path)]=el; }} onClick={(e)=>openBranchAdd(path,e)}
       onDragOver={branchId!=null ? (e)=>{ e.preventDefault(); } : undefined} onDrop={branchId!=null ? (e)=>dropInto(branchId, e) : undefined}
-      className="group/add relative cursor-pointer" style={{paddingTop:`${PAD}px`, paddingBottom:`${GAP}px`}}>
-      {/* branch rail stub down to the marker (card) centre */}
-      <div className="absolute w-px" style={{ left:"9px", top:0, height:`${cardCenter}px`, background:"var(--border2)" }}/>
-      {/* + marker on the rail — the persistent "simple icon" (always visible), IDENTICAL to the trunk add-step marker */}
-      <span className="absolute flex items-center justify-center w-[18px] h-[18px] rounded-full"
-        style={{ left:"9px", top:`${cardCenter}px`, transform:"translate(-50%,-50%)", border:"1px solid var(--border2)", background:"var(--panel2)", color:"var(--muted)", boxShadow:"0 0 0 3px var(--bg)", zIndex:2 }}>
+      className="group/add relative cursor-pointer" style={{paddingTop:`${PAD}px`, paddingBottom:`${PAD+GAP}px`}}>
+      {/* branch rail stub down to the marker centre */}
+      <div className="absolute w-px" style={{ left:"9px", top:0, bottom:`calc(100% - ${MC}px)`, background:"var(--border2)" }}/>
+      {/* + marker on the rail, revealed on hover / while open */}
+      <span className={"absolute flex items-center justify-center w-[18px] h-[18px] rounded-full transition-all duration-200 " + (addOpen ? "opacity-100" : "opacity-0 group-hover/add:opacity-100")}
+        style={{ left:"9px", top:`${MC}px`, transform:"translate(-50%,-50%)", border:"1px solid var(--border2)", background:"var(--panel2)", color:"var(--muted)", boxShadow:"0 0 0 3px var(--bg)", zIndex:2 }}>
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"/></svg>
       </span>
-      {/* ghost-node card — like the trunk "Add step": bg TRANSPARENT at rest, fills --panel2 only on hover OR while its dropdown is open.
-          Text visible always for an empty lane (so you see you can add a step); for a lane with steps it appears on hover. */}
-      <div className={"flex items-center transition-colors group-hover/add:bg-[var(--panel2)] "
-        + (visible ? "opacity-100 " : "opacity-0 group-hover/add:opacity-100 ")
-        + (addOpen ? "bg-[var(--panel2)]" : "")}
-        style={{ marginLeft:"16px", marginRight:"16px", height:"42px", borderRadius:"10px", paddingLeft:"18px" }}>
-        <span className="text-[13px] font-medium" style={{ color:"var(--muted)" }}>Add step in this branch</span>
+      {/* full add-step node card — same styling as the main flow's "Add step" */}
+      <div className={"flex items-center gap-1.5 rounded-lg text-[13px] font-medium transition-all duration-200 hover:bg-[var(--pop-hover)] hover:text-[var(--text)] hover:border-[var(--border)] " + (addOpen ? "opacity-100" : "opacity-0 group-hover/add:opacity-100")}
+        style={{ marginLeft:"34px", paddingLeft:"12px", paddingRight:"12px", height:`${HEAD}px`, color:"var(--muted)", border:"1px solid var(--border2)", background:"var(--panel2)", boxShadow:"var(--shadow-sm)" }}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+        Add step in this branch
       </div>
     </div>
     );
@@ -5165,18 +5070,12 @@ function App() {
   const pathClauses = (path, node, pi, wide, noInlineAdd) => {
     const k = pathKey(path), pobj = node.paths[pi];
     const clauses = pobj.clauses || [];
-    // GROUPING — the SAME cardMode model as the standalone CHECK IF (inlineClauses): the first connector sets the
-    // sticky type (pobj.cardMode); MAIN card = clause 0 + every clause whose connector MATCHES it; each opposite = own card.
-    const mode = pobj.cardMode || (clauses[1] && clauses[1].conn) || "and";
-    const main = []; const groups = [];
-    clauses.forEach((c,ci)=>{ if(ci===0 || (c.conn||"and")===mode) main.push(ci); else groups.push([ci]); });
-    if(main.length) groups.unshift(main);
-    const connBadge = (ci) => { const cur = clauses[ci].conn || "and";
-      return <button onClick={(e)=>{ e.stopPropagation(); setFlow(f=>{ const n=nodeAt(f,path); const cls=(n.paths[pi].clauses)||[]; const newCls=cls.map((c,j)=> j===ci ? {...c, conn:(c.conn||"and")==="and"?"or":"and"} : c); const cm=(n.paths[pi].cardMode)||(cls.length>=2?((cls[1]&&cls[1].conn)||"and"):undefined); const paths=n.paths.map((pp,kk)=>kk===pi?{...pp, clauses:newCls, ...(cm?{cardMode:cm}:{})}:pp); return treeUpdate(f,path,{paths}); }); }} data-tip="Toggle AND / OR"
+    const connBadge = (ci) => { const cur = pobj.clauses[ci].conn || "and";
+      return <button onClick={(e)=>{ e.stopPropagation(); updatePathClause(path, pi, ci, { conn: cur==="and"?"or":"and" }); }} data-tip="Toggle AND / OR"
         className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] px-2 py-2 leading-none rounded-md whitespace-nowrap transition-colors hover:bg-[var(--pop-hover)] hover:text-[var(--text)]"
         style={{ color:"var(--muted)", background:"var(--panel2)" }}>{cur}{COND_CHEV}</button>; };
     const clauseEls = (ci) => {
-      const c = clauses[ci]; const f = flowFD(node, c.field); const rel = f?.type==="date" && isRelDateOp(c.op);
+      const c = pobj.clauses[ci]; const f = flowFD(node, c.field); const rel = f?.type==="date" && isRelDateOp(c.op);
       return (<>
         <Slot tone="cond" value={f?.label} placeholder="a field" open={openSlot===`${k}:p${pi}:c${ci}:field`} dataAnchor={`pcond:${pobj.id}:${ci}`} innerRef={(el)=>{ if(el) condSlotRefs.current[`${pobj.id}:${ci}`]=el; }} onClick={(e)=>pickPathField(path,node,pi,ci,e)} />
         {c.field && <> <Slot tone="cond" value={c.op} placeholder="is" open={openSlot===`${k}:p${pi}:c${ci}:op`} dataAnchor={`pcop:${pobj.id}:${ci}`} onClick={(e)=>pickPathOp(path,node,pi,ci,e)} /> </>}
@@ -5185,56 +5084,25 @@ function App() {
           : (c.field && <Slot tone="cond" wrap={Array.isArray(c.value)} value={valueDisplay(c.value, openSlot===`${k}:p${pi}:c${ci}:value`)} smartKind={valueSmartKind(c, `${k}:p${pi}:c${ci}:value`)} placeholder={valuePlaceholder(f?.type)} open={openSlot===`${k}:p${pi}:c${ci}:value`} dataAnchor={`pval:${pobj.id}:${ci}`} innerRef={(el)=>{ if(el) valueSlotRefs.current[`${pobj.id}:${ci}`]=el; }} onClick={(e)=>reopenPathSmart(path,node,pi,ci,e)} onClear={()=>clearSmartValue((v)=>updatePathClause(path,pi,ci,{value:v}), `${k}:p${pi}:c${ci}:value`)} />)}
       </>);
     };
-    // one clause = one line — IDENTICAL layout to inlineClauses: line 0 = the lane's "Check if"/"Or if" badge (flush-left);
-    // a group-boundary connector sits right-aligned in the 72px gutter; a within-group connector sits inline at the text's left.
-    const clauseLine = (ci, first, gi=0) => {
-      const flushLeft = first && gi===0;
-      const subIndent = (!first && gi>0) ? 20 : 0;
-      const isBoundary = first && gi>0;
-      const lineActive = !!openSlot && openSlot.indexOf(`${k}:p${pi}:c${ci}:`)===0; // a popover anchored to THIS line is open → pin its cluster
-      return (
-      <div key={ci} className="group/cl relative flex flex-wrap items-start gap-x-2.5" style={{minHeight:`${HEAD}px`, paddingLeft:subIndent?`${subIndent}px`:undefined}}>
-        {!(ci===0 && !wide) && <span className="shrink-0 flex items-center" style={{width:"72px", height:`${HEAD}px`, justifyContent:(flushLeft||isBoundary)?"flex-start":"flex-end"}}>
-          {ci===0
-            ? <span className="relative group/help inline-flex items-center">
-                <Badge color="var(--c-if)" bg="var(--c-if-bg)" className="cursor-help">{pi===0?"Check if":"Or if"}</Badge>
-                <div className="absolute z-30 left-0 top-full mt-2 w-72 p-3.5 rounded-xl opacity-0 pointer-events-none group-hover/help:opacity-100 transition-opacity" style={{background:"var(--pop-bg)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-sm)"}}><HelpCard help={NODE_HELP.branch} /></div>
-              </span>
-            : (isBoundary ? connBadge(ci) : null)}
-        </span>}
-        {/* sentence tokens flow as ONE inline run; the WITHIN-group connector is the first inline child (left margin) */}
-        <span className="flex-1 min-w-0 self-center clause-flow" style={{minHeight:`${HEAD}px`, lineHeight:`${HEAD}px`}}>
-          {ci!==0 && !isBoundary && <>{connBadge(ci)}{" "}</>}
-          {clauseEls(ci)}
-        </span>
-        {/* right cluster — "+ new condition │ copy ×" — IDENTICAL to the standalone CHECK IF node */}
-        <span className={"shrink-0 flex items-center gap-1 transition-opacity " + (lineActive ? "opacity-100" : "opacity-0 group-hover/cl:opacity-100")} style={{height:`${HEAD}px`}}>
-          {!noInlineAdd && <>
-            <button onClick={(e)=>{ e.stopPropagation(); setOpenSlot(`${k}:p${pi}:c${ci}:add`); openNewCondition(e.currentTarget, clauses, null, (c2)=>addPathClauseAndPick(path,node,pi,c2)); }} title="Add condition" className={"inline-flex items-center gap-1 text-[12px] font-medium whitespace-nowrap transition-colors " + (openSlot===`${k}:p${pi}:c${ci}:add` ? "text-[var(--c-if)]" : "text-[var(--muted)] hover:text-[var(--c-if)]")} style={{padding:"2px 5px"}}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
-              new condition
-            </button>
-            <span className="self-center shrink-0" style={{width:"1px", height:"14px", background:"var(--border2)"}} />
-          </>}
-          <button onClick={(e)=>{ e.stopPropagation(); setFlow(f=>{ const n=nodeAt(f,path); const cl=(n.paths[pi].clauses)||[]; const dup={...cl[ci]}; const paths=n.paths.map((p,kk)=>kk===pi?{...p, clauses:[...cl.slice(0,ci+1), dup, ...cl.slice(ci+1)]}:p); return treeUpdate(f,path,{paths}); }); }} title="Duplicate condition" className="rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] text-[var(--faint)] hover:text-[var(--text)]" style={{padding:"5px"}}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15V5a2 2 0 012-2h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-          </button>
-          <DeleteBtn onClick={(e)=>{ e.stopPropagation(); clauses.length>1 ? removePathClause(path, pi, ci) : removePath(path, pi); }} title={clauses.length>1?"Remove condition":"Remove this path"} />
-        </span>
-      </div>
-      );
-    };
-    // FLAT form (no group cards) vs GROUPED form (one tinted card per OR-group) — exactly like inlineClauses.
-    if (!wide) return (<div className="flex-1 min-w-0 flex flex-col gap-1.5">{clauses.map((c,ci)=>clauseLine(ci, ci===0))}</div>);
+    // each clause on its own line; line 0 = the lane's "Check if" / "Or if" badge, the rest convertible AND/OR.
     return (
-      <div className="flex flex-col gap-4 w-full">
-        {groups.map((grp,gi)=>{ const grpActive = grp.some(ci => !!openSlot && openSlot.indexOf(`${k}:p${pi}:c${ci}:`)===0);
-          return (
-          <div key={gi} className={"flex flex-col gap-2.5 rounded-lg transition-colors " + (grpActive ? "bg-[var(--c-if-h)]" : "hover:bg-[var(--c-if-h)]")}
-            style={{ marginLeft:"-18px", marginRight:"-12px", paddingLeft:"18px", paddingRight:"12px", paddingTop:`${PAD}px`, paddingBottom:`${PAD}px` }}>
-            {grp.map((ci,j)=>clauseLine(ci, j===0, gi))}
+      <div className="flex flex-col gap-1.5 w-full">
+        {clauses.map((c, ci) => (
+          <div key={ci} className="group/cl flex flex-wrap items-start gap-x-2.5 rounded-lg transition-colors hover:bg-[var(--c-if-h)]" style={{minHeight:`${HEAD}px`, padding:"0 8px", margin:"0 -8px"}}>
+            <span className="shrink-0 flex items-center justify-end" style={{width:"72px", height:`${HEAD}px`}}>
+              {ci===0
+                ? <span className="relative group/help inline-flex items-center">
+                    <Badge color="var(--c-if)" bg="var(--c-if-bg)" className="cursor-help">{pi===0?"Check if":"Or if"}</Badge>
+                    <div className="absolute z-30 left-0 top-full mt-2 w-72 p-3.5 rounded-xl opacity-0 pointer-events-none group-hover/help:opacity-100 transition-opacity" style={{background:"var(--pop-bg)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-sm)"}}><HelpCard help={NODE_HELP.branch} /></div>
+                  </span>
+                : connBadge(ci)}
+            </span>
+            {/* sentence tokens flow as ONE inline run → wrapped lines return to the LEFT MARGIN (paragraph wrap) */}
+            <span className="flex-1 min-w-0 self-center clause-flow" style={{minHeight:`${HEAD}px`, lineHeight:`${HEAD}px`}}>{clauseEls(ci)}</span>
+            {clauses.length>1 && <button onClick={(e)=>{ e.stopPropagation(); removePathClause(path, pi, ci); }} title="Remove" className="shrink-0 opacity-0 group-hover/cl:opacity-100 text-[15px] leading-none px-1" style={{color:"var(--faint)", height:`${HEAD}px`}}>×</button>}
           </div>
-          ); })}
+        ))}
+        {!noInlineAdd && <button onClick={(e)=>{ e.stopPropagation(); openNewCondition(e.currentTarget, pobj.clauses, null, (c)=>addPathClauseAndPick(path,node,pi,c)); }} className="self-start inline-flex items-center gap-1 text-[12px] font-medium hover:brightness-110" style={{color:"var(--c-if)"}}><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>new condition</button>}
       </div>
     );
   };
@@ -5288,10 +5156,6 @@ function App() {
       // insert affordance ONLY between nodes — the LAST node is followed by a dedicated add affordance
       // (the trunk "Add step" pill / a branch's "+") so it needs no extra insert chip (avoids the double-+).
       const insertBelow = i < nodes.length-1 ? (el)=>openInsert(basePath, i+1, el) : null;
-      // headless = a clauses-less branch lane (action/get/wait-first) has NO condition header, so its FIRST
-      // node IS the lane's top row — render it isFirst so its rail starts AT the marker (no stub line above the
-      // dot), exactly like the gold condition header does. (Gated lanes pass headless:false → children link up.)
-      const isFirst = i===0 && !!opts.headless;
 
       // ── ACTION ──────────────────────────────────────────────────────────
       if (node.kind === "action") {
@@ -5307,7 +5171,7 @@ function App() {
         const _hasCard = ((def && def.details) || _spec) && !(def && def.arg && !node.arg);
         const nodeGood = !!(_hasCard && _complete && node.confirmed);
         return (
-          <Station key={node.id} marker={MARK.action} isFirst={isFirst} isLast={isLast} head={head} headColor="var(--c-then)" headBg="var(--c-then-bg)" hoverBg="var(--c-then-h)" help={NODE_HELP.action} editing={drawer===node.id}
+          <Station key={node.id} marker={MARK.action} isLast={isLast} head={head} headColor="var(--c-then)" headBg="var(--c-then-bg)" hoverBg="var(--c-then-h)" help={NODE_HELP.action} editing={drawer===node.id}
             innerRef={(el)=>setRowRef(k, el)} removeLabel="Remove action" onCopy={()=>copyNode(path)} onInsert={isTrunk ? null : insertBelow} gapBottom={isTrunk?0:undefined} dnd={dnd(node.id)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)} onRemove={()=>remove(path)}>
             {node.action === "assign" ? (<>
@@ -5438,7 +5302,7 @@ function App() {
         // it never has children of its own. It is the rail's last node only if it's literally last.
         const isLast = opts.last && i===nodes.length-1;
         return (
-          <Station key={node.id} marker={MARK.cond} isFirst={isFirst} isLast={isLast} hoverBg="transparent" wideContent
+          <Station key={node.id} marker={MARK.cond} isLast={isLast} hoverBg="transparent" wideContent
             padY={0} markerY={PAD + HEAD/2}
             innerRef={(el)=>setRowRef(k, el)} onInsert={isTrunk ? null : insertBelow} gapBottom={isTrunk?0:undefined}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)}>
@@ -5451,7 +5315,7 @@ function App() {
       if (node.kind === "delay") {
         const isLast = opts.last && i===nodes.length-1;
         return (
-          <Station key={node.id} marker={MARK.delay} isFirst={isFirst} isLast={isLast} head={node.mode==="event"?undefined:"Wait"} headColor="var(--text)" headBg="var(--panel2)" hoverBg={node.mode==="event"?"transparent":"var(--panel2)"} wideContent={node.mode==="event"} help={NODE_HELP.delay}
+          <Station key={node.id} marker={MARK.delay} isLast={isLast} head={node.mode==="event"?undefined:"Wait"} headColor="var(--text)" headBg="var(--panel2)" hoverBg={node.mode==="event"?"transparent":"var(--panel2)"} wideContent={node.mode==="event"} help={NODE_HELP.delay}
             padY={node.mode==="event"?0:undefined} markerY={node.mode==="event"?(PAD+HEAD/2):undefined}
             innerRef={(el)=>setRowRef(k, el)} removeLabel={node.mode==="event"?undefined:"Remove wait"} onCopy={node.mode==="event"?undefined:()=>copyNode(path)} onInsert={isTrunk ? null : insertBelow} gapBottom={isTrunk?0:undefined} dnd={dnd(node.id)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)} onRemove={node.mode==="event"?undefined:()=>remove(path)}>
@@ -5496,7 +5360,7 @@ function App() {
       if (node.kind === "get") {
         const isLast = opts.last && i===nodes.length-1;
         return (
-          <Station key={node.id} marker={MARK.get} isFirst={isFirst} isLast={isLast} head="Get" headColor="var(--text)" headBg="var(--panel2)" hoverBg="var(--panel2)" wideContent help={NODE_HELP.get}
+          <Station key={node.id} marker={MARK.get} isLast={isLast} head="Get" headColor="var(--text)" headBg="var(--panel2)" hoverBg="var(--panel2)" wideContent help={NODE_HELP.get}
             innerRef={(el)=>setRowRef(k, el)} onInsert={isTrunk ? null : insertBelow} gapBottom={isTrunk?0:undefined} dnd={dnd(node.id)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)}>
             {(() => { const single = String(node.qty).trim()==="1"; // single record (qty 1) → no sort; "where" inline
@@ -5570,17 +5434,13 @@ function App() {
             {/* family-tree elbow into this lane */}
             <div className="absolute" style={{ left:"-51px", top:0, width:"60px", height:`${MC}px`,
               borderLeft:"1px solid var(--border2)", borderBottom:"1px solid var(--border2)", borderBottomLeftRadius:"12px" }}/>
-            {/* CONDITION-FIRST lane → the gold gate header (NO branch-level ×; the condition's own × removes the
-                check, or the whole lane when it's the last check). A lane that starts with action/get/wait has NO
-                clauses → no header; its first real node renders directly below as the lane's first row. */}
-            {(pobj.clauses && pobj.clauses.length)
-              ? <Station marker={MARK.cond} isFirst hoverBg="transparent" wideContent
-                  innerRef={(el)=>setRowRef(pathKey(lanePath), el)}>
-                  {pathClauses(path, node, pi, true, false)}
-                </Station>
-              : null}
-            {renderFlow(pobj.children||[], lanePath, (pobj.clauses && pobj.clauses.length) ? {} : {headless:true})}
-            <BranchAdd path={lanePath} branchId={pobj.id} empty={!(pobj.children||[]).length} />
+            {/* this lane's condition header */}
+            <Station marker={MARK.cond} isFirst hoverBg="transparent" wideContent
+              innerRef={(el)=>setRowRef(pathKey(lanePath), el)} removeLabel="Remove path" onRemove={()=>removePath(path,pi)}>
+              {pathClauses(path, node, pi, true, false)}
+            </Station>
+            {renderFlow(pobj.children||[], lanePath)}
+            <BranchAdd path={lanePath} branchId={pobj.id} />
           </div>
         );
       });
@@ -5598,18 +5458,18 @@ function App() {
               <span className="text-[15px]" style={{color:"var(--muted)"}}>nothing above matched</span>
             </Station>
             {renderFlow(node.otherwise.children||[], owPath)}
-            <BranchAdd path={owPath} branchId={node.otherwise.id} empty={!(node.otherwise.children||[]).length} />
+            <BranchAdd path={owPath} branchId={node.otherwise.id} />
           </div>
         );
       }
       return (
         <React.Fragment key={node.id}>
           {lanes}
-          {/* NO floating "add branch" — add a parallel path from a lane's "Add step in this branch" menu; create a NEW
-              branch from "What happens next". This is just the rail bridging the branch down to the next trunk step. */}
-          {!branchIsTerminal && <div className="relative" style={{ marginLeft:"60px", height:`${GAP}px` }}>
-            <div className="absolute" style={{ left:"-51px", top:0, bottom:0, width:"1px", background:"var(--border2)" }}/>
-          </div>}
+          {/* branch-level affordances */}
+          <div className="relative flex items-center gap-3" style={{ marginLeft:"60px", paddingLeft:"4px", paddingBottom:`${GAP}px` }}>
+            {!branchIsTerminal && <div className="absolute" style={{ left:"-51px", top:0, bottom:0, width:"1px", background:"var(--border2)" }}/>}
+            <button onClick={()=>addPath(path)} className="text-[12px] font-medium transition-colors hover:brightness-110" style={{color:"var(--c-if)"}}>+ add branch</button>
+          </div>
         </React.Fragment>
       );
     });
@@ -5784,8 +5644,7 @@ function App() {
         {/* left: the flow */}
         <div className="flex-1 overflow-y-auto relative">
           <div className="canvas-layer"></div>
-          {/* pb clears the floating toolbar (absolute bottom-6, ~80px tall) so the END / Add-step never scroll under it */}
-          <div className="relative z-10 mx-auto w-full px-8 pb-[140px] min-h-full flex flex-col" style={{maxWidth:"720px", paddingTop:"20vh"}}>
+          <div className="relative z-10 mx-auto w-full px-8 pb-0 min-h-full flex flex-col" style={{maxWidth:"720px", paddingTop:"20vh"}}>
             {/* while a form editor is open: dim + block the whole canvas; the edited node (z-40) stays above this */}
             {(drawer||exprEdit) && <div className="absolute inset-0 z-30" style={{ background:"color-mix(in srgb, var(--bg) 62%, transparent)", cursor:"default" }} onMouseDown={(e)=>e.stopPropagation()} />}
 
@@ -6150,7 +6009,12 @@ function App() {
                   )}
                 </div>
                 <div className="shrink-0 border-t px-4 py-3 flex flex-col gap-2" style={{borderColor:"var(--border)"}}>
-                  {/* "Take the walkthrough" removed — it lives on the floating toolbar now (no duplicate launcher here) */}
+                  {/* always-available launcher for the interactive walkthrough — the intro popup only shows once
+                      (lwb_intro_v5), so returning users replay the tour from here. */}
+                  <button onClick={()=>{ setRefOpen(false); startWalk(); }} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[12.5px] font-semibold transition-all hover:-translate-y-0.5" style={{ background:"var(--accent)", color:"#fff", boxShadow:"0 8px 20px -10px var(--accent)" }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7"/><path d="M10 9l5 3-5 3V9z" fill="currentColor"/></svg>
+                    Take the walkthrough
+                  </button>
                   <button onClick={()=>{ setRefOpen(false); setStep(0); setGuideOpen(true); }} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[12.5px] font-medium transition-colors hover:brightness-110" style={{ background:"color-mix(in srgb, var(--accent) 14%, transparent)", color:"var(--accent2)" }}>
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.6 1 1.3 1 2.1h6c0-.8.4-1.5 1-2.1A6 6 0 0012 3z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     How it works
