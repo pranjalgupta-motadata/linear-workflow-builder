@@ -1008,16 +1008,17 @@ const formSpecFor = (a) => {
   return null;
 };
 
+// right chevron marking an item that opens a FURTHER choice (a sub-panel), so it doesn't read as a direct add.
+const SUB_CHEV = (<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>);
 const ADD_MENU = [
   { header:"Required" },
-  { id:"action",    label:"Add action",    tag:"do", tone:"then", icon:I.play,    sub:"Do something automatically — assign, notify, update" },
+  { id:"action",    label:"Add action",    tag:"do", tone:"then", icon:I.play,    sub:"Do something automatically — assign, notify, update", rightIcon:SUB_CHEV },
   { header:"Flow control" },
-  { id:"condition", label:"Add condition", tag:"if", tone:"if", icon:I.diamond,  sub:"Continue only when a check is true" },
-  { id:"condition_group", label:"Condition group", tag:"or", tone:"if", icon:I.diamond, sub:"Add an OR alternative to the previous check" },
-  { id:"branching", label:"Add branching", tag:"split", tone:"branch", sub:"Split the flow into parallel paths",
+  { id:"condition", label:"Add condition", tag:"if", tone:"if", icon:I.diamond,  sub:"Continue only when a check is true", rightIcon:SUB_CHEV },
+  { id:"branching", label:"Add branching", tag:"split", tone:"branch", sub:"Split the flow into parallel paths", rightIcon:SUB_CHEV,
     icon:(<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><rect x="3" y="16" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><rect x="15" y="16" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><path d="M12 8v3.5M6 16v-2.5h12V16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>) },
   { header:"Timing & data" },
-  { id:"delay",     label:"Add wait",      tone:"util", icon:I.hourglass, sub:"Pause for a time, a date, or until a condition" },
+  { id:"delay",     label:"Add wait",      tone:"util", icon:I.hourglass, sub:"Pause for a time, a date, or until a condition", rightIcon:SUB_CHEV },
   { id:"get",       label:"Get records",   tone:"util", icon:I.records,   sub:"Fetch many records — steps below run for each" },
   { id:"merge",     label:"Merge",         tone:"util", tag:"soon", disabled:true, icon:I.merge,     sub:"Bring separate branches back into one path" },
   { id:"loop",      label:"Loop",          tone:"util", tag:"soon", disabled:true, icon:I.loop,      sub:"Repeat steps once for each item in a list" },
@@ -1356,7 +1357,7 @@ const NODE_DOCS = [
     avoid:"Over-branching. If outcomes don't truly diverge, keep it a single check or a group rather than sprouting paths.",
     types:[
       {name:"Single condition", desc:"A check like 'priority is Urgent'. The steps after it run only if it's true. Stays a straight line."},
-      {name:"Condition group (AND / OR)", desc:"Combine several checks at the same point with AND or OR. Still linear — no branching."},
+      {name:"Multiple checks (AND / OR)", desc:"Combine several checks at the same point with AND or OR — groups form automatically from adjacent conditions. Still linear — no branching."},
       {name:"If / Else", desc:"Add an 'Otherwise' path so something else happens when the check is false. This sprouts a second path."},
       {name:"Branching (multiple paths)", desc:"Several paths, each with its own check and its own actions. Use when outcomes truly diverge."},
     ],
@@ -3350,7 +3351,6 @@ function App() {
   const [openSlot, setOpenSlot] = useState(null); // unique key of the slot whose popover is open
   const [smartPreview, setSmartPreview] = useState(null); // slotKey whose value popover is on the "Smart value" tab → preview a badge in the sentence
   const [openInsertKey, setOpenInsertKey] = useState(null); // which InsertZone's add-menu is open → keep that zone expanded (no collapse-jump)
-  const [hovWaitKey, setHovWaitKey] = useState(null); // wait-event node being hovered → reveal its "add max timeout" affordance
   useEffect(()=>{ if(!pop) setOpenInsertKey(null); }, [pop]); // clear once the menu closes
   const open = (anchor, items, onPick, title, opts={}) => setPop({ anchor, items, onPick, title, ...opts });
   // pick the first anchor that's actually laid out (non-zero rect) — skips stale/detached refs
@@ -3776,18 +3776,8 @@ function App() {
     setFlow(f => treeInsertAt(f, path, idx, node));
     openCondFieldPicker(newPath, node.id, 0, fallbackEl);
   };
-  // "Condition group": add an OR-group (a clause flagged .or) to the adjacent CHECK IF — or start a
-  // new condition if there's none. The OR-group renders as a new "or" row of the same gate.
-  const addOrGroupAndPick = (path, fallbackEl, index) => {
-    const siblings = childrenAt(flow, path);
-    const idx = index===undefined ? siblings.length : index;
-    const prev = siblings[idx-1];
-    if (!prev || prev.kind!=="condition") { addConditionAndPick(path, fallbackEl, index); return; }
-    const condPath = [...path, idx-1];
-    const ci = (prev.clauses||[]).length;
-    setFlow(f => { const n = nodeAt(f, condPath); return treeUpdate(f, condPath, { clauses:[...(n.clauses||[]), { field:null, op:"is", value:null, or:true }] }); });
-    openCondFieldPicker(condPath, prev.id, ci, fallbackEl);
-  };
+  // (Removed: the explicit "Condition group" add-step option — groups now form automatically from adjacent
+  // conditions via the adjacency-DNF model, so a separate "add an OR-group" action is no longer offered.)
   // A branch lane no longer ALWAYS starts with a condition. When you add a branch (or a parallel path) you
   // CHOOSE the lane's FIRST node — condition / action / get / wait (NOT trigger, NOT nested branching). The
   // choice drives the lane's colour + behaviour: condition → the gold gate header (pathClauses); action →
@@ -3955,7 +3945,7 @@ function App() {
   };
   /* tree ops */
   const update = (path, patch) => setFlow(f => treeUpdate(f, path, patch));
-  const remove = (path) => setFlow(f => mergeAdjacentConditions(treeRemove(f, path)));
+  const remove = (path) => setFlow(f => mergeAdjacentConditions(pruneEmptyLanes(treeRemove(f, path), path)));
   const nodeAt = (nodes, path) => { let n=null, arr=nodes;
     for(let j=0;j<path.length;j++){ const seg=path[j];
       if (isBranchSeg(seg)) { arr = segChildren(n, seg); continue; }
@@ -4093,12 +4083,11 @@ function App() {
   });
   const mainMenuConfig = (path, anchor, index) => ({
     // "Add trigger" shows ONLY in the add-step directly after the trigger (trunk, insert index 0) — and never
-    // when the start is periodic. "Condition group" shows only when the step BEFORE the insert point is a CHECK IF.
+    // when the start is periodic. (There is NO "Condition group" item — groups form automatically from adjacent conditions.)
     anchor,
-    items: (()=>{ const sibs = childrenAt(flow, path); const insIdx = index===undefined ? sibs.length : index;
-      const canGroup = !!(sibs[insIdx-1] && sibs[insIdx-1].kind==="condition");
+    items: (()=>{
       const noRecord = recordsInScope(path).length===0; // periodic/time trigger with no Create/Get above → no record yet
-      let list = ADD_MENU.filter(it => it.id!=="condition_group" || canGroup);
+      let list = ADD_MENU.slice();
       if (noRecord) {
         // no record in scope → promote "Get records" into the REQUIRED section (you fetch records first to act on them);
         // "Add action" stays (functional actions — create / notify / HTTP / plugin — still work without a record).
@@ -4112,9 +4101,8 @@ function App() {
     onPick:(i, idx)=>{
       const backToMain = ()=>setPop({ ...mainMenuConfig(path, anchor, index), initActive: idx }); // back lands on the item you came from
       if (i.id==="trigger") { setPop(triggerMenuConfig(anchor, backToMain)); return true; } // swap in place, with back
-      if (i.id==="condition") { addConditionAndPick(path, anchor, index); return; } // inline CHECK IF gate (branching is now its own top-level item)
+      if (i.id==="condition") { setPop(condKindMenuConfig(path, anchor, backToMain, index)); return true; } // choose Inline (a CHECK IF gate) vs Branching (a branch whose default first node is CHECK IF)
       if (i.id==="branching") { setPop(branchFirstStepMenuConfig(anchor, backToMain, (step)=>addBranchAndPick(path, anchor, index, step))); return true; } // ask what the lane STARTS with (condition/action/get/wait), then split into a parallel path
-      if (i.id==="condition_group") { addOrGroupAndPick(path, anchor, index); return; }
       if (i.id==="delay") { setPop(delayKindMenuConfig(path, anchor, backToMain, index)); return true; } // swap to time/event
       if (i.id==="get")   { addGetAndPick(path, anchor, index); return; }
       if (i.id==="action") { openAddActionMenu(path, anchor, ()=>setPop(mainMenuConfig(path, anchor, index)), index); return true; } // swap to the action picker; create the row only on pick
@@ -4134,6 +4122,48 @@ function App() {
     }, "Add step in this branch", {itemsAsNodes:true, solidIcons:true, wide:true});
   };
   const openBranchAdd = (path, e) => openBranchAddAt(path, e.currentTarget);
+  // "Add branch" (the neutral affordance under a CHECK IF lane) → asks Or if / Or else, then adds a sibling
+  // condition path / the Otherwise to the PARENT branch. lanePath = the condition lane; its parent is the branch.
+  const openAddBranch = (lanePath, anchor) => {
+    if (!anchor) return;
+    const branchPath = lanePath.slice(0,-1);
+    const bnode = nodeAt(flow, branchPath);
+    const hasOtherwise = !!(bnode && bnode.otherwise);
+    open(anchor, [
+      { id:"orif",   label:"Or if",   tone:"if", sub:"another condition path" },
+      { id:"orelse", label:"Or else", tone:"if", sub: hasOtherwise ? "already added" : "runs when nothing above matched", disabled: hasOtherwise },
+    ], (i)=>{ if (i.id==="orif") addPathAndPick(branchPath, anchor, "condition"); else if (!hasOtherwise) addOtherwise(branchPath); }, "Add branch", {noSearch:true});
+  };
+  // INLINE CHECK IF "Add branch" → Or if / Or else, then CONVERT the inline condition (+ the steps it gates)
+  // into a branch: the condition + its following gated siblings become path 1; Or if adds a 2nd condition path,
+  // Or else adds the Otherwise. (User-confirmed behaviour, 2026-06-29.)
+  const convertInlineToBranch = (condPath, anchor, kind) => {
+    const parentPath = condPath.slice(0,-1);
+    const idx = condPath[condPath.length-1];
+    setFlow(f => {
+      const siblings = childrenAt(f, parentPath);
+      const condNode = siblings[idx];
+      if (!condNode || condNode.kind!=="condition") return f;
+      const following = siblings.slice(idx+1); // everything the inline condition gates → becomes path 1's body
+      const clauses = (condNode.clauses && condNode.clauses.length) ? condNode.clauses.map(c=>({...c})) : [{ field:null, op:"is", value:null }];
+      const path1 = { id:nid(), combiner:"and", clauses, children: following };
+      const branch = kind==="orelse"
+        ? { id:nid(), kind:"branch", paths:[path1], otherwise:{ id:nid(), children:[] } }
+        : { id:nid(), kind:"branch", paths:[path1, makeLane("condition")], otherwise:null };
+      return treeSetLevel(f, parentPath, [...siblings.slice(0, idx), branch]);
+    });
+    if (kind!=="orelse") { // auto-open the new Or-if path's field picker (path index 1)
+      const branchPath = [...parentPath, idx];
+      requestAnimationFrame(()=>{ const bnode = nodeAt(flowRef.current, branchPath); if (bnode && bnode.paths && bnode.paths[1]) openLaneFirst(branchPath, 1, bnode.paths[1], "condition", bnode, anchor); });
+    }
+  };
+  const openInlineAddBranch = (condPath, anchor) => {
+    if (!anchor) return;
+    open(anchor, [
+      { id:"orif",   label:"Or if",   tone:"if", sub:"another condition path" },
+      { id:"orelse", label:"Or else", tone:"if", sub:"runs when nothing above matched" },
+    ], (i)=>{ convertInlineToBranch(condPath, anchor, i.id); }, "Add branch", {noSearch:true});
+  };
 
   /* condition clause helpers — a condition node has clauses:[{field,op,value}] + combiner:"and"|"or" */
   const updateClause = (path, ci, patch) => setFlow(f => treeUpdate(f, path, (()=>{
@@ -4372,6 +4402,34 @@ function App() {
     }
     return treeUpdate(f, path, { paths });
   });
+  // After a node is removed, if that left a branch LANE (path) with no clauses AND no children — e.g. you removed
+  // the only node of an action/get/wait-first lane — drop the whole lane, and collapse the branch like removePath:
+  // down to 1 path + no otherwise → inline; 0 paths + no otherwise → remove the branch node entirely.
+  const pruneEmptyLanes = (nodes, removedPath) => {
+    let si = -1; for (let j=removedPath.length-1; j>=0; j--){ if (isBranchSeg(removedPath[j])) { si=j; break; } }
+    if (si<0) return nodes;
+    const seg = removedPath[si];
+    if (seg.path===undefined) return nodes; // only paths, not the otherwise lane
+    const branchPath = removedPath.slice(0, si);
+    const bnode = nodeAt(nodes, branchPath);
+    if (!bnode || bnode.kind!=="branch") return nodes;
+    const pi = seg.path; const lane = (bnode.paths||[])[pi];
+    if (!lane) return nodes;
+    const empty = !(lane.clauses && lane.clauses.length) && !(lane.children && lane.children.length);
+    if (!empty) return nodes;
+    const paths = bnode.paths.filter((_,k)=>k!==pi);
+    const parent = branchPath.slice(0,-1), idx = branchPath[branchPath.length-1];
+    const siblings = childrenAt(nodes, parent);
+    if (paths.length===1 && !bnode.otherwise) { // collapse: gated lane → CHECK IF + steps; clauses-less → just steps
+      const only = paths[0];
+      const lead = (only.clauses && only.clauses.length) ? [{ id:nid(), kind:"condition", clauses:only.clauses, combiner:only.combiner }] : [];
+      return treeSetLevel(nodes, parent, [...siblings.slice(0,idx), ...lead, ...(only.children||[]), ...siblings.slice(idx+1)]);
+    }
+    if (paths.length===0 && !bnode.otherwise) { // nothing left at all → remove the branch node
+      return treeSetLevel(nodes, parent, [...siblings.slice(0,idx), ...siblings.slice(idx+1)]);
+    }
+    return treeUpdate(nodes, branchPath, { paths });
+  };
   const removeOtherwise = (path) => setFlow(f => {
     const n = nodeAt(f, path); if(!n) return f;
     if ((n.paths||[]).length===1) { // collapse back to inline condition (or just steps for a clauses-less lane)
@@ -4385,11 +4443,13 @@ function App() {
     return treeUpdate(f, path, { otherwise:null });
   });
   // add a clause to a branch path's condition and open its field picker
-  const addPathClauseAndPick = (path, node, pi, conn) => {
-    const p = node.paths[pi]; const ci = (p.clauses||[]).length;
+  const addPathClauseAndPick = (path, node, pi, conn, afterCi) => {
+    const p = node.paths[pi]; const cur = p.clauses||[];
+    // "and" (same group) → insert right AFTER the clicked line so it joins THAT group; "or" (new group) → append at end.
+    // (afterCi null = no source line → end.) Mirrors the inline addClauseAndPick now that grouping is adjacency-based.
+    const ci = (conn==="or" || afterCi==null) ? cur.length : afterCi+1;
     setFlow(f => treeUpdate(f, path, (()=>{ const n=nodeAt(f,path);
-      const paths = n.paths.map((pp,k)=> { if(k!==pi) return pp; const nc=[...pp.clauses, {field:null,op:"is",value:null, conn:conn||"and"}];
-        const cm = pp.cardMode || (nc.length===2 ? (conn||"and") : pp.cardMode); return {...pp, clauses:nc, ...(cm?{cardMode:cm}:{})}; }); return { paths }; })()));
+      const paths = n.paths.map((pp,k)=> { if(k!==pi) return pp; const a=[...(pp.clauses||[])]; a.splice(ci, 0, {field:null,op:"is",value:null, conn:conn||"and"}); return {...pp, clauses:a}; }); return { paths }; })()));
     setOpenSlot(`${pathKey(path)}:p${pi}:c${ci}:field`);
     requestAnimationFrame(()=> open(condSlotRefs.current[`${p.id}:0`], flowMenu(node),
       (i)=>{ const t=flowFD(node,i.id)?.type||"enum"; updatePathClause(path, pi, ci, {field:i.id,op:defaultOp(t),value:null});
@@ -4786,7 +4846,7 @@ function App() {
   };
 
   const HEAD = 28, PAD = 7, GAP = 10, MC = PAD + HEAD/2; // MC = marker center from row top
-  const Station = ({ marker, isFirst, isLast, head, headColor, headBg, hoverBg, onRemove, removeLabel, onInsert, onCopy, onHead, onAddCond, addLabel="new condition", addAccent="var(--c-if)", addActive=false, addHoverOnly=false, wideContent, dnd, onFocus, onClick, focused, help, innerRef, dense, gapBottom, okBorder, editing, bgLeft="16px", bgRight="16px", padLeft="34px", padRight="28px", padY, markerY, children }) => {
+  const Station = ({ marker, isFirst, isLast, head, headColor, headBg, hoverBg, onRemove, removeLabel, onInsert, onCopy, onHead, onAddCond, addLabel="new condition", addAccent="var(--c-if)", addActive=false, addHoverOnly=false, wideContent, dnd, onFocus, onClick, focused, help, innerRef, dense, gapBottom, okBorder, editing, bgLeft="16px", bgRight="16px", padLeft="34px", padRight="28px", padY, markerY, headerBg, children }) => {
     const [xHover, setXHover] = useState(false);
     const pt = padY!==undefined ? padY : (dense ? 6 : PAD), bgBottom = gapBottom!==undefined ? gapBottom : (dense ? 12 : GAP), pb = pt + bgBottom, mc = markerY!==undefined ? markerY : (pt + HEAD/2);
     const active = focused && !!pop; // row's popover is open → keep its tint on (focus state)
@@ -4800,9 +4860,11 @@ function App() {
       style={{paddingLeft:padLeft, paddingRight:padRight, paddingTop:`${pt}px`, paddingBottom:`${pb}px`}}>
       {/* drop indicator line while dragging another node over this row */}
       {(showBefore||showAfter) && <div className="absolute h-0.5 rounded-full pointer-events-none" style={{ left:bgLeft, right:bgRight, top: showBefore?0:`calc(100% - ${bgBottom}px)`, background:"var(--accent)" }}/>}
-      {/* role-tinted background: on hover, and while this row's popover is open */}
+      {/* role-tinted background: on hover, and while this row's popover is open.
+          headerBg → the tint covers ONLY the first (header) row, not the rows below (e.g. GET's where-conditions);
+          `bottom:calc(100% - X)` puts its lower edge X from the TOP, where X = the header row + symmetric pt padding. */}
       <div className={"absolute rounded-lg transition-opacity pointer-events-none " + (active ? "opacity-100" : "opacity-0 group-hover:opacity-100")}
-        style={{ top:0, bottom:`${bgBottom}px`, left:bgLeft, right:bgRight, background:hoverBg||"var(--panel2)" }}/>
+        style={{ top:0, bottom: headerBg ? `calc(100% - ${2*pt + HEAD}px)` : `${bgBottom}px`, left:bgLeft, right:bgRight, background:hoverBg||"var(--panel2)" }}/>
       {/* persistent green border once the node's form is confirmed "Good to go" */}
       {okBorder && <div className="absolute rounded-lg pointer-events-none" style={{ top:0, bottom:`${bgBottom}px`, left:bgLeft, right:bgRight, border:"1px solid var(--rdy-bd)" }}/>}
       {/* rail */}
@@ -4911,7 +4973,11 @@ function App() {
      main flow's InsertZone ghost-card. Stays revealed while its add-menu is open (no collapse-jump). */
   const BranchAdd = ({ path, branchId, empty }) => {
     const addOpen = branchMenuPath === pathKey(path); // this branch's add-menu is open → stay expanded
-    const visible = !!empty || addOpen; // EMPTY lane → the node TEXT is always visible (like the trunk "Add step"); lane WITH steps → just the + icon, text on hover
+    // ALWAYS show the full "Add step in this branch" node (label visible), the SAME for every lane type —
+    // condition-first (empty children) AND action/get/wait-first (node already in children[0]). Previously it
+    // gated on `empty`, so only condition lanes showed the label and the others showed just a bare "+". Now
+    // consistent across all branching, and consistent with the trunk's persistent end "Add step". (`empty` kept for API compat.)
+    const visible = true || !!empty || addOpen;
     const cardCenter = PAD + 21; // vertical centre of the 42px card (matches the trunk add-step geometry)
     return (
     <div ref={(el)=>{ if(el) branchAddRefs.current[pathKey(path)]=el; }} onClick={(e)=>openBranchAdd(path,e)}
@@ -4931,6 +4997,30 @@ function App() {
         + (addOpen ? "bg-[var(--panel2)]" : "")}
         style={{ marginLeft:"16px", marginRight:"16px", height:"42px", borderRadius:"10px", paddingLeft:"18px" }}>
         <span className="text-[13px] font-medium" style={{ color:"var(--muted)" }}>Add step in this branch</span>
+      </div>
+    </div>
+    );
+  };
+
+  /* "Add branch" — a SECOND neutral affordance below a CHECK IF lane's "Add step in this branch": the rail
+     extends one more segment to its own "+" marker, then a hover-revealed "Add branch" card. Only rendered for
+     CONDITION lanes. Click → Or if / Or else chooser (openAddBranch). Styled exactly like the add-step card. */
+  const AddBranchBtn = ({ onAdd, bridge }) => {
+    const cardCenter = 21; // centre of the 42px card (paddingTop 0 → card sits at the top)
+    const up = bridge!==undefined ? bridge : (21+GAP); // how far the rail reaches UP to meet the marker above
+    return (
+    <div onClick={(e)=>onAdd(e.currentTarget)} className="group/ab relative cursor-pointer" style={{paddingTop:0, paddingBottom:`${GAP}px`}}>
+      {/* rail bridges UP from the marker above, then down to this marker (the "one more segment") */}
+      <div className="absolute w-px" style={{ left:"9px", top:`-${up}px`, height:`${cardCenter + up}px`, background:"var(--border2)" }}/>
+      {/* marker on the rail — a BRANCH/split glyph (NOT a plus; a plus reads as "add step" and is confusing here) */}
+      <span className="absolute flex items-center justify-center w-[18px] h-[18px] rounded-full"
+        style={{ left:"9px", top:`${cardCenter}px`, transform:"translate(-50%,-50%)", border:"1px solid var(--border2)", background:"var(--panel2)", color:"var(--muted)", boxShadow:"0 0 0 3px var(--bg)", zIndex:2 }}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 4v4M5 20v-3a3 3 0 013-3h8a3 3 0 013 3v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      </span>
+      {/* card — label ALWAYS visible (like "Add step in this branch"); only the bg appears on hover */}
+      <div className="flex items-center transition-colors group-hover/ab:bg-[var(--panel2)]"
+        style={{ marginLeft:"16px", marginRight:"16px", height:"42px", borderRadius:"10px", paddingLeft:"18px" }}>
+        <span className="text-[13px] font-medium" style={{ color:"var(--muted)" }}>Add branch</span>
       </div>
     </div>
     );
@@ -4979,14 +5069,12 @@ function App() {
   const inlineClauses = (path, node, wide, noInlineAdd) => {
     const k = pathKey(path);
     const clauses = node.clauses || [];
-    // GROUPING — cardMode model (FINALIZED RULE): the FIRST connector picked sets the group's STICKY type
-    // (node.cardMode = "and"|"or"). The MAIN card = clause 0 + every clause whose connector MATCHES cardMode
-    // (kept together even when non-adjacent); each OPPOSITE-connector clause = its own card. So a clause added
-    // with the SAME type as the first connector STAYS in the same group — only the opposite type breaks out.
-    const mode = node.cardMode || (clauses[1] && clauses[1].conn) || "and";
-    const main = []; const groups = [];
-    clauses.forEach((c,ci)=>{ if(ci===0 || (c.conn||"and")===mode) main.push(ci); else groups.push([ci]); });
-    if(main.length) groups.unshift(main);
+    // GROUPING — ADJACENCY DNF (2026-06-29, user-chosen — SUPERSEDES the old cardMode model): a clause with
+    // conn "or" STARTS a new group; "and" JOINS the current (preceding) group. Groups are CONTIGUOUS runs split
+    // by "or". So "+ new condition / And" lands in the CLICKED group (insert right after that clause) and "/ Or"
+    // makes a new group. `cardMode` is no longer read for grouping (kept as a vestigial field; writes are harmless).
+    const groups = [];
+    clauses.forEach((c,ci)=>{ if(ci===0 || (c.conn||"and")==="or") groups.push([ci]); else groups[groups.length-1].push(ci); });
     // the connector badge is a plain and/or toggle on the clause's own `conn`; grouping just follows the rule above.
     const connBadge = (ci) => { const cur = node.clauses[ci].conn || "and";
       return <button onClick={(e)=>{ e.stopPropagation(); setFlow(f=>{ const n=nodeAt(f,path); const cls=(n&&n.clauses)||[]; const patch={ clauses: cls.map((c,j)=> j===ci ? {...c, conn:(c.conn||"and")==="and"?"or":"and"} : c) }; if(!n.cardMode && cls.length>=2) patch.cardMode=(cls[1]&&cls[1].conn)||"and"; return treeUpdate(f,path,patch); }); }} data-tip="Toggle AND / OR"
@@ -5083,21 +5171,17 @@ function App() {
     );
   };
 
-  // WAIT clauses — its OWN renderer (NOT the gold condition one). 1:1 with the condition clause/group behaviour
-  // (AND/OR, group cards, + new condition, copy/×, split-into-group, match any/all) but a NEUTRAL palette.
-  // Reuses the colour-agnostic data handlers (addClauseAndPick/removeClause/copyClause/splitClauseToGroup/pickClause*).
-  const waitClauses = (path, node) => {
+  // WAIT clauses — a NEUTRAL, GROUPED renderer (1:1 with the condition's clause/group behaviour, no gold). The "WAIT"
+  // badge sits in the 72px gutter exactly where CHECK IF's badge does, and "until" leads the content — so within-group
+  // AND aligns with the condition text and the OR boundary badge sits flush-left UNDER the WAIT badge. Adjacency DNF
+  // grouping (conn "or" starts a new group). No card backgrounds — OR-groups separate via the boundary row.
+  const groupedClauses = (path, node, lead={badge:"WAIT", word:"until"}) => {
     const k = pathKey(path);
     const clauses = node.clauses || [];
-    // same grouping rule as the condition node — cardMode model: the FIRST connector sets the sticky type
-    // (node.cardMode); main card = clause 0 + every clause whose connector MATCHES that type (non-adjacent OK);
-    // each opposite-type clause = its own card. Mirrors inlineClauses exactly.
-    const mode = node.cardMode || (clauses[1] && clauses[1].conn) || "and";
-    const main = []; const groups = [];
-    clauses.forEach((c,ci)=>{ if(ci===0 || (c.conn||"and")===mode) main.push(ci); else groups.push([ci]); });
-    if(main.length) groups.unshift(main);
+    const groups = [];
+    clauses.forEach((c,ci)=>{ if(ci===0 || (c.conn||"and")==="or") groups.push([ci]); else groups[groups.length-1].push(ci); });
     const connBadge = (ci) => { const cur = node.clauses[ci].conn || "and";
-      return <button onClick={(e)=>{ e.stopPropagation(); setFlow(f=>{ const n=nodeAt(f,path); const cls=(n&&n.clauses)||[]; const patch={ clauses: cls.map((c,j)=> j===ci ? {...c, conn:(c.conn||"and")==="and"?"or":"and"} : c) }; if(!n.cardMode && cls.length>=2) patch.cardMode=(cls[1]&&cls[1].conn)||"and"; return treeUpdate(f,path,patch); }); }} data-tip="Toggle AND / OR"
+      return <button onClick={(e)=>{ e.stopPropagation(); setFlow(f=>{ const n=nodeAt(f,path); const cls=(n&&n.clauses)||[]; return treeUpdate(f,path,{ clauses: cls.map((c,j)=> j===ci ? {...c, conn:(c.conn||"and")==="and"?"or":"and"} : c) }); }); }} data-tip="Toggle AND / OR"
         className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] px-2 py-2 leading-none rounded-md whitespace-nowrap transition-colors hover:bg-[var(--pop-hover)] hover:text-[var(--text)]"
         style={{ color:"var(--muted)", background:"var(--panel2)" }}>{cur}{COND_CHEV}</button>; };
     const clauseEls = (ci) => {
@@ -5110,31 +5194,23 @@ function App() {
           : (c.field && <Slot wrap={Array.isArray(c.value)} value={valueDisplay(c.value, openSlot===`${k}:c${ci}:value`)} smartKind={valueSmartKind(c, `${k}:c${ci}:value`)} placeholder={valuePlaceholder(f?.type)} open={openSlot===`${k}:c${ci}:value`} dataAnchor={`cval:${node.id}:${ci}`} innerRef={(el)=>{ if(el) valueSlotRefs.current[`${node.id}:${ci}`]=el; }} onClick={(e)=>reopenClauseSmart(path,node,ci,e)} onClear={()=>clearSmartValue((v)=>updateClause(path,ci,{value:v}), `${k}:c${ci}:value`)} />)}
       </>);
     };
+    const outdent = !!lead.outdentConn;   // GET: connectors live in the gutter — within-group (AND) left-aligns with the lead word ("where"), between-group (OR) outdents to the node badge
+    const OUT = lead.connOutdent || 52;
     const clauseLine = (ci, first, gi=0) => {
-      const dragOn = clauses.length>1;
-      const showB = clauseHint && clauseHint.k===k && clauseHint.ci===ci && clauseHint.pos==="before";
-      const showA = clauseHint && clauseHint.k===k && clauseHint.ci===ci && clauseHint.pos==="after";
-      const subIndent = (!first && gi>0) ? 20 : 0;
-      const isBoundary = first && gi>0; // first line of an opposite-type card → connector sits left-aligned in the gutter (under WAIT)
-      const lineActive = !!openSlot && openSlot.indexOf(`${k}:c${ci}:`)===0; // a popover anchored to THIS line is open → pin its cluster
+      const isBoundary = first && gi>0; // first line of an OR-group → its connector sits flush-left in the gutter, under WAIT
+      const withinConn = ci!==0 && !isBoundary; // an AND joining the current group
+      const gutterConn = outdent && withinConn; // GET only: pull the within-group connector into the gutter (left-aligned with the lead word)
+      const lineActive = !!openSlot && openSlot.indexOf(`${k}:c${ci}:`)===0;
       return (
-      <div key={ci} className={"group/cl relative flex flex-wrap items-start gap-x-2.5 " + (dragOn ? "cursor-grab active:cursor-grabbing" : "")} style={{minHeight:`${HEAD}px`, paddingLeft:subIndent?`${subIndent}px`:undefined}}
-        draggable={dragOn} onDragStart={dragOn?(e)=>clauseDragStart(k, ci, e):undefined} onDragEnd={dragOn?clauseDragEnd:undefined}
-        onDragOver={dragOn?(e)=>clauseDragOver(k, ci, e):undefined} onDrop={dragOn?(e)=>clauseDrop(path, ci, e):undefined}>
-        {(showB||showA) && <div className="absolute h-0.5 rounded-full pointer-events-none" style={{ left:0, right:0, [showB?"top":"bottom"]:-4, background:"var(--accent)" }}/>}
-        {dragOn && <span title="Drag into another group" className="absolute flex items-center justify-center opacity-0 group-hover/cl:opacity-100 transition text-[var(--faint)]" style={{ left:"-15px", top:`${HEAD/2}px`, transform:"translateY(-50%)" }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
-        </span>}
-        {ci===0
-          ? <span className="shrink-0 flex items-center gap-x-2" style={{height:`${HEAD}px`}}><Badge color="var(--text)" bg="var(--panel2)">WAIT</Badge><Word>until</Word></span>
-          : <span className="shrink-0 flex items-center" style={{width:"72px", height:`${HEAD}px`, justifyContent: isBoundary?"flex-start":"flex-end"}}>{isBoundary ? connBadge(ci) : null}</span>}
-        {/* sentence tokens flow as ONE inline run; WITHIN-group connector is inline-left (first child); BETWEEN-group
-            connector sits left in the gutter (above). "+ new condition" is the LAST inline child. */}
+      <div key={ci} className="group/cl relative flex flex-wrap items-start gap-x-2" style={{minHeight:`${HEAD}px`}}>
+        <span className="shrink-0 flex items-center" style={{width:(isBoundary&&outdent)?`${52+OUT}px`:"52px", marginLeft:(isBoundary&&outdent)?`-${OUT}px`:undefined, height:`${HEAD}px`, justifyContent: ((first&&gi===0)||isBoundary||gutterConn)?"flex-start":"flex-end"}}>
+          {ci===0 ? (lead.badge ? <Badge color="var(--text)" bg="var(--panel3, var(--panel2))">{lead.badge}</Badge> : <Word>{lead.word}</Word>) : ((isBoundary||gutterConn) ? connBadge(ci) : null)}
+        </span>
         <span className="flex-1 min-w-0 self-center clause-flow" style={{minHeight:`${HEAD}px`, lineHeight:`${HEAD}px`}}>
-          {ci!==0 && !isBoundary && <>{connBadge(ci)}{" "}</>}
+          {ci===0 && lead.badge && <><Word>{lead.word}</Word>{" "}</>}
+          {withinConn && !gutterConn && <>{connBadge(ci)}{" "}</>}
           {clauseEls(ci)}
         </span>
-        {/* right cluster — "+ new condition │ copy ×" (matches the trigger node's cluster). */}
         <span className={"shrink-0 flex items-center gap-1 transition-opacity " + (lineActive ? "opacity-100" : "opacity-0 group-hover/cl:opacity-100")} style={{height:`${HEAD}px`}}>
           <button onClick={(e)=>{ e.stopPropagation(); setOpenSlot(`${k}:c${ci}:add`); openNewCondition(e.currentTarget, node.clauses, null, (c)=>addClauseAndPick(path,node,c,ci)); }} title="Add condition" className={"inline-flex items-center gap-1 text-[12px] font-medium whitespace-nowrap transition-colors " + (openSlot===`${k}:c${ci}:add` ? "text-[var(--text)]" : "text-[var(--muted)] hover:text-[var(--text)]")} style={{padding:"2px 5px"}}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
@@ -5149,28 +5225,29 @@ function App() {
       </div>
       );
     };
-    // NO per-group card bg/breakout — the WAIT node's Station card is the single card; OR-groups separate via the "or" rows.
+    // each OR-group is its OWN card with a neutral bg (same bg, different card), breaking out to hug the marker —
+    // like the gold condition cards but neutral. gap-5 BETWEEN cards, gap-3 WITHIN a card (between clause lines).
     return (
-      <div className="flex flex-col gap-1.5 w-full">
+      <div className="flex flex-col gap-5 w-full">
         {groups.map((grp,gi)=>(
-          <div key={gi} className="flex flex-col">
+          <div key={gi} className="flex flex-col gap-3 rounded-lg transition-colors hover:bg-[var(--pop-hover)]"
+            style={{ marginLeft:"-18px", marginRight:"-12px", paddingLeft:"18px", paddingRight:"12px", paddingTop:`${PAD+2}px`, paddingBottom:`${PAD+2}px` }}>
             {grp.map((ci,j)=>clauseLine(ci, j===0, gi))}
           </div>
         ))}
       </div>
     );
   };
+
   // render a BRANCH path's condition as DNF groups (same model as inlineClauses): a clause with .or
   // starts a new OR-group (a new "or" row); AND within a group; the joiner is an underlined toggle.
   const pathClauses = (path, node, pi, wide, noInlineAdd) => {
     const k = pathKey(path), pobj = node.paths[pi];
     const clauses = pobj.clauses || [];
-    // GROUPING — the SAME cardMode model as the standalone CHECK IF (inlineClauses): the first connector sets the
-    // sticky type (pobj.cardMode); MAIN card = clause 0 + every clause whose connector MATCHES it; each opposite = own card.
-    const mode = pobj.cardMode || (clauses[1] && clauses[1].conn) || "and";
-    const main = []; const groups = [];
-    clauses.forEach((c,ci)=>{ if(ci===0 || (c.conn||"and")===mode) main.push(ci); else groups.push([ci]); });
-    if(main.length) groups.unshift(main);
+    // GROUPING — the SAME ADJACENCY DNF as the standalone CHECK IF (inlineClauses): conn "or" STARTS a new group;
+    // "and" JOINS the current group. Contiguous runs split by "or" (so "+ new condition / And" joins the clicked group).
+    const groups = [];
+    clauses.forEach((c,ci)=>{ if(ci===0 || (c.conn||"and")==="or") groups.push([ci]); else groups[groups.length-1].push(ci); });
     const connBadge = (ci) => { const cur = clauses[ci].conn || "and";
       return <button onClick={(e)=>{ e.stopPropagation(); setFlow(f=>{ const n=nodeAt(f,path); const cls=(n.paths[pi].clauses)||[]; const newCls=cls.map((c,j)=> j===ci ? {...c, conn:(c.conn||"and")==="and"?"or":"and"} : c); const cm=(n.paths[pi].cardMode)||(cls.length>=2?((cls[1]&&cls[1].conn)||"and"):undefined); const paths=n.paths.map((pp,kk)=>kk===pi?{...pp, clauses:newCls, ...(cm?{cardMode:cm}:{})}:pp); return treeUpdate(f,path,{paths}); }); }} data-tip="Toggle AND / OR"
         className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] px-2 py-2 leading-none rounded-md whitespace-nowrap transition-colors hover:bg-[var(--pop-hover)] hover:text-[var(--text)]"
@@ -5210,7 +5287,7 @@ function App() {
         {/* right cluster — "+ new condition │ copy ×" — IDENTICAL to the standalone CHECK IF node */}
         <span className={"shrink-0 flex items-center gap-1 transition-opacity " + (lineActive ? "opacity-100" : "opacity-0 group-hover/cl:opacity-100")} style={{height:`${HEAD}px`}}>
           {!noInlineAdd && <>
-            <button onClick={(e)=>{ e.stopPropagation(); setOpenSlot(`${k}:p${pi}:c${ci}:add`); openNewCondition(e.currentTarget, clauses, null, (c2)=>addPathClauseAndPick(path,node,pi,c2)); }} title="Add condition" className={"inline-flex items-center gap-1 text-[12px] font-medium whitespace-nowrap transition-colors " + (openSlot===`${k}:p${pi}:c${ci}:add` ? "text-[var(--c-if)]" : "text-[var(--muted)] hover:text-[var(--c-if)]")} style={{padding:"2px 5px"}}>
+            <button onClick={(e)=>{ e.stopPropagation(); setOpenSlot(`${k}:p${pi}:c${ci}:add`); openNewCondition(e.currentTarget, clauses, null, (c2)=>addPathClauseAndPick(path,node,pi,c2,ci)); }} title="Add condition" className={"inline-flex items-center gap-1 text-[12px] font-medium whitespace-nowrap transition-colors " + (openSlot===`${k}:p${pi}:c${ci}:add` ? "text-[var(--c-if)]" : "text-[var(--muted)] hover:text-[var(--c-if)]")} style={{padding:"2px 5px"}}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
               new condition
             </button>
@@ -5437,6 +5514,10 @@ function App() {
         // a condition gates the steps AFTER it (its following siblings, rendered by this same .map);
         // it never has children of its own. It is the rail's last node only if it's literally last.
         const isLast = opts.last && i===nodes.length-1;
+        // NOTE: the inline "Add branch" affordance is intentionally NOT rendered for now (user, 2026-06-29:
+        // "for now it wont sit anywhere just keep the functionality"). The conversion logic lives on in
+        // convertInlineToBranch / openInlineAddBranch, ready to wire to a button later. Branch-lane CHECK IFs
+        // DO show "Add branch" (AddBranchBtn in the lane render).
         return (
           <Station key={node.id} marker={MARK.cond} isFirst={isFirst} isLast={isLast} hoverBg="transparent" wideContent
             padY={0} markerY={PAD + HEAD/2}
@@ -5451,24 +5532,16 @@ function App() {
       if (node.kind === "delay") {
         const isLast = opts.last && i===nodes.length-1;
         return (
-          <Station key={node.id} marker={MARK.delay} isFirst={isFirst} isLast={isLast} head={node.mode==="event"?undefined:"Wait"} headColor="var(--text)" headBg="var(--panel2)" hoverBg={node.mode==="event"?"transparent":"var(--panel2)"} wideContent={node.mode==="event"} help={NODE_HELP.delay}
-            padY={node.mode==="event"?0:undefined} markerY={node.mode==="event"?(PAD+HEAD/2):undefined}
-            innerRef={(el)=>setRowRef(k, el)} removeLabel={node.mode==="event"?undefined:"Remove wait"} onCopy={node.mode==="event"?undefined:()=>copyNode(path)} onInsert={isTrunk ? null : insertBelow} gapBottom={isTrunk?0:undefined} dnd={dnd(node.id)}
-            focused={focusKey===k} onFocus={()=>setFocusKey(k)} onRemove={node.mode==="event"?undefined:()=>remove(path)}>
+          <Station key={node.id} marker={MARK.delay} isFirst={isFirst} isLast={isLast} head={node.mode==="event"?undefined:"Wait"} headColor="var(--text)" headBg="var(--panel2)" hoverBg={node.mode==="event"?"transparent":"var(--panel2)"} wideContent={node.mode==="event"} padY={node.mode==="event"?0:undefined} markerY={node.mode==="event"?(PAD+HEAD/2):undefined} help={NODE_HELP.delay}
+            innerRef={(el)=>setRowRef(k, el)} onInsert={isTrunk ? null : insertBelow} gapBottom={isTrunk?0:undefined} dnd={dnd(node.id)}
+            removeLabel={node.mode==="event"?undefined:"Remove wait"} onCopy={node.mode==="event"?undefined:()=>copyNode(path)} onRemove={node.mode==="event"?undefined:()=>remove(path)}
+            focused={focusKey===k} onFocus={()=>setFocusKey(k)}>
             {node.mode==="event"
-              /* the WHOLE wait node is ONE card (breakout to hug the marker, pop-hover highlight). Hovering it GROWS the
-                 card to reveal the "add max timeout" affordance inside (collapsed at rest). */
-              ? <div onMouseEnter={()=>setHovWaitKey(k)} onMouseLeave={()=>setHovWaitKey(null)}
-                  className="flex flex-col rounded-lg transition-colors"
-                  style={{ marginLeft:"-18px", marginRight:"-12px", paddingLeft:"18px", paddingRight:"12px", paddingTop:`${PAD}px`, paddingBottom:`${PAD}px`, background: hovWaitKey===k ? "var(--pop-hover)" : "transparent" }}>
-                  {waitClauses(path, node)}
-                  {hovWaitKey===k &&
-                    <button onClick={(e)=>{ e.stopPropagation(); /* TODO: sprout the timeout as a second branch */ }}
-                      className="mt-1.5 inline-flex items-center gap-1.5 text-[12px] font-medium rounded-md px-2 py-1 transition-colors text-[var(--muted)] hover:text-[var(--text)]" style={{background:"var(--border2)"}}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="13" r="7.5" stroke="currentColor" strokeWidth="1.8"/><path d="M12 9.5V13l2.5 1.5M9.5 3h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-                      add max timeout
-                    </button>}
-                </div>
+              /* WAIT-until uses the NEUTRAL GROUPED renderer (waitClauses) — 1:1 with the condition's clause/group layout
+                 (WAIT badge in the gutter like CHECK IF, "until" leads the content, within-group AND inline, OR boundary
+                 flush-left under the WAIT badge, adjacency DNF groups) but neutral + no card backgrounds. Only CHECK IF
+                 has the gold cards. Shares all the clause handlers (pickClause, addClauseAndPick, removeClause). */
+              ? groupedClauses(path, node)
               : node.mode==null
                 ? <span className="inline-flex items-baseline gap-x-1.5">
                     <Slot value={null} placeholder="time or date" open={openSlot===`${k}:kind`} dataAnchor={`wkind:${node.id}`} onClick={(e)=>pickWaitKind(path,node,e)} />
@@ -5496,14 +5569,14 @@ function App() {
       if (node.kind === "get") {
         const isLast = opts.last && i===nodes.length-1;
         return (
-          <Station key={node.id} marker={MARK.get} isFirst={isFirst} isLast={isLast} head="Get" headColor="var(--text)" headBg="var(--panel2)" hoverBg="var(--panel2)" wideContent help={NODE_HELP.get}
+          <Station key={node.id} marker={MARK.get} isFirst={isFirst} isLast={isLast} head="Get" headColor="var(--text)" headBg="var(--panel2)" hoverBg="var(--panel2)" headerBg wideContent help={NODE_HELP.get}
             innerRef={(el)=>setRowRef(k, el)} onInsert={isTrunk ? null : insertBelow} gapBottom={isTrunk?0:undefined} dnd={dnd(node.id)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)}>
             {(() => { const single = String(node.qty).trim()==="1"; // single record (qty 1) → no sort; "where" inline
               const showWhere = node.qty!=null && node.module!=null && (single || node.sort!=null);
               return (
-            <span className="flex flex-col gap-y-1 w-full">
-              <span className="flex flex-wrap items-start gap-x-1.5 gap-y-1">
+            <span className="flex flex-col gap-y-3 w-full">
+              <span className="flex flex-wrap items-start gap-x-1.5 gap-y-1 w-full">
                 {/* SINGLE record → the WHOLE sentence "{qty} {module} where {field} {op} {value}" flows as ONE
                     inline run (.clause-flow) so a wrapped multi-value returns to the LEFT MARGIN under "{qty} {module}",
                     not under the value column. The node controls stay anchored top-right. */}
@@ -5513,7 +5586,7 @@ function App() {
                     {/* ONE inline run (display:block) → literal {" "} spaces between slots (word-spacing styles them); the flex gap doesn't reach inside here */}
                     <Slot value={node.qty} placeholder="how many" open={openSlot===`${k}:qty`} dataAnchor={`gqty:${node.id}`} onClick={(e)=>pickGetQty(path,node,e)} />{" "}
                     <Slot value={node.module} placeholder="records" open={openSlot===`${k}:module`} dataAnchor={`gmod:${node.id}`} onClick={(e)=>pickGetModule(path,node,e)} />
-                    {showWhere && <>{" "}
+                    {showWhere && (node.clauses||[]).length<=1 && <>{" "}
                       <Word>where</Word>{" "}
                       <Slot value={f?.label} placeholder="a field" open={openSlot===`${k}:c0:field`} dataAnchor={`cond:${node.id}:0`} innerRef={(el)=>{ if(el) condSlotRefs.current[`${node.id}:0`]=el; }} onClick={(e)=>pickClauseField(path,node,0,e)} />
                       {c.field && <>{" "}<Slot value={c.op} placeholder="is" open={openSlot===`${k}:c0:op`} dataAnchor={`cop:${node.id}:0`} onClick={(e)=>pickClauseOp(path,node,0,e)} /></>}
@@ -5532,7 +5605,7 @@ function App() {
                 </>}
                 </>}
                 <span className={"ml-auto shrink-0 flex items-center gap-1 transition-opacity " + ((focusKey===k && pop) ? "opacity-100" : "opacity-0 group-hover:opacity-100")} style={{height:`${HEAD}px`}}>
-                  {single && (node.clauses||[])[0]?.field && <>
+                  {single && (node.clauses||[]).length<=1 && (node.clauses||[])[0]?.field && <>
                     <button onClick={(e)=>{ e.stopPropagation(); setOpenSlot(`${k}:c0:add`); openNewCondition(e.currentTarget, node.clauses, null, (c2)=>addClauseAndPick(path,node,c2,0)); }} title="Add condition" className={"inline-flex items-center gap-1 text-[12px] font-medium whitespace-nowrap transition-colors " + (openSlot===`${k}:c0:add` ? "text-[var(--c-if)]" : "text-[var(--muted)] hover:text-[var(--c-if)]")} style={{padding:"2px 5px"}}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
                       new condition
@@ -5545,11 +5618,12 @@ function App() {
                   <DeleteBtn onClick={(e)=>{ e.stopPropagation(); remove(path); }} title="Remove get" />
                 </span>
               </span>
-              {/* MULTI record (sort shown) → "where …" stays on its own SECOND line (existing layout) */}
-              {showWhere && !single && <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                <Word>where</Word>
-                {inlineClauses(path, node)}
-              </span>}
+              {/* "where …" on its own line via the SHARED flat inlineClauses, for MULTI record OR a single record
+                  with 2+ conditions (so added conditions actually render + are editable — the single-record inline
+                  form above only shows clause 0; with 2+ we switch to the stacked clause list, like multi-record). */}
+              {showWhere && (!single || (node.clauses||[]).length>1) && <div className="w-full">
+                {groupedClauses(path, node, {word:"where", outdentConn:true})}
+              </div>}
             </span>
               ); })()}
           </Station>
@@ -5581,6 +5655,8 @@ function App() {
               : null}
             {renderFlow(pobj.children||[], lanePath, (pobj.clauses && pobj.clauses.length) ? {} : {headless:true})}
             <BranchAdd path={lanePath} branchId={pobj.id} empty={!(pobj.children||[]).length} />
+            {/* "Add branch" — ONLY on a CHECK IF lane (condition-first); adds an Or-if path / Or-else to the parent branch */}
+            {(pobj.clauses && pobj.clauses.length) ? <AddBranchBtn onAdd={(el)=>openAddBranch(lanePath, el)} /> : null}
           </div>
         );
       });
