@@ -7,13 +7,20 @@ INCONSISTENCIES.md
 CONSISTENCY-MAP.md
 CONSOLIDATION.md
 DO-NOT-BREAK.md
+DESIGN-LANGUAGE.md
+FONT-AUDIT.md
+TYPOGRAPHY-SYSTEM.md
 Feature Details/
 
-# Local-only experiment builds (NOT published). v5.1 is now a committed snapshot (prior live);
-# v5.2 IS the live root (index.html). v6 / v7 stay local.
+# Local-only experiment builds (NOT published). v5.5 IS the live root (index.html);
+# v5.1 is the committed prior snapshot. v5.2 / v5.3 / v5.4 / v5.5-file / v6 / v7 stay local.
 index-v5.2.html
+index-v5.3.html
+index-v5.4.html
+index-v5.5.html
 index-v7.html
 index-v6-wip-backup.html
+test_c.html
 
 # Dev tooling — Playwright visual/pixel review harness (tools/shot.cjs) + its deps + screenshots. Not published.
 tools/
