@@ -1859,18 +1859,92 @@ function Badge({ color="var(--faint)", bg="var(--panel2)", className="", childre
   return <span className={"text-[length:var(--fs-10)] font-semibold uppercase tracking-[0.1em] px-2 py-2 leading-none rounded-md whitespace-nowrap "+className} style={{color, background:bg}}>{children}</span>;
 }
 
+// ── Tooltip system (2026-07-07) — the ONE themed, instant tooltip. Replaces native title=, the CSS
+//    [data-tip] pseudo-tooltip, and the ad-hoc group-hover bubbles. Supports a styled keycap chip.
+//    Muted during the guided tour (App syncs TT_MUTE.on = tourActive) so a tip can't cover the goal pill.
+const TT_MUTE = { on: false };
+// single-sourced publish-blocked reason (toolbar split button + save/publish drawer)
+const PUBLISH_BLOCKED_TIP = "Add a trigger and at least one action to publish.";
+// Kbd — the ONE keycap chip shown inside a Tooltip (generalizes the old sidebar-toggle <kbd>).
+function Kbd({ children }) {
+  return <kbd className="px-1.5 py-0.5 rounded text-[length:var(--fs-micro)] font-medium leading-none"
+    style={{ background:"var(--panel2)", border:"1px solid var(--border)", color:"var(--muted)", fontFamily:"inherit" }}>{children}</kbd>;
+}
+// Tooltip — wraps a SINGLE real-DOM child; attaches hover/focus handlers + a MERGED ref via cloneElement
+// and renders the bubble through a PORTAL (position:fixed, no wrapper DOM → flex layouts stay byte-identical).
+// `label` falsy AND no `kbd` → the child renders untouched (safe for conditional tips).
+function Tooltip({ label, kbd, side = "top", children }) {
+  const child = React.Children.only(children);
+  const enabled = !!(label || kbd);
+  const [rect, setRect] = React.useState(null);   // trigger rect while shown; null = hidden
+  const [xy, setXY] = React.useState(null);        // computed {left, top}; null until measured
+  const trigRef = React.useRef(null);
+  const bubbleRef = React.useRef(null);
+  React.useLayoutEffect(() => {
+    if (!rect || !bubbleRef.current) return;
+    const b = bubbleRef.current.getBoundingClientRect();
+    const M = 8, vw = window.innerWidth, vh = window.innerHeight;
+    const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    let s = side;
+    if (s === "top" && rect.top - b.height - M < M) s = "bottom";
+    else if (s === "bottom" && rect.bottom + b.height + M > vh - M) s = "top";
+    else if (s === "right" && rect.right + b.width + M > vw - M) s = "left";
+    else if (s === "left" && rect.left - b.width - M < M) s = "right";
+    let left, top;
+    if (s === "top")         { left = cx - b.width/2; top = rect.top - b.height - M; }
+    else if (s === "bottom") { left = cx - b.width/2; top = rect.bottom + M; }
+    else if (s === "right")  { left = rect.right + M;  top = cy - b.height/2; }
+    else                     { left = rect.left - b.width - M; top = cy - b.height/2; }
+    left = Math.max(M, Math.min(left, vw - b.width - M));
+    top  = Math.max(M, Math.min(top,  vh - b.height - M));
+    setXY({ left, top });
+  }, [rect, side]);
+  if (!enabled) return child;
+  const setRef = (node) => {
+    trigRef.current = node;
+    const r = child.ref;
+    if (typeof r === "function") r(node);
+    else if (r && typeof r === "object" && r !== null) r.current = node;
+  };
+  const show = () => { if (TT_MUTE.on) return; const el = trigRef.current; if (el) { setXY(null); setRect(el.getBoundingClientRect()); } };
+  const hide = () => { setRect(null); setXY(null); };
+  const cloned = React.cloneElement(child, {
+    ref: setRef,
+    title: undefined, // never leave a native title on a tooltip trigger (avoids OS double-tooltip)
+    // keep an accessible name for icon-only triggers (the visual bubble isn't exposed to AT)
+    "aria-label": child.props["aria-label"] ?? (typeof label === "string" ? label : undefined),
+    onMouseEnter: (e) => { show(); child.props.onMouseEnter && child.props.onMouseEnter(e); },
+    onMouseLeave: (e) => { hide(); child.props.onMouseLeave && child.props.onMouseLeave(e); },
+    onFocus: (e) => { show(); child.props.onFocus && child.props.onFocus(e); },
+    onBlur: (e) => { hide(); child.props.onBlur && child.props.onBlur(e); },
+  });
+  return (<>
+    {cloned}
+    {rect && ReactDOM.createPortal(
+      <div ref={bubbleRef} role="tooltip"
+        className="fixed flex items-center gap-2 whitespace-nowrap pointer-events-none"
+        style={{ left: xy ? xy.left : -9999, top: xy ? xy.top : -9999, opacity: xy ? 1 : 0,
+          background:"var(--pop-bg)", color:"var(--text)", border:"1px solid var(--border2)",
+          fontSize:"var(--fs-caption)", fontWeight:500, lineHeight:1, padding:"5px 9px",
+          borderRadius:"8px", boxShadow:"var(--shadow-pop)", zIndex:9999 }}>
+        {label && <span>{label}</span>}
+        {kbd && (Array.isArray(kbd) ? kbd.map((k,i)=><Kbd key={i}>{k}</Kbd>) : <Kbd>{kbd}</Kbd>)}
+      </div>, document.body)}
+  </>);
+}
+
 // [Phase D] CloseBtn — the ONE panel/modal close (×). title overridable (e.g. "Skip"); extras via className.
 function CloseBtn({ onClick, title="Close", className="", kbd }) {
-  return <button onClick={onClick} title={title} {...(kbd ? {"data-tip-below": title+" · "+kbd} : {})} className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors hover:bg-[var(--pop-hover)] "+className} style={{color:"var(--muted)"}}>
+  return <Tooltip label={title} kbd={kbd} side="bottom"><button onClick={onClick} className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors hover:bg-[var(--pop-hover)] "+className} style={{color:"var(--muted)"}}>
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-  </button>;
+  </button></Tooltip>;
 }
 
 // [Phase D] DeleteBtn — the ONE red-tint clause/node delete (×), padding:5px. title + onClick per site.
 function DeleteBtn({ onClick, title, className="" }) {
-  return <button onClick={onClick} title={title} className={"rounded-md flex items-center justify-center transition-colors hover:bg-[rgba(248,81,73,0.18)] text-[var(--faint)] hover:text-[var(--red)] "+className} style={{padding:"5px"}}>
+  return <Tooltip label={title} side="top"><button onClick={onClick} className={"rounded-md flex items-center justify-center transition-colors hover:bg-[rgba(248,81,73,0.18)] text-[var(--faint)] hover:text-[var(--red)] "+className} style={{padding:"5px"}}>
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-  </button>;
+  </button></Tooltip>;
 }
 
 /* [Phase B] Picker — the ONE drawer select. Modes via props:
@@ -1997,7 +2071,7 @@ function TokenInput({ value, onChange, placeholder, hint, autoFocus }) {
           onBlur={add} className="flex-1 min-w-0 bg-transparent outline-none text-[length:var(--fs-13)] py-1" style={{color:"var(--text)"}}/>
         {/* PLUS — ghost icon (no fill) with a neutral hover; icon brightens once there's something to add.
             onMouseDown keeps input focus so it doesn't double-commit via onBlur */}
-        <button onMouseDown={e=>e.preventDefault()} onClick={add} title="Add value"
+        <button onMouseDown={e=>e.preventDefault()} onClick={add} data-tip="Add value"
           className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center transition-colors cursor-pointer bg-transparent hover:bg-[var(--pop-hover)]"
           style={{ color: canAdd ? "var(--text)" : "var(--faint)" }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>
@@ -2014,11 +2088,11 @@ function TokenInput({ value, onChange, placeholder, hint, autoFocus }) {
               onDragEnd={()=>setDragIdx(null)}
               className="group/tok flex items-center gap-1.5 pl-1 pr-1 py-1 rounded-lg transition-colors"
               style={{ background:"var(--panel)", border:"1px solid var(--border2)", opacity: dragIdx===i?0.4:1 }}>
-              <span className="shrink-0 flex items-center justify-center w-5 h-6 cursor-grab active:cursor-grabbing" title="Drag to reorder" style={{color:"var(--faint)"}}>
+              <span className="shrink-0 flex items-center justify-center w-5 h-6 cursor-grab active:cursor-grabbing" data-tip="Drag to reorder" style={{color:"var(--faint)"}}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="5" r="1.6"/><circle cx="15" cy="5" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="19" r="1.6"/><circle cx="15" cy="19" r="1.6"/></svg>
               </span>
               <span className="flex-1 min-w-0 truncate text-[length:var(--fs-13)]" style={{color:"var(--text)"}}>{t}</span>
-              <button onClick={()=>rm(i)} title="Remove" className="shrink-0 w-6 h-6 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] hover:text-[var(--red)]" style={{color:"var(--faint)"}}>
+              <button onClick={()=>rm(i)} data-tip="Remove" className="shrink-0 w-6 h-6 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] hover:text-[var(--red)]" style={{color:"var(--faint)"}}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
               </button>
             </div>
@@ -2612,9 +2686,16 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
   useLayoutEffect(() => {
     const place = () => {
       const p = placePos(measureKeyed() || measureFallback());
-      if (p && (!posRef.current || Math.abs(p.top - posRef.current.top) > 0.5 || Math.abs(p.left - posRef.current.left) > 0.5 || Math.abs((p.helpTop||0) - (posRef.current.helpTop||0)) > 0.5)) {
-        posRef.current = p; bump(n=>n+1);
-      }
+      const cur = posRef.current;
+      // Measure the highlighted row's centre-Y EVERY frame, INDEPENDENT of the anchor. The anchor (e.g. the
+      // "when this happens…" slot) can detach once the menu opens → placePos returns null → the popover keeps
+      // its last position, but the help caret must still track the row. The active row lives inside the pop-root
+      // (always available via `ref`), so query it directly and update rowY even when the position can't re-measure.
+      const el = ref.current && ref.current.querySelector('[data-pop-active="1"]');
+      const rowY = el ? Math.round(el.getBoundingClientRect().top + el.getBoundingClientRect().height/2) : (cur ? cur.rowY : null);
+      const posMoved = p && (!cur || Math.abs(p.top - cur.top) > 0.5 || Math.abs(p.left - cur.left) > 0.5 || Math.abs((p.helpTop||0) - (cur.helpTop||0)) > 0.5);
+      const rowMoved = cur && Math.abs((rowY||0) - (cur.rowY||0)) > 0.5;
+      if (posMoved || rowMoved) { const next = p || { ...cur }; next.rowY = rowY; posRef.current = next; bump(n=>n+1); }
     };
     place(); // synchronous, pre-paint
     let raf;
@@ -2630,7 +2711,7 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
     return () => clearTimeout(t);
   }, []);
   if (!posRef.current) return null;
-  const { top, left, aTop, helpTop, awidth } = posRef.current;
+  const { top, left, aTop, helpTop, awidth, rowY } = posRef.current;
   // matchWidth: size the popover to the ANCHOR's width (the value control) instead of a fixed class — so an
   // update-form field's dropdown is exactly as wide as its field (user 2026-07-05, image #28).
   const matchW = (matchWidth && awidth && awidth >= 200) ? Math.round(awidth) : null; // only match WIDE anchors (drawer field controls) — a narrow sentence slot keeps the default width
@@ -2891,14 +2972,14 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
             className="relative group/dis w-full text-left pl-3 pr-2 py-1.5 text-[length:var(--fs-12)] rounded-lg flex items-center justify-between gap-2 cursor-default" style={{color:"var(--text)"}}>
             <span className="flex items-center justify-between gap-2 flex-1 min-w-0 opacity-50">{itemBody(i)}
             {i.tag && <span className="text-[length:var(--fs-10)] px-1.5 py-0.5 rounded shrink-0" style={{background:"var(--border)",color:"var(--muted)"}}>{i.tag}</span>}</span>
-            {i.hint && <span className="pointer-events-none absolute right-2 bottom-full mb-1 px-2 py-1 rounded-md text-[length:var(--fs-11)] font-medium whitespace-nowrap opacity-0 group-hover/dis:opacity-100 transition-opacity z-50" style={{background:"var(--text)", color:"var(--bg)", boxShadow:"var(--shadow-sm)"}}>{i.hint}</span>}
+            {i.hint && <span className="pointer-events-none absolute right-2 bottom-full mb-1 px-2 py-1 rounded-md text-[length:var(--fs-11)] font-medium whitespace-nowrap opacity-0 group-hover/dis:opacity-100 transition-opacity z-50" style={{background:"var(--pop-bg)", color:"var(--text)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-pop)"}}>{i.hint}</span>}
             {i.rightIcon && <span className="relative group/ri shrink-0 flex items-center justify-center w-5 h-5" style={{color:"var(--muted)"}}>{i.rightIcon}
-              {i.rightHint && <span className="pointer-events-none absolute right-0 bottom-full mb-2 px-2 py-1 rounded-md text-[length:var(--fs-11)] font-medium whitespace-nowrap opacity-0 group-hover/ri:opacity-100 transition-opacity z-50" style={{background:"var(--text)", color:"var(--bg)", boxShadow:"var(--shadow-sm)"}}>{i.rightHint}</span>}</span>}
+              {i.rightHint && <span className="pointer-events-none absolute right-0 bottom-full mb-2 px-2 py-1 rounded-md text-[length:var(--fs-11)] font-medium whitespace-nowrap opacity-0 group-hover/ri:opacity-100 transition-opacity z-50" style={{background:"var(--pop-bg)", color:"var(--text)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-pop)"}}>{i.rightHint}</span>}</span>}
           </button>);
         si++; const myi = si; const isActive = si === Math.min(active, selCount-1);
         const isSel = selected!=null && (i.id===selected || i.label===selected);
         return (
-          <button key={i.id} ref={isActive ? activeRef : null} onClick={()=>{ if(!onPick(i, myi)) onClose(); }}
+          <button key={i.id} ref={isActive ? activeRef : null} data-pop-active={isActive ? "1" : undefined} onClick={()=>{ if(!onPick(i, myi)) onClose(); }}
             onMouseEnter={()=>{ setHovItem(i); if(!noHover){ navByMouseRef.current = true; setActive(myi); } }}
             className={"w-full text-left pl-3 pr-2 py-1.5 text-[length:var(--fs-12)] rounded-lg flex items-center justify-between gap-2 transition-colors " + (noHover ? "" : (!isSel && isActive ? "bg-[var(--pop-hover)]" : (!isSel ? "hover:bg-[var(--pop-hover)]" : "")))}
             style={{ color: isSel ? "var(--accent2)" : "var(--text)", fontWeight: isSel ? 600 : undefined,
@@ -2907,74 +2988,47 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onClose, title, input
             {isSel && <svg className="shrink-0 ml-auto" width="14" height="14" viewBox="0 0 24 24" fill="none" style={{color:"var(--accent2)"}}><path d="M5 12l5 5 9-11" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>}
             {i.tag && <span className="text-[length:var(--fs-10)] px-1.5 py-0.5 rounded shrink-0" style={{background:"var(--border)",color:"var(--muted)"}}>{i.tag}</span>}
             {i.rightIcon && <span className="relative group/ri shrink-0 flex items-center justify-center w-5 h-5" style={{color:"var(--muted)"}}>{i.rightIcon}
-              {i.rightHint && <span className="pointer-events-none absolute right-0 bottom-full mb-2 px-2 py-1 rounded-md text-[length:var(--fs-11)] font-medium whitespace-nowrap opacity-0 group-hover/ri:opacity-100 transition-opacity z-50" style={{background:"var(--text)", color:"var(--bg)", boxShadow:"var(--shadow-sm)"}}>{i.rightHint}</span>}</span>}
+              {i.rightHint && <span className="pointer-events-none absolute right-0 bottom-full mb-2 px-2 py-1 rounded-md text-[length:var(--fs-11)] font-medium whitespace-nowrap opacity-0 group-hover/ri:opacity-100 transition-opacity z-50" style={{background:"var(--pop-bg)", color:"var(--text)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-pop)"}}>{i.rightHint}</span>}</span>}
           </button>);
       })}
     </div>
     {footer && <div className="border-t p-1.5" style={{borderColor:"var(--border)"}}>{footer}</div>}
     {smartExprFooter}
     </>)}
-    {/* contextual Quick Help — floats next to the picker (hidden for plain input popovers; fully suppressed
-        during the guided tour to avoid competing highlights) */}
+    {/* contextual help — a CARET TOOLTIP that points at the highlighted row (user 2026-07-07: the old side
+        panel read as a nested menu; this is a passive bubble with an arrow tying it to the option). Hidden for
+        plain-input popovers; suppressed during the guided tour. pointer-events:none except the tiny "View more". */}
     {!inputType && !hideHelp && (()=>{
       const baseHelp = itemsAsNodes ? ((curItem && curItem.help) || help || null) : (help || null);
       const itemHelp = itemsAsNodes ? null : ((curItem && curItem.help && curItem.help!==help) ? curItem.help : null);
-      const itemIco  = itemHelp ? (curItem.icon || null) : null;
-      if (!baseHelp && !itemHelp) return null;
-      const accent = (baseHelp && baseHelp.color) || (itemHelp && itemHelp.color) || "var(--accent)";
-      // "View more" deep-links the QUICK HELP card to the fuller per-node reference side section. Resolve the
-      // node-type's doc by matching the base help's title against NODE_DOCS (Trigger/Condition/Action/…).
-      const refDoc = (onViewMore && baseHelp && baseHelp.title) ? NODE_DOCS.find(d=>d.name===baseHelp.title) : null;
-      const CW = 264, GAP = 12, popW = wide ? 340 : 256;
-      let hl = left + popW + GAP;
-      if (hl + CW > window.innerWidth - 12) hl = Math.max(12, left - CW - GAP);
+      const primary = itemHelp || baseHelp;                     // the thing being described
+      if (!primary) return null;
+      const eyebrow = itemHelp ? (baseHelp && baseHelp.title) : null;   // node-type context when describing an option
+      const accent  = (itemHelp && itemHelp.color) || (baseHelp && baseHelp.color) || "var(--accent)";
+      const refDoc  = (onViewMore && baseHelp && baseHelp.title) ? NODE_DOCS.find(d=>d.name===baseHelp.title) : null;
+      const CW = 244, GAP = 14, popW = wide ? 340 : 256;
+      let hl = left + popW + GAP, flip = false;                 // bubble to the RIGHT of the menu; flip LEFT if no room
+      if (hl + CW > window.innerWidth - 12) { hl = Math.max(12, left - CW - GAP); flip = true; }
+      const cy = (rowY != null ? rowY : top + 24);// vertical centre → caret points here (measured in the placement RAF, always in sync)
+      const triF = flip ? { borderLeft:"6px solid var(--pop-bg)" }   : { borderRight:"6px solid var(--pop-bg)" };
+      const triO = flip ? { borderLeft:"7px solid var(--border2)" }  : { borderRight:"7px solid var(--border2)" };
       return (
-        <div className="pop-enter fixed z-50 rounded-xl overflow-hidden flex flex-col" style={{ top, left: hl, width: CW, maxHeight:"66vh", background:"var(--pop-bg)", border:"1px solid var(--border2)", borderTop:`3px solid ${accent}`, boxShadow:"var(--shadow-pop)" }}>
-          <div className="px-3.5 pt-3 pb-1.5 shrink-0">
-            <div className="text-[length:var(--fs-95)] uppercase tracking-[0.14em] flex items-center gap-1.5" style={{color:"var(--faint)"}}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/><path d="M12 11v5M12 7.5v.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-              Quick help
+        <div className="fixed z-50" style={{ top: cy, left: hl, transform:"translateY(-50%)", pointerEvents:"none" }}>
+          <div className="relative pop-enter">
+            {/* caret (outline triangle behind + fill triangle) pointing back at the highlighted row */}
+            <span className="absolute" style={{ top:"50%", transform:"translateY(-50%)", [flip?"right":"left"]:"-7px", width:0, height:0, borderTop:"7px solid transparent", borderBottom:"7px solid transparent", ...triO }}/>
+            <span className="absolute" style={{ top:"50%", transform:"translateY(-50%)", [flip?"right":"left"]:"-6px", width:0, height:0, borderTop:"6px solid transparent", borderBottom:"6px solid transparent", ...triF }}/>
+            <div className="rounded-lg px-3 py-2.5" style={{ width:CW, maxHeight:"56vh", overflowY:"auto", background:"var(--pop-bg)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-pop)" }}>
+              {eyebrow && <div className="text-[length:var(--fs-95)] uppercase tracking-[0.12em] font-semibold mb-1" style={{color:accent}}>{eyebrow}</div>}
+              <div className="text-[length:var(--fs-125)] font-semibold leading-tight" style={{color:"var(--text)"}}>{primary.title}</div>
+              {primary.body && <div className="text-[length:var(--fs-115)] leading-snug mt-1" style={{color:"var(--muted)"}}>{primary.body}</div>}
+              {refDoc && (
+                <button onMouseDown={(e)=>{ e.stopPropagation(); e.preventDefault(); onViewMore(refDoc.id); }}
+                  className="mt-2 inline-block text-[length:var(--fs-11)] font-medium underline underline-offset-2 transition-colors text-[var(--faint)] hover:text-[var(--accent2)]"
+                  style={{ pointerEvents:"auto", cursor:"pointer" }}>View more</button>
+              )}
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-3.5 pb-3.5 flex flex-col gap-2.5">
-            {/* only the node → BIG graphic banner + heading + description; once a sub-option is active → compact icon + heading */}
-            {baseHelp && (itemHelp ? (
-              <div className="flex items-center gap-2.5">
-                {baseHelp.graphic && <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background:baseHelp.bg||"var(--panel2)", color:baseHelp.color||"var(--text)" }}>{baseHelp.graphic}</span>}
-                <div className="text-[length:var(--fs-14)] font-semibold leading-tight" style={{color:baseHelp.color||"var(--text)"}}>{baseHelp.title}</div>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2.5">
-                <div className="text-[length:var(--fs-14)] font-semibold leading-tight" style={{color:baseHelp.color||"var(--text)"}}>{baseHelp.title}</div>
-                {baseHelp.graphic && (
-                  <div className="w-full rounded-xl flex items-center justify-center" style={{ height:"84px", background:baseHelp.bg||"var(--panel2)", color:baseHelp.color||"var(--text)", overflow:"hidden" }}>
-                    <span style={{ transform:"scale(2.1)" }}>{baseHelp.graphic}</span>
-                  </div>
-                )}
-                {baseHelp.body && <div className="text-[length:var(--fs-12)] leading-relaxed" style={{color:"var(--muted)"}}>{baseHelp.body}</div>}
-              </div>
-            ))}
-            {/* then the hovered/current option: name + its description as subtext */}
-            {itemHelp && (<>
-              <div className="h-px shrink-0" style={{background:"var(--border)"}}/>
-              <div className="flex items-start gap-2">
-                {(itemIco || itemHelp.graphic) && <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 mt-0.5" style={{ background:"var(--panel)", color:"var(--muted)" }}>{itemIco || itemHelp.graphic}</span>}
-                <div className="min-w-0">
-                  <div className="text-[length:var(--fs-125)] font-semibold leading-tight" style={{color:"var(--text)"}}>{itemHelp.title}</div>
-                  {itemHelp.body && <div className="text-[length:var(--fs-115)] leading-snug mt-1" style={{color:"var(--muted)"}}>{itemHelp.body}</div>}
-                </div>
-              </div>
-            </>)}
-          </div>
-          {/* deep-link to the fuller per-node reference side section (closes this popover so they don't overlap) */}
-          {refDoc && (
-            <button onMouseDown={(e)=>{ e.stopPropagation(); e.preventDefault(); onViewMore(refDoc.id); }}
-              className="shrink-0 flex items-center justify-end gap-1 px-3.5 py-2.5 text-[length:var(--fs-115)] font-medium border-t transition-colors text-[var(--muted)] hover:text-[var(--accent2)]"
-              style={{ borderColor:"var(--border)" }}>
-              View more
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </button>
-          )}
         </div>
       );
     })()}
@@ -3005,9 +3059,9 @@ function Slot({ value, placeholder, onClick, onClear, innerRef, open, dataAnchor
                  ...(open ? { zIndex:40, boxShadow:"0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), var(--shadow-sm)" } : {}) }}>
         {/* glyph (left, never clipped) · label (middle, clips with ellipsis) · × (right, never clipped, animated) */}
         <span className="shrink-0 inline-flex items-center text-[0.9em] leading-none" style={{ color: open?"var(--accent2)":"var(--muted)" }}>{smartKind==="expr" ? <FxGlyph/> : smartKind==="ref" ? <BracesGlyph/> : "✦"}</span>
-        <span className="min-w-0 flex-1 leading-none" style={{ maxWidth: open ? "none" : "150px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{labelText}</span>
+        <span className="min-w-0 flex-1 leading-none" style={{ maxWidth: open ? "none" : "110px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{labelText}</span>
         {removable && (
-          <span role="button" aria-label="Remove value" title="Remove"
+          <span role="button" aria-label="Remove value" data-tip="Remove"
             onClick={(e)=>{ e.stopPropagation(); e.preventDefault(); onClear(); }}
             className="shrink-0 inline-flex items-center justify-center rounded-full overflow-hidden hover:bg-[var(--pop-hover)]"
             style={{ color:"var(--muted)", height:"16px",
@@ -4033,6 +4087,7 @@ function App() {
   // action added). No snapshot/restore — the workflow they build is theirs and is kept.
   const [tourStep, setTourStep] = useState(-1); // -1 = tour inactive; 0..2 = steps; 3 = success
   const tourActive = tourStep >= 0;
+  React.useEffect(() => { TT_MUTE.on = tourActive; }, [tourActive]); // suppress tooltips during the tour so a tip can't cover the goal pill
   const [tourRect, setTourRect] = useState(null); // the highlighted FRAME rect (whole card or whole menu) — viewport coords
   const [tourBeacon, setTourBeacon] = useState(null); // {x,y} of the exact click point for the pulsing beacon
   const [tourAllow, setTourAllow] = useState(null); // the ONE allowed-to-click element's rect → the click-through hole
@@ -5245,7 +5300,7 @@ function App() {
         <span className="flex-1 min-w-0 truncate">{fauto ? ("Set automatically by "+fauto.value) : (disp || ph || "choose…")}</span>
       </>)}
       {sk
-        ? <span role="button" title="Remove reference" onClick={(e)=>{ e.stopPropagation(); clearSmartValue(commit, slotKey); }} className="shrink-0 w-5 h-5 rounded flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--faint)"}}>
+        ? <span role="button" data-tip="Remove reference" onClick={(e)=>{ e.stopPropagation(); clearSmartValue(commit, slotKey); }} className="shrink-0 w-5 h-5 rounded flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--faint)"}}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
         : <svg className="shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
     </button>;
@@ -5286,7 +5341,7 @@ function App() {
               {sub && <span className="text-[length:var(--fs-115)] leading-tight truncate" style={{color:"var(--muted)"}}>{sub}</span>}</>}
       </span>
       {sk
-        ? <span role="button" title="Remove" onClick={(e)=>{ e.stopPropagation(); clearSmartValue(commit, slotKey); }} className="shrink-0 w-5 h-5 rounded flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--faint)"}}>
+        ? <span role="button" data-tip="Remove" onClick={(e)=>{ e.stopPropagation(); clearSmartValue(commit, slotKey); }} className="shrink-0 w-5 h-5 rounded flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--faint)"}}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
         : <svg className="shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
     </button>;
@@ -6006,7 +6061,7 @@ function App() {
       {/* marker (optional) */}
       {marker && <span className="absolute flex items-center justify-center" style={{ left:"9px", top:`${mc}px`, transform:"translate(-50%,-50%)" }}>{marker}</span>}
       {/* drag handle — visual cue on the FAR LEFT (the whole row is the drag source, so this is just a grip) */}
-      {dnd && <span title="Drag to move" className="absolute flex items-center justify-center opacity-0 group-hover:opacity-100 transition cursor-grab active:cursor-grabbing text-[var(--faint)] hover:text-[var(--text)]"
+      {dnd && <span data-tip="Drag to move" className="absolute flex items-center justify-center opacity-0 group-hover:opacity-100 transition cursor-grab active:cursor-grabbing text-[var(--faint)] hover:text-[var(--text)]"
         style={{ left:"-22px", top:`${mc}px`, transform:"translateY(-50%)" }}>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
       </span>}
@@ -6027,10 +6082,8 @@ function App() {
            the node has node-level actions — otherwise it reserves empty space that shoves in-card clusters left. */}
         {(onAddCond || onHead || onCopy || onRemove) &&
         <div className="relative shrink-0 flex items-center gap-0.5" style={{height:`${HEAD}px`}}>
-          {xHover && removeLabel &&
-            <div className="absolute right-0 px-2 py-1 rounded-md text-[length:var(--fs-11)] whitespace-nowrap" style={{ bottom:"28px", background:"var(--pop-bg)", border:"1px solid var(--border2)", color:"var(--text)", boxShadow:"var(--shadow-sm)" }}>{removeLabel}</div>}
           {onAddCond && <>
-            <button onMouseDown={(e)=>{ e.stopPropagation(); onAddCond(e.currentTarget); }} title={addLabel}
+            <button onMouseDown={(e)=>{ e.stopPropagation(); onAddCond(e.currentTarget); }}
               className={"inline-flex items-center gap-1 rounded-md text-[length:var(--fs-12)] font-medium whitespace-nowrap transition-[color,opacity] " + (addActive ? "" : "text-[var(--muted)] ") + (!addActive ? reveal : "")}
               style={{ padding:"4px 7px", ...(addActive?{color:addAccent}:{}) }}
               onMouseEnter={(e)=>{ if(!addActive) e.currentTarget.style.color=addAccent; }}
@@ -6042,28 +6095,28 @@ function App() {
               <span className={"shrink-0 transition-opacity " + reveal} style={{ width:"1px", height:"16px", background:"var(--border2)", margin:"0 4px" }}/>}
           </>}
           {onHead &&
-            <button onMouseDown={(e)=>{ e.stopPropagation(); onHead(e.currentTarget); }} title="Change trigger"
+            <Tooltip label="Change trigger" side="top"><button onMouseDown={(e)=>{ e.stopPropagation(); onHead(e.currentTarget); }}
               className={"rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] text-[var(--faint)] hover:text-[var(--text)] " + reveal}
               style={{ padding:"6px" }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 12a9 9 0 0 1 15-6.7L21 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M21 3v5h-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M3 21v-5h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </button>}
+            </button></Tooltip>}
           {onCopy &&
-            <button onMouseDown={(e)=>{ e.stopPropagation(); onCopy(); }} title="Duplicate"
+            <Tooltip label="Duplicate" side="top"><button onMouseDown={(e)=>{ e.stopPropagation(); onCopy(); }}
               className={"rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] text-[var(--faint)] hover:text-[var(--text)] " + reveal}
               style={{ padding:"6px" }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15V5a2 2 0 012-2h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-            </button>}
-          <button onMouseDown={(e)=>{ if(!onRemove) return; e.stopPropagation(); setPop(null); onRemove(); }}
+            </button></Tooltip>}
+          <Tooltip label={onRemove ? (removeLabel || "Remove") : null} side="top"><button onMouseDown={(e)=>{ if(!onRemove) return; e.stopPropagation(); setPop(null); onRemove(); }}
             onMouseEnter={()=>setXHover(true)} onMouseLeave={()=>setXHover(false)}
             className={"rounded-md flex items-center justify-center transition-colors " + (onRemove ? reveal : "opacity-0 pointer-events-none")}
             style={{ color: xHover ? "var(--red)" : "var(--faint)", background: xHover ? "rgba(248,81,73,0.18)" : "transparent", padding:"6px" }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-          </button>
+          </button></Tooltip>
         </div>}
       </div>
       {/* "Add step" — neutral pill sitting in the gap below the row (insert between this node and the next); hover-revealed */}
       {onInsert &&
-        <button onMouseDown={(e)=>{ e.stopPropagation(); onInsert(e.currentTarget); }} title="Add a step here"
+        <button onMouseDown={(e)=>{ e.stopPropagation(); onInsert(e.currentTarget); }}
           className="absolute z-10 inline-flex items-center gap-1 rounded-full opacity-0 group-hover:opacity-100 transition-all hover:text-[var(--text)]"
           style={{ left:"0px", bottom:`${(bgBottom/2)-10}px`, height:"20px", padding:"0 9px 0 7px",
                    border:"1px solid var(--border2)", background:"var(--panel2)", color:"var(--muted)", boxShadow:"0 0 0 3px var(--bg), var(--shadow-sm)" }}>
@@ -6093,7 +6146,7 @@ function App() {
     if (!hasTrigger)
       return (<><OpenerGap />
         <Station marker={OPENER_MARK} isLast head="Then" headColor="var(--muted)" headBg="var(--panel2)" hoverBg="var(--pop-hover)" help={NODE_HELP.action}>
-          <span className="text-[length:var(--fs-16)]" style={{color:"var(--faint)", opacity:.55}} title="Add a trigger first">do this…</span>
+          <span className="text-[length:var(--fs-16)]" style={{color:"var(--faint)", opacity:.55}} data-tip="Add a trigger first">do this…</span>
         </Station></>);
     if (flow.length>0) return null; // ANY node added → it took the opener's place; further steps use "Add step" + the end cap
     return (<><OpenerGap />
@@ -6266,7 +6319,7 @@ function App() {
         draggable={dragOn} onDragStart={dragOn?(e)=>clauseDragStart(k, ci, e):undefined} onDragEnd={dragOn?clauseDragEnd:undefined}
         onDragOver={dragOn?(e)=>clauseDragOver(k, ci, e):undefined} onDrop={dragOn?(e)=>clauseDrop(path, ci, e):undefined}>
         {(showB||showA) && <div className="absolute h-0.5 rounded-full pointer-events-none" style={{ left:0, right:0, [showB?"top":"bottom"]:-4, background:"var(--accent)" }}/>}
-        {dragOn && <span title="Drag into another group"
+        {dragOn && <span data-tip="Drag into another group"
           className="absolute flex items-center justify-center opacity-0 group-hover/cl:opacity-100 transition text-[var(--faint)]"
           style={{ left:"-15px", top:`${HEAD/2}px`, transform:"translateY(-50%)" }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
@@ -6298,7 +6351,7 @@ function App() {
             </button>
             <span className="self-center shrink-0" style={{width:"1px", height:"14px", background:"var(--border2)"}} />
           </>}
-          <button onClick={(e)=>{ e.stopPropagation(); copyClause(path, ci); }} title="Duplicate condition" className="rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] text-[var(--faint)] hover:text-[var(--text)]" style={{padding:"5px"}}>
+          <button onClick={(e)=>{ e.stopPropagation(); copyClause(path, ci); }} data-tip="Duplicate condition" className="rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] text-[var(--faint)] hover:text-[var(--text)]" style={{padding:"5px"}}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15V5a2 2 0 012-2h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
           </button>
           <DeleteBtn onClick={(e)=>{ e.stopPropagation(); removeClause(path, ci); }} title={clauses.length>1?"Remove condition":"Clear condition"} />
@@ -6373,7 +6426,7 @@ function App() {
             new condition
           </button>
           <span className="self-center shrink-0" style={{width:"1px", height:"14px", background:"var(--border2)"}} />
-          <button onClick={(e)=>{ e.stopPropagation(); copyClause(path, ci); }} title="Duplicate condition" className="rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] text-[var(--faint)] hover:text-[var(--text)]" style={{padding:"5px"}}>
+          <button onClick={(e)=>{ e.stopPropagation(); copyClause(path, ci); }} data-tip="Duplicate condition" className="rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] text-[var(--faint)] hover:text-[var(--text)]" style={{padding:"5px"}}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15V5a2 2 0 012-2h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
           </button>
           <DeleteBtn onClick={(e)=>{ e.stopPropagation(); removeClause(path, ci); }} title={clauses.length>1?"Remove condition":"Clear condition"} />
@@ -6451,7 +6504,7 @@ function App() {
             </button>
             <span className="self-center shrink-0" style={{width:"1px", height:"14px", background:"var(--border2)"}} />
           </>}
-          <button onClick={(e)=>{ e.stopPropagation(); setFlow(f=>{ const n=nodeAt(f,path); const cl=(n.paths[pi].clauses)||[]; const dup={...cl[ci]}; const paths=n.paths.map((p,kk)=>kk===pi?{...p, clauses:[...cl.slice(0,ci+1), dup, ...cl.slice(ci+1)]}:p); return treeUpdate(f,path,{paths}); }); }} title="Duplicate condition" className="rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] text-[var(--faint)] hover:text-[var(--text)]" style={{padding:"5px"}}>
+          <button onClick={(e)=>{ e.stopPropagation(); setFlow(f=>{ const n=nodeAt(f,path); const cl=(n.paths[pi].clauses)||[]; const dup={...cl[ci]}; const paths=n.paths.map((p,kk)=>kk===pi?{...p, clauses:[...cl.slice(0,ci+1), dup, ...cl.slice(ci+1)]}:p); return treeUpdate(f,path,{paths}); }); }} data-tip="Duplicate condition" className="rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] text-[var(--faint)] hover:text-[var(--text)]" style={{padding:"5px"}}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15V5a2 2 0 012-2h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
           </button>
           <DeleteBtn onClick={(e)=>{ e.stopPropagation(); clauses.length>1 ? removePathClause(path, pi, ci) : removePath(path, pi); }} title={clauses.length>1?"Remove condition":"Remove this path"} />
@@ -6492,7 +6545,7 @@ function App() {
     return (
     // FULL-WIDTH target: open on mousedown + stopPropagation so clicking THIS zone while another menu is open
     // SWITCHES (the press opens this one and prevents the global close listener from just closing the old one).
-    <button onMouseDown={(e)=>{ e.stopPropagation(); openInsert(basePath, index, e.currentTarget.querySelector('[data-iz-card]')||e.currentTarget); }} title="Add a step here"
+    <button onMouseDown={(e)=>{ e.stopPropagation(); openInsert(basePath, index, e.currentTarget.querySelector('[data-iz-card]')||e.currentTarget); }}
       className="relative block w-full text-left group/iz cursor-pointer focus:outline-none" style={{ background:"transparent" }}>
       {/* continuous connector line — full height, grows with the zone */}
       <div className="absolute" style={{ left:"8px", top:0, bottom:0, width:"2px", background:"var(--border2)" }}/>
@@ -6711,13 +6764,13 @@ function App() {
                   </span>
                 : node.mode==="until"
                   ? <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
-                      <button onClick={(e)=>{ e.stopPropagation(); pickWaitKind(path,node,e); }} title="Change to a duration / date" className="slot align-baseline font-medium" style={{color:"var(--text)"}}>till</button>
+                      <button onClick={(e)=>{ e.stopPropagation(); pickWaitKind(path,node,e); }} title="Change wait type" className="slot align-baseline font-medium" style={{color:"var(--text)"}}>till</button>
                       <Slot value={node.date} placeholder="a date" open={openSlot===`${k}:date`} dataAnchor={`wdate:${node.id}`} onClick={(e)=>pickWaitDate(path,node,e)} />
                       <Word>&</Word>
                       <Slot value={node.time} placeholder="a time" open={openSlot===`${k}:time`} dataAnchor={`wtime:${node.id}`} onClick={(e)=>pickWaitTime(path,node,e)} />
                     </span>
                   : <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
-                      <button onClick={(e)=>{ e.stopPropagation(); pickWaitKind(path,node,e); }} title="Change to a date / duration" className="slot align-baseline font-medium" style={{color:"var(--text)"}}>for</button>
+                      <button onClick={(e)=>{ e.stopPropagation(); pickWaitKind(path,node,e); }} title="Change wait type" className="slot align-baseline font-medium" style={{color:"var(--text)"}}>for</button>
                       <Slot value={valueDisplay(node.amount, openSlot===`${k}:amount`)} smartKind={smartKindOf(node.amount)} placeholder="0" open={openSlot===`${k}:amount`} dataAnchor={`damt:${node.id}`} onClick={(e)=>pickDelayDuration(path,node,e)} onClear={smartKindOf(node.amount)?()=>update(path,{amount:null}):undefined} />
                       <Slot value={node.unit} placeholder="hours" open={openSlot===`${k}:amount`||openSlot===`${k}:unit`} onClick={(e)=>pickDelayDuration(path,node,e)} />
                       <Word>as per</Word>
@@ -6776,10 +6829,10 @@ function App() {
                     </button>
                     <span className="self-center shrink-0" style={{width:"1px", height:"16px", background:"var(--border2)"}} />
                   </>}
-                  <button onClick={(e)=>{ e.stopPropagation(); copyNode(path); }} title="Duplicate" className="rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] text-[var(--faint)] hover:text-[var(--text)]" style={{padding:"5px"}}>
+                  <button onClick={(e)=>{ e.stopPropagation(); copyNode(path); }} data-tip="Duplicate" className="rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] text-[var(--faint)] hover:text-[var(--text)]" style={{padding:"5px"}}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15V5a2 2 0 012-2h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
                   </button>
-                  <DeleteBtn onClick={(e)=>{ e.stopPropagation(); remove(path); }} title="Remove get" />
+                  <DeleteBtn onClick={(e)=>{ e.stopPropagation(); remove(path); }} title="Remove step" />
                 </span>
               </span>
               {/* "where …" on its own line via the SHARED flat inlineClauses, for MULTI record OR a single record
@@ -6935,23 +6988,21 @@ function App() {
         {SUITES.map(s=>{
           const on = s.id===activeSuite;
           return (
-            <button key={s.id} onClick={()=>pickSuite(s)} title={s.label}
-              className="relative w-11 h-11 rounded-xl flex items-center justify-center transition-colors group"
+            <Tooltip key={s.id} label={s.label} side="right"><button onClick={()=>pickSuite(s)}
+              className="relative w-11 h-11 rounded-xl flex items-center justify-center transition-colors"
               style={{background: on?"var(--rail-active)":"transparent", color: on?"var(--rail-icon-active)":"var(--rail-icon)"}}>
               {on && <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r" style={{background:"var(--accent)", marginLeft:"-10px"}}></span>}
               <span className="w-5 h-5 flex items-center justify-center">{s.icon}</span>
-              <span className="pointer-events-none absolute left-full ml-2 px-2 py-1 rounded-md text-[length:var(--fs-11)] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50" style={{background:"var(--pop-bg)", border:"1px solid var(--border2)", color:"var(--text)", boxShadow:"var(--shadow-sm)"}}>{s.label}</span>
-            </button>
+            </button></Tooltip>
           );
         })}
         <div className="mt-auto flex flex-col items-center gap-1">
           {RAIL_BOTTOM.map(b=>(
-            <button key={b.id} title={b.label} className="relative w-11 h-11 rounded-xl flex items-center justify-center transition-colors group" style={{color:"var(--rail-icon)"}}>
+            <Tooltip key={b.id} label={b.label} side="right"><button className="relative w-11 h-11 rounded-xl flex items-center justify-center transition-colors" style={{color:"var(--rail-icon)"}}>
               <span className="w-5 h-5 flex items-center justify-center">{b.icon}</span>
-              <span className="pointer-events-none absolute left-full ml-2 px-2 py-1 rounded-md text-[length:var(--fs-11)] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50" style={{background:"var(--pop-bg)", border:"1px solid var(--border2)", color:"var(--text)", boxShadow:"var(--shadow-sm)"}}>{b.label}</span>
-            </button>
+            </button></Tooltip>
           ))}
-          <button title="Account" className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold mt-1" style={{background:"var(--avatar-bg)", color:"var(--avatar-fg)"}}>PG</button>
+          <Tooltip label="Account" side="right"><button className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold mt-1" style={{background:"var(--avatar-bg)", color:"var(--avatar-fg)"}}>PG</button></Tooltip>
         </div>
       </nav>
       {/* ── Sidebar 2 (in-flow): width animates closed on collapse ── */}
@@ -6977,19 +7028,14 @@ function App() {
     <div className="relative flex flex-col h-full w-full overflow-hidden">
       {/* top bar */}
       <header className="h-14 shrink-0 flex items-center gap-3 px-6 border-b" style={{borderColor:"var(--border)",background:"var(--topbar)"}}>
-        <button onClick={toggleSide}
-          className="group relative w-8 h-8 -ml-1 rounded-lg flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] shrink-0"
+        <Tooltip label={sideCollapsed?"Expand sidebar":"Collapse sidebar"} kbd={["Ctrl","B"]} side="bottom"><button onClick={toggleSide}
+          className="relative w-8 h-8 -ml-1 rounded-lg flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] shrink-0"
           style={{color:"var(--muted)"}}>
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M9 4v16" stroke="currentColor" strokeWidth="1.8"/></svg>
-          <span className="pointer-events-none absolute top-full left-0 mt-2 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[length:var(--fs-12)] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50"
-            style={{background:"var(--pop-bg)", border:"1px solid var(--border2)", color:"var(--text)", boxShadow:"var(--shadow-sm)"}}>
-            {sideCollapsed?"Expand sidebar":"Collapse sidebar"}
-            <kbd className="px-1.5 py-0.5 rounded text-[length:var(--fs-11)] font-medium leading-none" style={{background:"var(--panel2)", border:"1px solid var(--border)", color:"var(--muted)"}}>Ctrl B</kbd>
-          </span>
-        </button>
+        </button></Tooltip>
         <span className="w-px h-5 shrink-0" style={{background:"var(--border)"}}></span>
         <div className="flex items-center gap-2 text-[length:var(--fs-15)] min-w-0">
-          <button title="Workflows" className="font-medium shrink-0 transition-colors hover:brightness-110" style={{color:"var(--muted)"}}>Workflows</button>
+          <button className="font-medium shrink-0 transition-colors hover:brightness-110" style={{color:"var(--muted)"}}>Workflows</button>
           <span className="shrink-0" style={{color:"var(--faint)"}}>/</span>
           <div className="relative group/nm flex items-center gap-2 min-w-0">
             {editingName
@@ -7003,6 +7049,16 @@ function App() {
                   style={{color:"var(--text)", height:"28px", lineHeight:"28px", borderBottom:"1px solid transparent"}}>{name||"Untitled rule"}</button>}
             <span className="shrink-0 text-xs px-2 py-0.5 rounded-full"
               style={{background: isComplete?"var(--rdy-bg)":"var(--drf-bg)", color: isComplete?"var(--rdy-fg)":"var(--drf-fg)", border:`1px solid ${isComplete?"var(--rdy-bd)":"var(--drf-bd)"}`}}>{isComplete? "Ready" : "Draft"}</span>
+            {/* description affordance — re-opens the save drawer to view/edit the workflow description without
+                showing the text permanently (a filled dot marks that a description exists). user 2026-07-07. */}
+            {(() => { const hasDesc = !!(desc && desc.trim()); return (
+              <Tooltip label={hasDesc ? "Edit description" : "Add description"} side="bottom"><button onClick={()=>setSavePanel("save")}
+                className="relative shrink-0 w-7 h-7 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)]"
+                style={{ color: hasDesc ? "var(--accent2)" : "var(--faint)" }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 11h16M4 16h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                {hasDesc && <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full" style={{ background:"var(--accent2)", boxShadow:"0 0 0 1.5px var(--topbar)" }} />}
+              </button></Tooltip>
+            ); })()}
             {!editingName &&
               <div className="absolute left-0 top-full mt-2 z-30 px-3 py-2 rounded-lg opacity-0 pointer-events-none group-hover/nm:opacity-100 transition-opacity whitespace-nowrap"
                 style={{background:"var(--pop-bg)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-sm)"}}>
@@ -7011,26 +7067,26 @@ function App() {
               </div>}
           </div>
         </div>
-        <button onClick={(e)=>openVersions(e.currentTarget)} title="Switch experiment build"
+        <Tooltip label="Switch version" side="bottom"><button onClick={(e)=>openVersions(e.currentTarget)}
           className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[length:var(--fs-12)] font-medium transition-colors hover:brightness-110"
           style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--muted)"}}>
           {(BUILDS.find(b=>b.file===currentBuild)?.label) || "Working"}
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        </button>
+        </button></Tooltip>
         <div className="ml-auto flex items-center gap-3">
           <label className="flex items-center gap-2 text-sm cursor-pointer" style={{color:"var(--muted)"}}>
-            <button onClick={()=>setEnabled(!enabled)} className="w-9 h-5 rounded-full relative transition-colors"
+            <Tooltip label={enabled?"Disable workflow":"Enable workflow"} side="bottom"><button onClick={()=>setEnabled(!enabled)} className="w-9 h-5 rounded-full relative transition-colors"
               style={{background: enabled?"var(--accent)":"var(--border2)"}}>
               <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all" style={{left: enabled?"18px":"2px"}}></span>
-            </button>{enabled?"Enabled":"Disabled"}
+            </button></Tooltip>{enabled?"Enabled":"Disabled"}
           </label>
-          <button onClick={()=>setTheme(theme==="dark"?"light":"dark")} title="Toggle theme"
+          <Tooltip label={theme==="dark"?"Light theme":"Dark theme"} kbd="T" side="bottom"><button onClick={()=>setTheme(theme==="dark"?"light":"dark")}
             className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:brightness-110"
             style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--muted)"}}>
             {theme==="dark"
               ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
               : <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4.2" stroke="currentColor" strokeWidth="2"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8L6 18M18 6l1.8-1.8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>}
-          </button>
+          </button></Tooltip>
           {/* v5: reset / undo / redo / help / shortcuts moved to the floating canvas toolbar */}
           <button className="px-3 py-1.5 rounded-lg text-sm font-medium" style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--text)"}}>Test</button>
         </div>
@@ -7358,8 +7414,8 @@ function App() {
                             {dnode.arg && !toEdit
                               ? <span className="group/to inline-flex items-center gap-0.5 max-w-[200px] text-[length:var(--fs-125)] pl-2.5 pr-1 py-0.5 rounded-full transition-colors hover:bg-[var(--pop-hover)]" style={{background:"var(--panel)", border:"1px solid var(--border2)", color:"var(--text)"}}>
                                   {/* click the chip → edit mode (combo input: suggestions or type over); × removes */}
-                                  <button onClick={()=>setToEdit(true)} title="Change recipient" className="min-w-0 truncate text-left">{dnode.arg}</button>
-                                  <button onClick={()=>update(dpath, {arg:null})} title="Remove recipient" className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover/to:opacity-100 transition-opacity hover:text-[var(--red)]" style={{color:"var(--faint)"}}>
+                                  <button onClick={()=>setToEdit(true)} data-tip="Change recipient" className="min-w-0 truncate text-left">{dnode.arg}</button>
+                                  <button onClick={()=>update(dpath, {arg:null})} data-tip="Remove recipient" className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover/to:opacity-100 transition-opacity hover:text-[var(--red)]" style={{color:"var(--faint)"}}>
                                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"/></svg></button>
                                 </span>
                               : <SuggestInput autoFocus={toEdit} suggestions={roleSugs} onPick={commitTo} onType={commitTo}
@@ -7741,11 +7797,11 @@ function App() {
                   <button onClick={()=>setSavePanel(null)}
                     className="px-3.5 h-9 rounded-lg text-[length:var(--fs-13)] font-medium transition-colors hover:bg-[var(--pop-hover)]"
                     style={{color:"var(--muted)", border:"1px solid var(--border2)"}}>Cancel</button>
-                  <button onClick={confirm} disabled={blocked} title={blocked ? "Add a trigger and an action to publish" : undefined}
+                  <Tooltip label={blocked ? PUBLISH_BLOCKED_TIP : null} side="top"><button onClick={confirm} aria-disabled={blocked}
                     className={"px-4 h-9 rounded-lg text-[length:var(--fs-13)] font-semibold transition-all " + (blocked ? "cursor-not-allowed" : "hover:brightness-110")}
                     style={blocked ? {background:"var(--panel2)", border:"1px solid var(--border2)", color:"var(--muted)"} : {background:"var(--accent)", color:"#fff", boxShadow:"0 8px 20px -12px var(--accent)"}}>
                     {isPub ? "Publish" : "Save"}
-                  </button>
+                  </button></Tooltip>
                 </div>
               </div>
             );
@@ -7777,10 +7833,10 @@ function App() {
       {/* v5: floating canvas toolbar — flow control ▏ primary/secondary ▏ help */}
       {showBuilder && (() => {
         const sep = <span className="w-px h-5 mx-2 shrink-0" style={{ background:"var(--border2)" }} />;
-        const Tool = ({onClick, title, children}) => (
-          <button onClick={onClick} title={title}
+        const Tool = ({onClick, title, kbd, children}) => (
+          <Tooltip label={title} kbd={kbd} side="top"><button onClick={onClick}
             className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)]"
-            style={{ color:"var(--muted)" }}>{children}</button>
+            style={{ color:"var(--muted)" }}>{children}</button></Tooltip>
         );
         const canPublish = triggers.length>0 && anyAction(flow); // valid = ≥1 trigger AND ≥1 action
         const pubBlocked = !canPublish;                          // the main "Save & Publish" segment gates on validity (Unpublish/Save-only stay reachable via the chevron)
@@ -7791,7 +7847,7 @@ function App() {
             <div className="absolute left-1/2 bottom-6 z-40 flex items-center px-2 py-2.5 rounded-2xl"
               style={{ background:"var(--panel)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-pop)",
                 transform:`translateX(calc(-50% - ${(exprEdit?640:drawer?440:refOpen?400:savePanel?400:helpOpen?360:0)/2}px))`, transition:"transform .3s ease, opacity .2s ease" }}>
-              <button onClick={closeAnyRightPanel} title="Close panel"
+              <button onClick={closeAnyRightPanel}
                 className="inline-flex items-center gap-1.5 px-3 h-8 rounded-lg text-[length:var(--fs-13)] font-medium transition-colors hover:bg-[var(--pop-hover)]"
                 style={{ color:"var(--muted)" }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
@@ -7826,36 +7882,36 @@ function App() {
             style={{ background:"var(--panel)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-pop)",
               transform:`translateX(calc(-50% - ${(exprEdit?640:drawer?440:refOpen?400:savePanel?400:helpOpen?360:0)/2}px))`, transition:"transform .3s ease, opacity .2s ease" }}>
             {/* Walkthrough CTA — reopens the intro popup (→ "Take the walkthrough" → guided tour) so anyone can replay it */}
-            <button onClick={()=>setIntroOpen(true)} title="Take the guided walkthrough"
+            <Tooltip label="Replay walkthrough" side="top"><button onClick={()=>setIntroOpen(true)}
               className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg text-[length:var(--fs-13)] font-medium transition-colors hover:bg-[var(--pop-hover)]"
               style={{ color:"var(--accent2)" }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8"/><path d="M10 9l5 3-5 3V9z" fill="currentColor"/></svg>
               Walkthrough
-            </button>
+            </button></Tooltip>
             {sep}
             {/* help */}
             <Tool onClick={()=>{ setHelpOpen(false); setRefSel(null); setRefOpen(true); }} title="Help & node reference">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.6 1 1.3 1 2.1h6c0-.8.4-1.5 1-2.1A6 6 0 0012 3z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </Tool>
-            <Tool onClick={()=>{ setRefOpen(false); setHelpOpen(true); }} title="Keyboard shortcuts (?)"><span className="text-[length:var(--fs-14)] font-semibold">⌘</span></Tool>
+            <Tool onClick={()=>{ setRefOpen(false); setHelpOpen(true); }} title="Keyboard shortcuts" kbd="?"><span className="text-[length:var(--fs-14)] font-semibold">⌘</span></Tool>
             {sep}
             {/* flow control */}
-            <Tool onClick={undo} title="Undo (Ctrl/⌘+Z)">
+            <Tool onClick={undo} title="Undo" kbd={["Ctrl","Z"]}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 14L4 9l5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M4 9h11a5 5 0 010 10h-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </Tool>
-            <Tool onClick={redo} title="Redo (Ctrl/⌘+Shift+Z)">
+            <Tool onClick={redo} title="Redo" kbd={["Ctrl","⇧","Z"]}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 14l5-5-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M20 9H9a5 5 0 000 10h3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </Tool>
             {/* RESET — labeled + the standard circular reset glyph (rotate-ccw), the universally recognized "reset" icon (user 2026-07-05) */}
-            <button onClick={reset} title="Reset"
+            <Tooltip label="Reset" kbd={["⇧","R"]} side="top"><button onClick={reset}
               className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg text-[length:var(--fs-13)] font-medium transition-colors hover:bg-[var(--pop-hover)]"
               style={{ color:"var(--muted)" }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 9a9 9 0 1 1-2.24 5.94" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M3 4v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
               Reset
-            </button>
+            </button></Tooltip>
             {sep}
-            {/* actions (right) */}
-            <button onClick={()=>{}} title="Test this workflow"
+            {/* actions (right) — Test label is self-explanatory; no tooltip (label-repeat) */}
+            <button onClick={()=>{}}
               className="inline-flex items-center gap-1.5 px-3 h-8 rounded-lg text-[length:var(--fs-13)] font-medium transition-colors hover:bg-[var(--pop-hover)]"
               style={{ color:"var(--muted)" }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M7 5l11 7-11 7V5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -7871,18 +7927,17 @@ function App() {
               return (
                 <div ref={publishBtnRef} className="inline-flex items-stretch rounded-lg overflow-hidden shrink-0"
                   style={{ border: pubBlocked ? "1px solid var(--border2)" : "none", boxShadow: pubBlocked ? "none" : "0 8px 20px -12px var(--accent)" }}>
-                  <button onClick={()=>{ if(!pubBlocked) setSavePanel("publish"); }} disabled={pubBlocked}
-                    title={pubBlocked ? "Add a trigger and at least one action to publish" : "Save and publish this workflow"}
+                  <Tooltip label={pubBlocked ? PUBLISH_BLOCKED_TIP : null} side="top"><button onClick={()=>{ if(!pubBlocked) setSavePanel("publish"); }} aria-disabled={pubBlocked}
                     className={"inline-flex items-center whitespace-nowrap px-3.5 h-8 text-[length:var(--fs-13)] font-semibold transition-all " + (pubBlocked ? "cursor-not-allowed" : "hover:brightness-110")}
                     style={{ background:segBg, color:segFg }}>
                     Save &amp; Publish
-                  </button>
+                  </button></Tooltip>
                   <span className="w-px self-stretch shrink-0" style={{ background: pubBlocked ? "var(--border2)" : "rgba(255,255,255,.28)" }} />
-                  <button onClick={(e)=>openPublishMenu(e.currentTarget)} title="More save options"
+                  <Tooltip label="More save options" side="top"><button onClick={(e)=>openPublishMenu(e.currentTarget)}
                     className="inline-flex items-center justify-center w-7 h-8 transition-all hover:brightness-110"
                     style={{ background:segBg, color:segFg }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  </button>
+                  </button></Tooltip>
                 </div>
               );
             })()}

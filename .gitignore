@@ -12,12 +12,13 @@ FONT-AUDIT.md
 TYPOGRAPHY-SYSTEM.md
 Feature Details/
 
-# Local-only experiment builds (NOT published). v5.5 IS the live root (index.html);
-# v5.1 is the committed prior snapshot. v5.2 / v5.3 / v5.4 / v5.5-file / v6 / v7 stay local.
+# Local-only experiment builds (NOT published). v5.6 IS the live root (index.html);
+# v5.1 is the committed prior snapshot. v5.2 / v5.3 / v5.4 / v5.5 / v5.6-file / v6 / v7 stay local.
 index-v5.2.html
 index-v5.3.html
 index-v5.4.html
 index-v5.5.html
+index-v5.6.html
 index-v7.html
 index-v6-wip-backup.html
 test_c.html
