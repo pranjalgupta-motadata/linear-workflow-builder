@@ -305,7 +305,7 @@ const SUITES = [
   { id:"assets",     label:"Assets & IT",  icon:I.box,    modules:[{id:"assets",label:"Assets"},{id:"cmdb",label:"CMDB"},{id:"patches",label:"Patches"},{id:"packages",label:"Packages"}] },
   { id:"projects",   label:"Projects",     icon:I.kanban, modules:[{id:"projects",label:"Projects"},{id:"reports",label:"Reports"},{id:"myteam",label:"My Team"}] },
   { id:"mywork",     label:"My Work",      icon:I.inbox,  modules:[{id:"approvals",label:"Approvals"},{id:"tasks",label:"Tasks"}] },
-  { id:"automation", label:"Automation",   icon:I.gear,   modules:[{id:"flow_dashboard",label:"Flow Dashboard"},{id:"workflows",label:"Workflows"},{id:"usecase_1",label:"Use Case 1",sep:true},{id:"usecase_2",label:"Use Case 2"},{id:"usecase_3",label:"Use Case 3"},{id:"usecase_4",label:"Use Case 4 · Wide"}] },
+  { id:"automation", label:"Automation",   icon:I.gear,   modules:[{id:"flow_dashboard",label:"Flow Dashboard"},{id:"workflows",label:"Workflows"},{id:"usecase_1",label:"Use Case 1",sep:true},{id:"usecase_2",label:"Use Case 2"},{id:"usecase_3",label:"Use Case 3"},{id:"usecase_4",label:"Use Case 4 · Wide"},{id:"usecase_5",label:"Use Case 5 · Test cases"}] },
 ];
 const RAIL_BOTTOM = [
   { id:"settings",      label:"Settings",      icon:I.gear },
@@ -317,7 +317,7 @@ const RAIL_BOTTOM = [
 // All faithful to the data model: trigger {id,typeId,vals:{module}}; flow nodes use real
 // FIELDS ids (category/subject/requester_dept), real assign targets (ASSIGN_TARGETS) and
 // the update node's field rows (REQUEST_FIELDS ids category/subcategory).
-const USECASE_IDS = ["usecase_1","usecase_2","usecase_3","usecase_4"];
+const USECASE_IDS = ["usecase_1","usecase_2","usecase_3","usecase_4","usecase_5"];
 const USECASE_DOCS = {
   usecase_1: {
     triggers: [{ id:"t1", typeId:"created", vals:{ module:"Incident" } }],
@@ -378,6 +378,54 @@ const USECASE_DOCS = {
         { field:"subject", op:"contains", value:["password reset request submitted through the external vendor self service portal"] },
       ] },
       { id:"a1", kind:"action", action:"assign", arg:"Network Ops" },
+    ],
+  },
+  // Use Case 5 — a 3-stage escalation ladder built WITHOUT a loop (fixed stages, each escalates to a different
+  // person + sends a different congrats mail → nested branches on status). Saved as the "Test cases" sample.
+  usecase_5: {
+    triggers: [{ id:"t1", typeId:"created", vals:{ module:"Incident" } }],
+    flow: [
+      // only run for tech-department tickets
+      { id:"c0", kind:"condition", combiner:"and", clauses:[{ field:"requester_dept", op:"is", value:"IT" }] },
+      // assign it across the tech team using Smart Balance
+      { id:"a0", kind:"action", action:"set_auto_assignment", arg:"Smart Balance", pool:"Internal IT Support Group", online:false },
+      // ── STAGE 1 ──────────────────────────────────────────────
+      { id:"w1", kind:"delay", mode:"for", amount:1, unit:"days", hours:"calendar" },
+      { id:"b1", kind:"branch",
+        paths: [
+          { id:"p1", combiner:"and", clauses:[{ field:"status", op:"is", value:"Resolved" }], children:[
+            { id:"e1", kind:"action", action:"send_email", arg:"the requester", data:{ subject:"Your ticket is resolved", body:"Hi {{Requester Name|there}}, good news — your ticket {{Subject}} has been resolved." } },
+            { id:"e2", kind:"action", action:"send_email", arg:"the assigned technician", data:{ subject:"Nice work — ticket resolved", body:"Congratulations, you resolved {{Subject}} on day one." } },
+          ] },
+        ],
+        otherwise: { id:"ow1", children:[
+          { id:"e3", kind:"action", action:"send_email", arg:"the technician's manager", data:{ subject:"Escalation — ticket still pending", body:"Ticket {{Subject}} is still pending after 1 day. Please step in." } },
+          // ── STAGE 2 ──────────────────────────────────────────
+          { id:"w2", kind:"delay", mode:"for", amount:1, unit:"days", hours:"calendar" },
+          { id:"b2", kind:"branch",
+            paths: [
+              { id:"p2", combiner:"and", clauses:[{ field:"status", op:"is", value:"Resolved" }], children:[
+                { id:"e4", kind:"action", action:"send_email", arg:"the requester", data:{ subject:"Your ticket is resolved", body:"Hi {{Requester Name|there}}, your ticket {{Subject}} has been resolved." } },
+                { id:"e5", kind:"action", action:"send_email", arg:"the technician's manager", data:{ subject:"Thanks for stepping in", body:"Congratulations — {{Subject}} was resolved after your escalation." } },
+              ] },
+            ],
+            otherwise: { id:"ow2", children:[
+              { id:"e6", kind:"action", action:"send_email", arg:"the IT Head", data:{ subject:"Escalation — ticket still pending", body:"Ticket {{Subject}} is still pending after 2 days. Escalating to you." } },
+              // ── STAGE 3 ────────────────────────────────────
+              { id:"w3", kind:"delay", mode:"for", amount:1, unit:"days", hours:"calendar" },
+              { id:"b3", kind:"branch",
+                paths: [
+                  { id:"p3", combiner:"and", clauses:[{ field:"status", op:"is", value:"Resolved" }], children:[
+                    { id:"e7", kind:"action", action:"send_email", arg:"the requester", data:{ subject:"Your ticket is resolved", body:"Hi {{Requester Name|there}}, your ticket {{Subject}} has been resolved." } },
+                    { id:"e8", kind:"action", action:"send_email", arg:"the IT Head", data:{ subject:"Thank you", body:"Congratulations — {{Subject}} was resolved after the final escalation." } },
+                  ] },
+                ],
+                otherwise: { id:"ow3", children:[
+                  { id:"cl", kind:"action", action:"update", fields:[{ field:"status", value:"Closed" }] },
+                  { id:"e9", kind:"action", action:"send_email", arg:"the requester", data:{ subject:"We could not complete your request", body:"Hi {{Requester Name|there}}, we're sorry — {{Subject}} could not be completed and has been closed." } },
+                ] } },
+            ] } },
+        ] } },
     ],
   },
 };
@@ -463,6 +511,8 @@ const USECASE_META = {
     desc:"When an incident or service request is created, the workflow must automatically read the requester's department from their user profile and assign the ticket to the corresponding IT support group. Finance department tickets must go to the Finance IT Support Group, HR department tickets to the HR IT Support Group, Operations to the Operations IT Support Group, Sales to the Sales IT Support Group, and IT department tickets to the Internal IT Support Group. If the requester's department does not match any configured mapping, the ticket must be assigned to the General Support Group and flagged for manual review." },
   usecase_4: { name:"Use Case 4 — Wide layout demo (dev only)",
     desc:"A demo workflow whose condition carries a long value, so the canvas stretches from the default 720px toward its 900px maximum. Use it to preview the stretched layout. This sample is hidden on the published site." },
+  usecase_5: { name:"Use Case 5 — Tech ticket 3-stage escalation (Test cases)",
+    desc:"When a ticket is created for the tech department, assign it across the tech team using Smart Balance. Then wait one day and check the status: if it is still pending, escalate by email to the technician's manager. Wait another day and check again: if still pending, escalate to the IT Head. Wait a third day and check once more: if it is still pending, close the ticket and send the requester a regret email that the request could not be completed. At any stage, if the ticket is instead marked Resolved, email the requester that it is resolved and send a congratulations email to whoever handled it at that stage — the technician at stage 1, the manager at stage 2, or the IT Head at stage 3. Built without a Loop: a fixed 3-stage nested branch on status." },
 };
 
 // trigger picker contents (matches the "When this happens" design)
@@ -1717,79 +1767,80 @@ const STEPPER = [
 /* ---------------------------------------------------------------------------
    "Node reference" — detailed per-node guide. One array so it's trivial to extend.
 --------------------------------------------------------------------------- */
+// Each node: a one-line summary, a plain-language "how it works", and 2+ real example uses.
+// Condition carries `tabs` (Inline / Branching), each with its own graphic + examples.
+// Split path carries `diff` (how it differs from condition branches). Merge/Loop carry `soon`.
 const NODE_DOCS = [
   {
-    id:"trigger", name:"Trigger", icon:I.bolt, color:"var(--c-when)", bg:"var(--c-when-bg)",
-    meaning:"The event that starts the workflow. It sits at the very top and the rule waits for it.",
-    function:"Listens for something to happen — a record being created, updated or deleted, a date being reached, or a recurring schedule — and fires the workflow the moment it does. Only event-based triggers can be multiple: you can OR several of them together (When … / Or …). A time-based (periodic) trigger always stands alone.",
-    use:"Always — every workflow needs at least one. Use additional event triggers when the same automation should start in more than one way.",
-    avoid:"There's nothing to avoid; just keep triggers specific so the rule doesn't run more often than intended.",
-    types:[
-      {name:"Event-based", desc:"Starts when a record is created or updated. You can OR several event triggers together (When … / Or …)."},
-      {name:"Time-based (periodic)", desc:"Starts on a date or a recurring schedule. Stands alone — a periodic workflow has exactly one trigger and can't be OR'd."},
-    ],
+    id:"trigger", name:"Trigger", icon:I.bolt, color:"var(--c-when)", bg:"var(--c-when-bg)", graphic:"trigger",
+    summary:"The event that starts your workflow.",
+    how:"Nothing runs until the trigger happens. You choose what to watch for, like a ticket being created or a field changing, or a set time like every morning at 9. The moment it happens, the workflow starts. You can add more than one, so the same workflow can begin in a few different ways.",
+    examples:["Run a workflow the moment a new incident is logged.","Every morning at 8, check for requests that have been waiting too long."],
+  },
+  {
+    id:"action", name:"Action", icon:I.play, color:"var(--c-then)", bg:"var(--c-then-bg)", graphic:"action",
+    summary:"The work your workflow actually does.",
+    how:"Each action does one thing, like assign a ticket, send an email, update a field, or create a record. Add as many as you need. They run one after another, from top to bottom.",
+    examples:["Assign every new incident to the right support team.","Email the requester to confirm their request was received."],
+  },
+  {
+    id:"get", name:"Get", icon:I.records, color:"var(--accent2)", bg:"var(--panel2)", graphic:"get",
+    summary:"Pulls in records so later steps can use them.",
+    how:"Get fetches records from a module, either a single record or a whole list. The steps after it can then read or act on what it found. It is how a workflow reaches beyond the one record that started it.",
+    examples:["Find every open ticket linked to the same asset.","Look up the requester's manager so you can send them an approval."],
+  },
+  {
+    id:"delay", name:"Wait", icon:I.hourglass, color:"var(--accent2)", bg:"var(--panel2)", graphic:"delay",
+    summary:"Pauses the workflow before moving on.",
+    how:"Wait holds the workflow for a while. You can wait for a set time like 4 hours, wait until a date, or wait until something becomes true, such as a ticket being resolved. It is handy for reminders, follow ups, and grace periods.",
+    examples:["Wait 2 hours, then send a reminder if the ticket is still open.","Wait until a change is approved before the work begins."],
   },
   {
     id:"condition", name:"Condition", icon:I.diamond, color:"var(--c-if)", bg:"var(--c-if-bg)",
-    meaning:"An inline true/false gate. The steps below it run only when the check passes.",
-    function:"Evaluates a field against a value (priority is Urgent, requester is a VIP…). If true, flow continues straight down; if false, the rest of that path is skipped. It's one node that escalates — from a single check, to a group, to If/Else, to full branching. A condition can be added anywhere — even after an action — and stacked conditions read as AND.",
-    use:"When you want to treat one case specially. Start with a single check and escalate only when the logic genuinely needs it.",
-    avoid:"Over-branching. If outcomes don't truly diverge, keep it a single check or a group rather than sprouting paths.",
-    types:[
-      {name:"Single condition", desc:"A check like 'priority is Urgent'. The steps after it run only if it's true. Stays a straight line."},
-      {name:"Multiple checks (AND / OR)", desc:"Combine several checks at the same point with AND or OR — groups form automatically from adjacent conditions. Still linear — no branching."},
-      {name:"If / Else", desc:"Add an 'Otherwise' path so something else happens when the check is false. This sprouts a second path."},
-      {name:"Branching (multiple paths)", desc:"Several paths, each with its own check and its own actions. Use when outcomes truly diverge."},
+    summary:"A yes or no check that decides which steps run.",
+    how:"A condition checks a field against a value, like priority is Urgent. Based on the answer, it decides what happens next. You can also combine a few checks with AND or OR. It can be used in two ways.",
+    tabs:[
+      {
+        key:"inline", label:"Inline", graphic:"cond_inline",
+        title:"Inline condition",
+        how:"A single check on the main path. The steps right below it run only when the check is true. If it is false, they are skipped and the workflow carries on. The flow stays one straight line.",
+        examples:["Only page the on-call team when the priority is Urgent.","Add an approval step only when the cost is above 500."],
+      },
+      {
+        key:"branching", label:"Branching", graphic:"cond_branch",
+        title:"Condition branches",
+        how:"Turns the check into separate routes, each with its own condition and its own steps. An Otherwise route catches everything else. The workflow takes the first route whose check is true, so only one route runs.",
+        examples:["Send Urgent tickets to Tier 2, and route everything else to the general queue.","Handle hardware, software, and network requests each in their own way."],
+      },
     ],
   },
   {
-    id:"branch", name:"Branching",
+    id:"branch", name:"Split path",
     icon:(<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><rect x="3" y="16" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><rect x="15" y="16" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><path d="M12 8v3.5M6 16v-2.5h12V16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>),
-    color:"var(--c-branch)", bg:"var(--c-branch-bg)",
-    meaning:"Splits the flow into parallel paths — each path runs its own steps, so the workflow can do several things side by side or handle cases differently.",
-    function:"Forks the trunk into two or more paths. Each path holds its own steps — an action, a wait, a get, a condition — and you can add another path any time. An optional Otherwise path catches everything else; steps placed after the branch run once the paths come back together.",
-    use:"When the workflow should run multiple things in parallel, or take meaningfully different routes per case (Urgent vs. routine, or per category).",
-    avoid:"When a single inline Condition is enough — don't branch just to gate one path; that adds visual noise.",
-    types:[
-      {name:"Parallel paths", desc:"Two or more paths that each run their own steps. Add a path any time from a lane's add-step menu."},
-      {name:"Otherwise", desc:"An optional catch-all path that runs when none of the others apply."},
-    ],
+    color:"var(--c-branch)", bg:"var(--c-branch-bg)", graphic:"branch",
+    summary:"Runs several paths at the same time.",
+    how:"Split path breaks the flow into two or more paths that all run side by side, each with its own steps. There is no check picking a winner. Every path runs. Use it when the workflow needs to do a few things at once.",
+    diff:"Condition branches pick one route based on a check, so only the matching path runs. A split path has no check, so all of its paths run together.",
+    examples:["When a major incident is logged, notify the on-call team, post to the status page, and open a problem record at the same time.","On a new hire request, run the laptop setup and the account setup in parallel."],
   },
   {
-    id:"action", name:"Action", icon:I.play, color:"var(--c-then)", bg:"var(--c-then-bg)",
-    meaning:"The actual work the workflow performs, automatically.",
-    function:"Does one thing: assign a ticket, send a notification, update a field, create a record, call a webhook, run an approval, and so on. Add as many as you want in sequence; they run top to bottom, and different actions live inside different branch paths.",
-    use:"In every workflow — actions are the point. Chain several to build up a complete response.",
-    avoid:"Avoid piling unrelated actions into one rule; if logic differs, gate them with a Condition or split with a Branch.",
+    id:"merge", name:"Merge", icon:I.merge, color:"var(--accent2)", bg:"var(--panel2)", graphic:"merge", soon:true,
+    summary:"Brings split paths back into one.",
+    how:"After a split path has divided the workflow, a merge joins the paths again. The steps after it run once for every path, so you do not have to repeat the same steps inside each one.",
+    examples:["After handling each case, log the outcome and notify the requester once.","Bring every path back together to close the ticket in one place."],
   },
   {
-    id:"merge", name:"Merge", icon:I.merge, color:"var(--accent2)", bg:"var(--panel2)",
-    meaning:"Rejoins separate branches back into one shared path.",
-    function:"After a Branch has split the flow, a Merge brings the paths together so the steps that follow run once for every outcome — no need to duplicate them inside each branch.",
-    use:"When several branches should converge on the same closing steps (e.g. always log and notify after the case-specific handling).",
-    avoid:"When the paths never need to reunite, or when there was no branch to begin with.",
+    id:"loop", name:"Loop", icon:I.loop, color:"var(--accent2)", bg:"var(--panel2)", graphic:"loop", soon:true,
+    summary:"Repeats the same steps for every item in a list.",
+    how:"A loop takes a list of records, usually from a Get, and runs its inner steps once for each one. It lets a single workflow act on many records instead of just one.",
+    examples:["Close every related request that is linked to the main ticket.","Send a reminder to each person who has an overdue task."],
   },
-  {
-    id:"loop", name:"Loop", icon:I.loop, color:"var(--accent2)", bg:"var(--panel2)",
-    meaning:"Repeats the steps inside it once for every item in a list.",
-    function:"Takes a collection — typically the output of a Get-many — and runs its inner steps for each record in turn, so one rule can act on many items.",
-    use:"When you fetched multiple records and need to do the same thing to each (e.g. close all related requests).",
-    avoid:"When you're only ever acting on a single record — a plain Action is simpler and clearer.",
-  },
-  {
-    id:"delay", name:"Wait", icon:I.hourglass, color:"var(--accent2)", bg:"var(--panel2)",
-    meaning:"Pauses the workflow before continuing — for a duration, until a date/time, or until a condition becomes true.",
-    function:"Holds execution: wait for a duration (counted on calendar or business hours), wait till a specific date/time, or wait until a condition is met (with a timeout) — useful for follow-ups, reminders and grace periods.",
-    use:"When something should happen later, not immediately — e.g. send a reminder if still unresolved after 4 hours, or wait until status becomes Resolved.",
-    avoid:"When the next step should run instantly. Don't use a long fixed wait for time-of-day logic — a scheduled trigger fits better.",
-  },
-  {
-    id:"get", name:"Get", icon:I.records, color:"var(--accent2)", bg:"var(--panel2)",
-    meaning:"Fetches one or many records so later steps can act on them.",
-    function:"Queries a module and returns either a single record or a set. Get-many output is typically fed into a Loop; a single Get pulls in related data to reference downstream.",
-    use:"When the workflow needs records other than the one that triggered it — related tickets, assets, users.",
-    avoid:"When the triggering record already holds everything you need — an extra fetch just adds overhead.",
-  },
+];
+// grouped list for the reference panel — a short descriptor per group
+const NODE_GROUPS = [
+  { g:"Start", gd:"Every workflow begins here",            ids:["trigger"] },
+  { g:"Steps", gd:"The things a workflow does, in order",  ids:["action","get","delay"] },
+  { g:"Flow",  gd:"Decide which steps run, and how often", ids:["condition","branch","merge","loop"] },
 ];
 
 /* ---------------------------------------------------------------------------
@@ -1835,77 +1886,97 @@ function NODE_GRAPHIC(id){
   const then_ = {color:"var(--c-then)", bg:"var(--c-then-bg)"};
   const Row = ({children, className=""}) => <div className={"flex items-center justify-center gap-2 "+className}>{children}</div>;
 
+  const branch_ = {color:"var(--c-branch)", bg:"var(--c-branch-bg)"};
   switch(id){
     case "trigger":
       return (
-        <div className="flex flex-col items-center gap-2">
-          <Row>
-            <GP.Chip icon={I.records}>Ticket created</GP.Chip>
-            <GP.Arr/>
-            <GP.Badge label="When" {...when}>{I.bolt}</GP.Badge>
-            <GP.Arr/>
-            <GP.Chip>Workflow starts</GP.Chip>
-          </Row>
-          <Row className="opacity-80">
-            <GP.Badge label="Or" {...when}>periodic</GP.Badge>
-            <GP.Arr/>
-            <GP.Chip icon={I.cal}>Every Mon 9:00</GP.Chip>
-          </Row>
-        </div>
-      );
-    case "condition":
-      return (
         <div className="flex flex-col items-center gap-1.5">
-          <GP.Badge label="Check if" {...iff}>priority is Urgent</GP.Badge>
+          <GP.Chip icon={I.records}>A ticket is created</GP.Chip>
           <GP.VArr/>
-          <Row>
-            <GP.Badge label="true →" {...then_}>continue</GP.Badge>
-            <span className="text-[length:var(--fs-10)]" style={{color:"var(--faint)"}}>false → skip rest</span>
-          </Row>
-        </div>
-      );
-    case "branch":
-      return (
-        <div className="flex flex-col items-center gap-2">
-          <GP.Badge label="Check if" {...iff}>route by priority</GP.Badge>
-          <div className="flex items-start justify-center gap-4">
-            <div className="flex flex-col items-center gap-1.5">
-              <GP.Badge {...iff}>Urgent</GP.Badge>
-              <GP.VArr/>
-              <GP.Badge label="Then" {...then_}>page on-call</GP.Badge>
-            </div>
-            <div className="flex flex-col items-center gap-1.5">
-              <GP.Badge {...iff}>Otherwise</GP.Badge>
-              <GP.VArr/>
-              <GP.Badge label="Then" {...then_}>assign queue</GP.Badge>
-            </div>
-          </div>
+          <GP.Badge label="When" {...when}>{I.bolt}</GP.Badge>
+          <GP.VArr/>
+          <GP.Chip>The workflow runs</GP.Chip>
         </div>
       );
     case "action":
       return (
-        <div className="flex flex-col items-center gap-1.5">
-          <GP.Badge label="Then" {...then_}>{I.play} assign to Tier-2</GP.Badge>
+        <div className="flex flex-col items-center gap-1">
+          <GP.Badge label="Then" {...then_}>assign to Tier 2</GP.Badge>
           <GP.VArr/>
-          <GP.Badge label="Then" {...then_}>notify requester</GP.Badge>
+          <GP.Badge label="Then" {...then_}>notify the requester</GP.Badge>
+        </div>
+      );
+    case "get":
+      return (
+        <Row className="gap-3">
+          <span className="inline-flex flex-col items-center justify-center rounded-xl px-3 py-2 text-[length:var(--fs-10)] font-medium gap-1" style={{background:"var(--panel)",border:"1px solid var(--border2)",color:"var(--text)"}}>
+            <span style={{color:"var(--accent2)"}}>{I.records}</span> Matching records
+          </span>
+          <GP.Arr/>
+          <GP.Badge label="Then" {...then_}>act on each</GP.Badge>
+        </Row>
+      );
+    case "delay":
+      return (
+        <Row>
+          <GP.Chip>ticket opened</GP.Chip>
+          <GP.Arr/>
+          <span className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[length:var(--fs-10)] font-medium" style={{background:"var(--panel)",border:"1px solid color-mix(in srgb, var(--accent) 34%, transparent)",color:"var(--text)"}}>
+            <span style={{color:"var(--accent2)"}}>{I.hourglass}</span> wait 2 hours
+          </span>
+          <GP.Arr/>
+          <GP.Badge label="Then" {...then_}>send reminder</GP.Badge>
+        </Row>
+      );
+    case "condition":
+    case "cond_inline":
+      return (
+        <div className="flex flex-col items-center gap-1.5">
+          <GP.Badge label="Check if" {...iff}>priority is Urgent</GP.Badge>
+          <svg width="120" height="24" viewBox="0 0 120 24" fill="none" style={{color:"var(--faint)"}}><path d="M60 1v6M60 7H28v6M60 7h32v6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <Row className="gap-6">
+            <GP.Badge label="True" {...then_}>continue</GP.Badge>
+            <span className="text-[length:var(--fs-10)]" style={{color:"var(--faint)"}}>False, skip rest</span>
+          </Row>
+        </div>
+      );
+    case "cond_branch":
+      return (
+        <div className="flex flex-col items-center gap-1.5">
+          <GP.Badge label="Check if" {...iff}>route by priority</GP.Badge>
+          <svg width="150" height="20" viewBox="0 0 150 20" fill="none" style={{color:"var(--faint)"}}><path d="M75 1v6M75 7H30v6M75 7h45v6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <div className="flex items-start justify-center gap-4">
+            <div className="flex flex-col items-center gap-1"><GP.Badge {...iff}>Urgent</GP.Badge><GP.VArr/><GP.Badge label="Then" {...then_}>page on-call</GP.Badge></div>
+            <div className="flex flex-col items-center gap-1"><GP.Badge {...iff}>Otherwise</GP.Badge><GP.VArr/><GP.Badge label="Then" {...then_}>assign queue</GP.Badge></div>
+          </div>
+        </div>
+      );
+    case "branch":
+      return (
+        <div className="flex flex-col items-center gap-1.5">
+          <GP.Badge label="Split" {...branch_}>into parallel paths</GP.Badge>
+          <svg width="150" height="18" viewBox="0 0 150 18" fill="none" style={{color:"var(--faint)"}}><path d="M75 1v5M75 6H35v6M75 6h40v6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <Row className="gap-4">
+            <GP.Badge label="Then" {...then_}>notify on-call</GP.Badge>
+            <GP.Badge label="Then" {...then_}>post status</GP.Badge>
+          </Row>
+          <span className="text-[length:var(--fs-10)]" style={{color:"var(--faint)"}}>both run at the same time</span>
         </div>
       );
     case "merge":
       return (
         <div className="flex flex-col items-center gap-1.5">
-          <Row>
-            <GP.Badge {...iff}>Path A</GP.Badge>
-            <GP.Badge {...iff}>Path B</GP.Badge>
+          <Row className="gap-4">
+            <GP.Badge {...branch_}>Path A</GP.Badge>
+            <GP.Badge {...branch_}>Path B</GP.Badge>
           </Row>
-          <svg width="80" height="20" viewBox="0 0 80 20" fill="none" style={{color:"var(--faint)"}}>
-            <path d="M18 1v6c0 4 4 6 8 6h14M62 1v6c0 4-4 6-8 6H40M40 13v6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-          </svg>
-          <GP.Badge label="Then" {...then_}>{I.merge} log & notify once</GP.Badge>
+          <svg width="110" height="22" viewBox="0 0 110 22" fill="none" style={{color:"var(--faint)"}}><path d="M25 1v5c0 5 5 5 8 8M85 1v5c0 5-5 5-8 8M55 14v6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <GP.Badge label="Then" {...then_}>log once, notify once</GP.Badge>
         </div>
       );
     case "loop":
       return (
-        <Row>
+        <Row className="gap-3">
           <span style={{color:"var(--accent2)"}}>{I.loop}</span>
           <div className="flex flex-col gap-1">
             <GP.Chip icon={I.records}>related ticket #1</GP.Chip>
@@ -1913,34 +1984,85 @@ function NODE_GRAPHIC(id){
             <GP.Chip icon={I.records}>related ticket #3</GP.Chip>
           </div>
           <GP.Arr/>
-          <GP.Badge label="Then" {...then_}>close each</GP.Badge>
-        </Row>
-      );
-    case "delay":
-      return (
-        <Row>
-          <GP.Badge label="Then" {...then_}>ticket opened</GP.Badge>
-          <GP.Arr/>
-          <span className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[length:var(--fs-10)] font-medium" style={{background:"var(--panel)",border:"1px solid var(--border2)",color:"var(--text)"}}>
-            <span style={{color:"var(--accent2)"}}>{I.hourglass}</span> wait 4h
-          </span>
-          <GP.Arr/>
-          <GP.Badge label="Then" {...then_}>send reminder</GP.Badge>
-        </Row>
-      );
-    case "get":
-      return (
-        <Row>
-          <span className="inline-flex flex-col items-center justify-center rounded-lg px-2.5 py-1.5 text-[length:var(--fs-10)] font-medium gap-0.5" style={{background:"var(--panel)",border:"1px solid var(--border2)",color:"var(--text)"}}>
-            <span style={{color:"var(--accent2)"}}>{I.records}</span> records
-          </span>
-          <GP.Arr/>
-          <GP.Badge label="Then" {...then_}>use downstream</GP.Badge>
+          <GP.Badge label="For each" {...then_}>close it</GP.Badge>
         </Row>
       );
     default:
       return null;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   NodeRefDetail — the drill-in view for one node in the Node reference panel.
+   Normal nodes: one equal-height graphic banner + summary + how it works + "Good for".
+   Split path also shows a "how it differs from condition branches" note; Merge/Loop
+   show an "in progress" note. Condition is special: two tabs (Inline / Branching),
+   each with its OWN graphic + copy + examples; the tabs are a sticky selector that
+   SCROLLS to that section. Colors reuse the existing role tokens only.
+--------------------------------------------------------------------------- */
+function NodeRefDetail({ doc }){
+  const secRefs = React.useRef({});
+  const [tab, setTab] = React.useState(doc.tabs ? doc.tabs[0].key : null);
+  const Banner = ({gid}) => (
+    <div className="w-full rounded-2xl flex items-center justify-center mb-4 px-4" style={{ height:"140px", background:doc.bg, overflow:"hidden", border:`1px solid ${doc.color}22` }}>{NODE_GRAPHIC(gid)}</div>
+  );
+  const Lbl = ({children}) => <div className="text-[length:var(--fs-10)] uppercase tracking-[0.14em] mb-2" style={{color:"var(--faint)"}}>{children}</div>;
+  const How = ({children}) => <p className="text-[length:var(--fs-13)] leading-relaxed" style={{color:"var(--ink-mid)"}}>{children}</p>;
+  const Examples = ({items}) => (
+    <ul className="flex flex-col gap-2 list-none p-0 m-0">
+      {items.map((u,i)=>(
+        <li key={i} className="flex gap-2.5 rounded-xl px-3 py-2.5 text-[length:var(--fs-12)] leading-relaxed" style={{background:"var(--panel2)", border:"1px solid var(--border)", color:"var(--ink-mid)"}}>
+          <span className="shrink-0 rounded-full" style={{width:6,height:6,background:doc.color,marginTop:"6px"}}/>
+          <span>{u}</span>
+        </li>
+      ))}
+    </ul>
+  );
+  if (doc.tabs){
+    const scrollTo = (key) => { setTab(key); const el = secRefs.current[key]; if(el && el.scrollIntoView) el.scrollIntoView({behavior:"smooth", block:"start"}); };
+    return (
+      <div key={doc.id} className="stepin px-5 pt-4 pb-6">
+        <p className="text-[length:var(--fs-15)] font-semibold leading-snug mb-2.5" style={{color:"var(--text)"}}>{doc.summary}</p>
+        <How>{doc.how}</How>
+        {/* sticky Inline / Branching tabs — clicking one scrolls to its section */}
+        <div className="sticky z-10 -mx-5 mt-4 mb-4 px-5 py-2" style={{top:0, background:"var(--panel)", borderBottom:"1px solid var(--border)"}}>
+          <div className="flex gap-1 p-1 rounded-xl" style={{background:"var(--panel2)", border:"1px solid var(--border)"}}>
+            {doc.tabs.map(t=>(
+              <button key={t.key} onClick={()=>scrollTo(t.key)} className="flex-1 rounded-lg py-1.5 text-[length:var(--fs-12)] font-semibold transition-colors"
+                style={ tab===t.key ? {background:doc.bg, color:doc.color} : {color:"var(--muted)", background:"transparent"} }>{t.label}</button>
+            ))}
+          </div>
+        </div>
+        {doc.tabs.map((t,ti)=>(
+          <div key={t.key} ref={el=>{ secRefs.current[t.key]=el; }} className={ti>0?"mt-7":""} style={{scrollMarginTop:"60px"}}>
+            <Banner gid={t.graphic}/>
+            <div className="mb-4"><Lbl>{t.title}</Lbl><How>{t.how}</How></div>
+            <div className="mb-2"><Lbl>Good for</Lbl><Examples items={t.examples}/></div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div key={doc.id} className="stepin p-5">
+      <Banner gid={doc.graphic}/>
+      <p className="text-[length:var(--fs-15)] font-semibold leading-snug mb-4" style={{color:"var(--text)"}}>{doc.summary}</p>
+      {doc.soon && (
+        <div className="flex gap-2.5 items-start rounded-xl px-3 py-2.5 mb-4 text-[length:var(--fs-12)] leading-relaxed" style={{background:"color-mix(in srgb, var(--accent) 8%, transparent)", border:"1px solid color-mix(in srgb, var(--accent) 22%, transparent)", color:"var(--ink-mid)"}}>
+          <span className="shrink-0" style={{color:"var(--accent2)"}}><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.6 1 1.3 1 2.1h6c0-.8.4-1.5 1-2.1A6 6 0 0012 3z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
+          <span>This node is being built. Here is how it will work once it is ready.</span>
+        </div>
+      )}
+      <div className="mb-5"><Lbl>How it works</Lbl><How>{doc.how}</How></div>
+      {doc.diff && (
+        <div className="flex gap-2.5 items-start rounded-xl px-3 py-2.5 mb-5 text-[length:var(--fs-12)] leading-relaxed" style={{background:"var(--panel2)", border:"1px solid var(--border2)", color:"var(--ink-mid)"}}>
+          <span className="shrink-0" style={{color:doc.color}}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M7 8v8"/><path d="M9 18h5a2 2 0 002-2V8"/><circle cx="7" cy="6" r="2.2" fill="currentColor" stroke="none"/><circle cx="7" cy="18" r="2.2" fill="currentColor" stroke="none"/><circle cx="16" cy="6" r="2.2" fill="currentColor" stroke="none"/></svg></span>
+          <span><b style={{color:"var(--text)"}}>How it differs from condition branches. </b>{doc.diff}</span>
+        </div>
+      )}
+      <div className="mb-2"><Lbl>Good for</Lbl><Examples items={doc.examples}/></div>
+    </div>
+  );
 }
 
 // Saved experiment builds — single shared source of truth in builds.js (window.BUILDS),
@@ -5435,6 +5557,21 @@ function App() {
       boxShadow:"0 20px 46px -10px rgba(0,0,0,.7), 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent)",opacity:".97",display:"none"});
     document.body.appendChild(el); dragPreviewRef.current=el; return ()=>el.remove(); },[]);
   const moveNodes = (ids, target) => { (ids||[]).forEach(id => moveNode(id, target)); }; // single id today; ready for future multi-node drag
+  // drop a node INTO a branch lane's body (append as its last step) — used when the lane is empty or the cursor is
+  // over lane space with no step to anchor to. laneKey = "<branchId>#<pi|ow>". Blocks branch-into-lane + self-descendant.
+  const moveNodeIntoLane = (srcId, branchId, pi) => setFlow(f => {
+    if (srcId===branchId) return f;
+    const sp = treeFindPath(f, srcId); if(!sp) return f;
+    const bp = treeFindPath(f, branchId); if(!bp) return f;
+    if (bp.length>=sp.length && sp.every((v,i)=>v===bp[i])) return f; // src is the branch or an ancestor of this lane
+    const srcNode = nodeAt(f, sp); if(!srcNode || srcNode.kind==="branch") return f; // no whole branch inside a lane
+    let t = treeRemove(f, sp);
+    const bp2 = treeFindPath(t, branchId); if(!bp2) return f;
+    const bn = nodeAt(t, bp2); if(!bn) return f;
+    if (pi==="ow") { if(!bn.otherwise) return f; return treeUpdate(t, bp2, { otherwise: { ...bn.otherwise, children:[ ...(bn.otherwise.children||[]), srcNode ] } }); }
+    const paths = (bn.paths||[]).map((pp,k)=> k===pi ? { ...pp, children:[ ...(pp.children||[]), srcNode ] } : pp);
+    return treeUpdate(t, bp2, { paths });
+  });
   const dropInto = (branchId, e) => { if(e&&e.preventDefault)e.preventDefault(); const src=dragIdRef.current; if(src!=null) moveNode(src, {into:branchId}); setDropHint(null); dragIdRef.current=null; }; // kept for the branch-lane end zone
   // ── DRAG LOCKS (v5.11 Slice 2) — the validation rulebook. Two questions: (1) can this node be GRABBED at all
   //    (`nodeLocked` → no grip); (2) is a given drop legal (`dropAllowed` → hit-test skips it). ──
@@ -5472,15 +5609,23 @@ function App() {
   };
   const dragHitTest = (x, y) => { const f = flowRef.current, src = dragIdRef.current;
     const srcNode = src!=null ? (()=>{ const p=treeFindPath(f, src); return p?nodeAt(f,p):null; })() : null;
-    let best=null, bestD=1e9, overBlockedHeader=false;
+    let best=null, bestEl=null, bestD=1e9, overBlockedHeader=false;
     document.querySelectorAll("[data-dragid]").forEach(el=>{ const id=el.getAttribute("data-dragid"); if(id===src) return;
       const r=el.getBoundingClientRect(); if(!r.height) return;
       // cursor physically INSIDE a branch's header while dragging a plain step → off-limits (a drop here would sit
       // above the lane's locked CHECK IF). Return no target so releasing does nothing, rather than snapping elsewhere.
       if(srcNode && srcNode.kind!=="branch" && y>=r.top && y<=r.bottom){ const tp=treeFindPath(f, id); const tn=tp?nodeAt(f,tp):null; if(tn && tn.kind==="branch") overBlockedHeader=true; }
       const mid=r.top+r.height/2, pos = y<mid?"before":"after", d=Math.abs(y-mid);
-      if(d<bestD && dropAllowed(src, id, pos)){ bestD=d; best={id, pos}; } });
-    return overBlockedHeader ? null : best; };
+      if(d<bestD && dropAllowed(src, id, pos)){ bestD=d; best={id, pos}; bestEl=el; } });
+    if(overBlockedHeader) return null;
+    // LANE fallback (lets a step drop INTO a lane's body — the key case being an EMPTY lane, or lane space with no
+    // step to anchor to): cursor is inside a lane container whose own steps aren't the nearest target → drop into it.
+    if(srcNode && srcNode.kind!=="branch"){
+      let laneEl=null;
+      document.querySelectorAll("[data-lane]").forEach(el=>{ const r=el.getBoundingClientRect(); if(x>=r.left && x<=r.right && y>=r.top && y<=r.bottom) laneEl=el; });
+      if(laneEl && (!bestEl || !laneEl.contains(bestEl))) return { lane: laneEl.getAttribute("data-lane") };
+    }
+    return best; };
   // shared drag launcher. `threshold`=0 → start immediately (the grip). threshold>0 → ARM only, and begin the
   // real drag once the pointer travels that far — so a plain click on the row body still focuses/opens slots and
   // never turns into an accidental move. Controls (slots/buttons/inputs) are excluded by the caller (bodyDown).
@@ -5500,7 +5645,7 @@ function App() {
       at(ev.clientX,ev.clientY); const h=dragHitTest(ev.clientX,ev.clientY); dropHintRef.current=h; setDropHint(h); };
     const onUp=()=>{ window.removeEventListener("pointermove",onMove); window.removeEventListener("pointerup",onUp); window.removeEventListener("pointercancel",onUp);
       if(started){ const src=dragIdRef.current, h=dropHintRef.current;
-        if(src!=null && h){ moveNodes([src], h.pos==="before"?{before:h.id}:{after:h.id}); requestAnimationFrame(()=>warnIfDangling(src)); }
+        if(src!=null && h){ if(h.lane){ const [bid,ps]=h.lane.split("#"); moveNodeIntoLane(src, bid, ps==="ow"?"ow":+ps); } else { moveNodes([src], h.pos==="before"?{before:h.id}:{after:h.id}); } requestAnimationFrame(()=>warnIfDangling(src)); }
         dragIdRef.current=null; setDraggingId(null); setDropHint(null); dropHintRef.current=null;
         if(p) p.style.display="none"; document.body.style.cursor=""; document.body.style.userSelect="";
         if(swallow) setTimeout(()=>window.removeEventListener("click", swallow, true), 0); } };
@@ -5631,20 +5776,31 @@ function App() {
   const clauseArrAt = (f, loc) => { const n = nodeAt(f, loc.path); if(!n) return null; return loc.pi==null ? (n.clauses||[]) : (((n.paths||[])[loc.pi]||{}).clauses||[]); };
   const setClauseArrAt = (f, loc, arr) => { if(loc.pi==null) return treeUpdate(f, loc.path, { clauses: arr }); const n = nodeAt(f, loc.path); if(!n) return f; const paths = (n.paths||[]).map((p,k)=> k===loc.pi ? { ...p, clauses: arr } : p); return treeUpdate(f, loc.path, { paths }); };
   const normalizeConn = (arr) => arr.map((c,i)=> { if(i===0){ const {conn, or, ...rest} = c; return rest; } return { ...c, conn: c.conn || "and" }; });
+  // the connector value that puts a clause into the SAME group as arr[tCi]. Groups are "first-connector": the main
+  // card = clause 0 + every clause whose conn matches clauses[1].conn; each differing clause is its own card. So to
+  // drop INTO a group we must set the moved clause's conn to the destination group's type (else it stays put visually).
+  const groupConnFor = (arr, tCi) => {
+    if (!arr || arr.length===0) return "and";
+    const cardType = (arr[1] && (arr[1].conn||"and")) || "and";
+    const idx = Math.max(0, Math.min(tCi, arr.length-1)); const t = arr[idx];
+    const inMain = idx===0 || (t && (t.conn||"and")===cardType);
+    return inMain ? cardType : (cardType==="and" ? "or" : "and");
+  };
   const moveClauseCross = (fromLoc, fromCi, toLoc, toCi, pos) => setFlow(f => {
     const same = clauseCK(fromLoc.path, fromLoc.pi)===clauseCK(toLoc.path, toLoc.pi);
     const src = [...(clauseArrAt(f, fromLoc)||[])]; const moved = src[fromCi]; if(!moved) return f;
     if (same) {
+      const destConn = groupConnFor(src, toCi);   // which group did they drop it onto? (computed pre-splice)
       let insert = toCi + (pos==="after"?1:0);
       src.splice(fromCi, 1);
       if (fromCi < insert) insert -= 1;
-      if (insert===fromCi) return f;
-      src.splice(insert, 0, { ...moved });
+      src.splice(insert, 0, { ...moved, conn: destConn });  // re-tag so it lands in the destination group
       return setClauseArrAt(f, fromLoc, normalizeConn(src));
     }
     src.splice(fromCi, 1);
     const tgt = [...(clauseArrAt(f, toLoc)||[])];
-    tgt.splice(toCi + (pos==="after"?1:0), 0, { ...moved, conn:"and" });
+    const destConn = groupConnFor(tgt, toCi);      // join the target group in the OTHER branch's checks
+    tgt.splice(toCi + (pos==="after"?1:0), 0, { ...moved, conn: destConn });
     let f2 = setClauseArrAt(f, fromLoc, normalizeConn(src));
     f2 = setClauseArrAt(f2, toLoc, normalizeConn(tgt));
     return f2;
@@ -6060,26 +6216,24 @@ function App() {
   // gate diamond sits). Points UP (▴) when open, rotates to SIDEWAYS (▸) when collapsed (user 2026-07-21). Opaque bg
   // caps the rail; brightens on hover. Shared by branch lanes + Otherwise.
   const collapseMark = (isCol, onClick, title) => (
-    // the branch marker = a Tabler "git-branch" glyph (filled nodes) so the rail dot reads clearly as a BRANCH
-    // (user 2026-07-27). It's still the collapse toggle: clicking it (or the header row) folds the lane, and a small
-    // caret badge in the corner shows/rotates the open↔folded state. Brightens on `group-hover` (Station is a `group`).
+    // AT REST: a Tabler "git-branch" glyph so the rail dot reads as a BRANCH. ON HOVER (Station is a `group`, so
+    // hovering the header row triggers it): it morphs into the "selector" glyph (up + down chevrons) to signal the
+    // open/close toggle (user 2026-07-27). Clicking it (or the header row) folds/opens the lane; state shows via the
+    // body swapping to a summary. No corner caret.
     <button onClick={onClick} title={title} aria-expanded={!isCol}
       className="relative flex items-center justify-center rounded-full transition-colors bg-[var(--panel2)] border border-[var(--border2)] text-[var(--ink-mid)] group-hover:bg-[var(--panel)] group-hover:border-[var(--faint)] group-hover:text-[var(--text)]"
       style={{ width:"22px", height:"22px", boxShadow:"0 0 0 3px var(--bg)" }}>
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      {/* rest = branch glyph */}
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute inset-0 m-auto transition-opacity group-hover:opacity-0">
         <path d="M7 8v8"/><path d="M9 18h5a2 2 0 0 0 2 -2v-5"/>
         <circle cx="7" cy="6" r="2.3" fill="currentColor" stroke="none"/>
         <circle cx="7" cy="18" r="2.3" fill="currentColor" stroke="none"/>
         <circle cx="16" cy="6" r="2.3" fill="currentColor" stroke="none"/>
       </svg>
-      {/* fold caret — hidden at rest (clean branch glyph), revealed on header hover and kept visible while folded,
-          so the collapse affordance is still discoverable without cluttering the resting marker */}
-      <span className={"absolute flex items-center justify-center rounded-full transition-opacity " + (isCol ? "opacity-100" : "opacity-0 group-hover:opacity-100")}
-        style={{ right:"-3px", bottom:"-3px", width:"10px", height:"10px", background:"var(--panel)", border:"1px solid var(--border2)" }}>
-        <svg width="6" height="6" viewBox="0 0 10 10" style={{ transform: isCol?"rotate(-90deg)":"none", transition:"transform .18s" }}>
-          <path d="M2.4 3.8 L7.6 3.8 L5 7.4 Z" fill="currentColor"/>
-        </svg>
-      </span>
+      {/* hover = selector glyph (open/close) */}
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="absolute inset-0 m-auto opacity-0 transition-opacity group-hover:opacity-100">
+        <path d="M8 9l4 -4l4 4"/><path d="M16 15l-4 4l-4 -4"/>
+      </svg>
     </button>
   );
   // a hollow neutral point (a plain ring) — the rail marker for a COLLAPSED branch/otherwise summary row (user 2026-07-21)
@@ -8220,7 +8374,7 @@ function App() {
         // DO show "Add branch" (AddBranchBtn in the lane render).
         return (
           <Station key={node.id} marker={MARK.cond} doubleRail={dbl} dim={dim} dimBg="var(--c-if-h)" isFirst={isFirst} isLast={isLast} hoverBg="transparent" wideContent
-            padY={0} markerY={PAD + HEAD/2}
+            padY={0} markerY={PAD + HEAD/2} dnd={dnd(node, path)}
             innerRef={(el)=>setRowRef(k, el)} onInsert={isTrunk ? null : insertBelow} gapBottom={branchGap}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)}>
             {inlineClauses(path, node, true, false)}
@@ -8353,7 +8507,7 @@ function App() {
         const laneDbl = !hasGate; // parallel/split lane (action/get/wait) = DOUBLE solid; condition lane = main path keeps its LEFT line solid but its RIGHT line goes DASHED, and the branch peels off the right line (user 2026-07-16)
         const spineBottom = (pi===(node.paths||[]).length-1 && !node.otherwise && branchIsTerminal) ? `calc(100% - ${MC+eyeH}px)` : 0;
         lanes.push(
-          <div key={pobj.id} className="relative" style={{marginLeft:"100px", paddingBottom: `${isSplitBranch(node) ? SPLIT_LANE_GAP : BRANCH_LANE_GAP}px`, opacity: pobj._dimPreview ? 0.5 : undefined}}>
+          <div key={pobj.id} className="relative" data-lane={node.id+"#"+pi} style={{marginLeft:"100px", paddingBottom: `${isSplitBranch(node) ? SPLIT_LANE_GAP : BRANCH_LANE_GAP}px`, opacity: pobj._dimPreview ? 0.5 : undefined, ...(dropHint && dropHint.lane===node.id+"#"+pi ? {outline:"2px dashed var(--accent)", outlineOffset:"4px", borderRadius:"12px"} : {})}}>
             {laneDbl ? (<>
               {/* PARALLEL/SPLIT lane → double spine + double elbow (two parallel lines) */}
               {vLines(-93, { top:0, bottom: spineBottom })}
@@ -8492,7 +8646,7 @@ function App() {
           </Station>
         );
         lanes.push(
-          <div key={node.otherwise.id} className="relative" style={{marginLeft:"100px", opacity: node.otherwise._dimPreview ? 0.5 : undefined}}>
+          <div key={node.otherwise.id} className="relative" data-lane={node.id+"#ow"} style={{marginLeft:"100px", opacity: node.otherwise._dimPreview ? 0.5 : undefined, ...(dropHint && dropHint.lane===node.id+"#ow" ? {outline:"2px dashed var(--accent)", outlineOffset:"4px", borderRadius:"12px"} : {})}}>
             {/* OTHERWISE = condition-branch catch-all → double spine, RIGHT line DASHED, single elbow (like a condition lane) */}
             {vLines(-93, { top:0, bottom: branchIsTerminal ? `calc(100% - ${MC}px)` : 0 }, { rightDashed:true })}
             {elbowLines(-93, MC, 102, { single:true })}
@@ -8553,7 +8707,7 @@ function App() {
     <>
       <div className="h-14 shrink-0 flex items-center px-4 text-[length:var(--fs-15)] font-semibold border-b" style={{color:"var(--text)", borderColor:"var(--side-bd)"}}>{suiteDef.label}</div>
       <div className="flex-1 overflow-auto py-2 px-2">
-        {suiteDef.modules.filter(m=> !(IS_LIVE && m.id==="usecase_4")).map(m=>{  /* Use Case 4 = dev-only wide-layout demo, hidden on the live github.io site */
+        {suiteDef.modules.filter(m=> !(IS_LIVE && (m.id==="usecase_4" || m.id==="usecase_5"))).map(m=>{  /* Use Case 4 (wide demo) + Use Case 5 (test cases) = dev-only, hidden on the live github.io site */
           const on = m.id===activeModule;
           return (
             <React.Fragment key={m.id}>
@@ -9336,9 +9490,6 @@ function App() {
           {/* Node reference — right-section panel: list → drill into a node → "How it works" pinned at bottom */}
           {!exprEdit && !drawer && refOpen && (()=>{
             const doc = refSel ? (NODE_DOCS.find(d=>d.id===refSel) || null) : null;
-            const Section = ({ label, children }) => (
-              <div className="mb-4"><div className="text-[length:var(--fs-10)] uppercase tracking-[0.14em] mb-1.5" style={{color:"var(--faint)"}}>{label}</div><div className="text-[length:var(--fs-13)] leading-relaxed" style={{color:"var(--ink-mid)"}}>{children}</div></div>
-            );
             return (
               <div className="h-full w-full flex flex-col">
                 <div className="px-4 h-14 shrink-0 flex items-center gap-2 border-b" style={{borderColor:"var(--border)"}}>
@@ -9348,22 +9499,26 @@ function App() {
                 </div>
                 <div className="flex-1 overflow-y-auto">
                   {doc ? (
-                    <div key={doc.id} className="stepin p-5">
-                      <div className="w-full rounded-2xl flex items-center justify-center mb-5 px-4" style={{ height:"128px", background:doc.bg, overflow:"hidden", border:`1px solid ${doc.color}22` }}>{NODE_GRAPHIC(doc.id)}</div>
-                      {doc.types && (<div className="mb-4"><div className="text-[length:var(--fs-10)] uppercase tracking-[0.14em] mb-2" style={{color:"var(--faint)"}}>Types</div><div className="flex flex-col gap-2">{doc.types.map((t,i)=>(<div key={i} className="rounded-xl px-3 py-2.5" style={{ background:doc.bg, border:`1px solid ${doc.color}22`, borderLeft:`3px solid ${doc.color}` }}><div className="text-[length:var(--fs-125)] font-semibold mb-0.5" style={{color:doc.color}}>{t.name}</div><div className="text-[length:var(--fs-12)] leading-relaxed" style={{color:"var(--ink-mid)"}}>{t.desc}</div></div>))}</div></div>)}
-                      <Section label="What it is">{doc.meaning}</Section>
-                      <Section label="Function">{doc.function}</Section>
-                      <Section label="When to use it">{doc.use}</Section>
-                      <Section label="When to avoid it">{doc.avoid}</Section>
-                    </div>
+                    <NodeRefDetail key={doc.id} doc={doc} />
                   ) : (
-                    <div className="p-2.5">
-                      {NODE_DOCS.map(n=>(
-                        <button key={n.id} onClick={()=>setRefSel(n.id)} className="w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-left transition-colors hover:bg-[var(--pop-hover)] mb-0.5">
-                          <span className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center" style={{ background:n.bg, color:n.color }}>{n.icon}</span>
-                          <span className="text-[length:var(--fs-13)] font-medium truncate" style={{color:"var(--text)"}}>{n.name}</span>
-                          <svg className="ml-auto shrink-0" width="15" height="15" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        </button>
+                    <div className="p-2.5 pb-3">
+                      {NODE_GROUPS.map(gr=>(
+                        <div key={gr.g} className="mb-1">
+                          <div className="flex items-baseline gap-2 px-2.5 pt-3 pb-1.5">
+                            <span className="text-[length:var(--fs-10)] font-bold uppercase tracking-[0.14em]" style={{color:"var(--faint)"}}>{gr.g}</span>
+                            <span className="text-[length:var(--fs-11)]" style={{color:"var(--faint)", opacity:.85}}>{gr.gd}</span>
+                          </div>
+                          {gr.ids.map(id=>{ const n = NODE_DOCS.find(d=>d.id===id); if(!n) return null; return (
+                            <button key={n.id} onClick={()=>setRefSel(n.id)} className="w-full flex items-center gap-3 px-2.5 py-2.5 rounded-xl text-left transition-colors hover:bg-[var(--pop-hover)] mb-0.5">
+                              <span className="w-9 h-9 shrink-0 rounded-xl flex items-center justify-center" style={{ background:n.bg, color:n.color }}>{n.icon}</span>
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-center gap-2 text-[length:var(--fs-13)] font-semibold" style={{color:"var(--text)"}}>{n.name}{n.soon && <span className="text-[length:var(--fs-9)] font-bold uppercase tracking-wide" style={{color:"var(--accent2)", background:"color-mix(in srgb, var(--accent) 15%, transparent)", padding:"2px 6px", borderRadius:"5px"}}>In progress</span>}</span>
+                                <span className="block text-[length:var(--fs-115)] mt-0.5 leading-snug truncate" style={{color:"var(--muted)"}}>{n.summary}</span>
+                              </span>
+                              <svg className="ml-auto shrink-0" width="15" height="15" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            </button>
+                          ); })}
+                        </div>
                       ))}
                     </div>
                   )}
