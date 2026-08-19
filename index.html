@@ -16,6 +16,7 @@
     --border2:#2a2a32; --text:#e6e6ea; --muted:#86868f; --faint:#5a5a63; --ink-mid:#b0b0b8;
     --pop-bg:#16161b; --pop-hover:#20202a;
     --accent:#5b6cff; --accent2:#7c89ff; --green:#3fb950; --amber:#d6a531; --red:#f85149; --split:#f0873e;
+    --vs-text:#b3bbff; /* view-switch active tab text — a LIGHT accent so it stays high-contrast on the accent tint (dark theme) */
     --find-hl:#ffe27a; /* Ctrl+F-style search-match marker */
     --c-when:#7aa2ff; --c-when-bg:#16213d; --c-when-h:#10192b;
     --c-if:#e3b341;   --c-if-bg:#2a2410;   --c-if-h:#1d1a11;
@@ -60,6 +61,7 @@
     --border2:#d6dde6; --text:#0f172a; --muted:#64748b; --faint:#94a3b8; --ink-mid:#475569;
     --pop-bg:#ffffff; --pop-hover:#f1f5f9;
     --accent:#4f5dff; --accent2:#5562e6; --green:#1a7f37; --amber:#9a6700; --red:#cf222e; --split:#c2410c;
+    --vs-text:#3730c7; /* view-switch active tab text — a DARK accent so it stays high-contrast on the accent tint (light theme) */
     --find-hl:#ffe066; /* Ctrl+F-style search-match marker */
     --c-when:#2563eb; --c-when-bg:#e8f0ff; --c-when-h:#f4f8ff;
     --c-if:#c2820a;   --c-if-bg:#fbf1d6;   --c-if-h:#fcf8ee;
@@ -4679,6 +4681,7 @@ function App() {
   const renameGuardRef = useRef(false); // true once a rename is committed/cancelled → the unmount-triggered blur must NOT re-commit (else Escape silently saves + Enter double-pushes undo)
   const [helpOpen, setHelpOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false); // "How it works" multi-step stepper (from the help menu)
+  const [viewMode, setViewMode] = useState("simple"); // top-bar VIEW SWITCH: "simple" (sentence view, current) | "node" (flow/node view, not built yet — this is its entry point) (user 2026-08-19)
   const [step, setStep] = useState(0); // active step in the stepper
   const [introOpen, setIntroOpen] = useState(false); // one-time "new way to build" announcement → guided walkthrough
   // show the intro announcement ONCE to every user (new + existing); remember via localStorage
@@ -9566,12 +9569,7 @@ function App() {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </button></Tooltip>
         <div className="ml-auto flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm cursor-pointer" style={{color:"var(--muted)"}}>
-            <Tooltip label={enabled?"Disable workflow":"Enable workflow"} side="bottom"><button onClick={()=>setEnabled(!enabled)} className="w-9 h-5 rounded-full relative transition-colors"
-              style={{background: enabled?"var(--accent)":"var(--border2)"}}>
-              <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all" style={{left: enabled?"18px":"2px"}}></span>
-            </button></Tooltip>{enabled?"Enabled":"Disabled"}
-          </label>
+          {/* light / dark theme icon */}
           <Tooltip label={theme==="dark"?"Light theme":"Dark theme"} kbd="T" side="bottom"><button onClick={()=>setTheme(theme==="dark"?"light":"dark")}
             className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:brightness-110"
             style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--muted)"}}>
@@ -9579,8 +9577,30 @@ function App() {
               ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
               : <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4.2" stroke="currentColor" strokeWidth="2"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8L6 18M18 6l1.8-1.8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>}
           </button></Tooltip>
-          {/* v5: reset / undo / redo / help / shortcuts moved to the floating canvas toolbar */}
-          <button className="px-3 py-1.5 rounded-lg text-sm font-medium" style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--text)"}}>Test</button>
+          {/* enabled / disabled toggle */}
+          <label className="flex items-center gap-2 text-sm cursor-pointer" style={{color:"var(--muted)"}}>
+            <Tooltip label={enabled?"Disable workflow":"Enable workflow"} side="bottom"><button onClick={()=>setEnabled(!enabled)} className="w-9 h-5 rounded-full relative transition-colors"
+              style={{background: enabled?"var(--accent)":"var(--border2)"}}>
+              <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all" style={{left: enabled?"18px":"2px"}}></span>
+            </button></Tooltip>{enabled?"Enabled":"Disabled"}
+          </label>
+          {/* separator */}
+          <span className="shrink-0" style={{ width:"1px", height:"22px", background:"var(--border2)" }} />
+          {/* VIEW SWITCH (rightmost) — the two views: Simple view (sentence, current) | Node view (flow, not built yet).
+              Each tab has an icon; the ACTIVE tab uses the accent for TEXT + a lighter accent tint for its background
+              (not a solid fill). (user 2026-08-19) */}
+          <div className="flex items-center gap-0.5 rounded-lg p-0.5" style={{ background:"var(--panel2)", border:"1px solid var(--border2)" }}>
+            {[
+              { id:"simple", label:"Simple view", icon:(<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h11" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"/></svg>) },
+              { id:"node",   label:"Node view",   icon:(<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="4" y="3.5" width="8" height="6" rx="1.6" stroke="currentColor" strokeWidth="1.8"/><rect x="12" y="14.5" width="8" height="6" rx="1.6" stroke="currentColor" strokeWidth="1.8"/><path d="M8 9.5v3a2 2 0 002 2h2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>) },
+            ].map(t=>(
+              <button key={t.id} onClick={()=>setViewMode(t.id)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[length:var(--fs-12)] font-medium transition-colors"
+                style={ viewMode===t.id ? { background:"color-mix(in srgb, var(--accent) 22%, transparent)", color:"var(--vs-text)" } : { background:"transparent", color:"var(--muted)" } }>
+                {t.icon}{t.label}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -10256,10 +10276,11 @@ function App() {
                   )}
                 </div>
                 <div className="shrink-0 border-t px-4 py-3 flex flex-col gap-2" style={{borderColor:"var(--border)"}}>
-                  {/* "Take the walkthrough" removed — it lives on the floating toolbar now (no duplicate launcher here) */}
-                  <button onClick={()=>{ setRefOpen(false); setStep(0); setGuideOpen(true); }} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[length:var(--fs-125)] font-medium transition-colors hover:brightness-110" style={{ background:"color-mix(in srgb, var(--accent) 14%, transparent)", color:"var(--accent2)" }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.6 1 1.3 1 2.1h6c0-.8.4-1.5 1-2.1A6 6 0 0012 3z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    How it works
+                  {/* WALKTHROUGH launcher — moved here from the floating toolbar; replaces the old "How it works" button
+                      (user 2026-08-19). Closes the reference panel and opens the intro → guided walkthrough. */}
+                  <button onClick={()=>{ setRefOpen(false); setIntroOpen(true); }} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[length:var(--fs-125)] font-medium transition-colors hover:brightness-110" style={{ background:"color-mix(in srgb, var(--accent) 14%, transparent)", color:"var(--accent2)" }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8"/><path d="M10 9l5 3-5 3V9z" fill="currentColor"/></svg>
+                    Walkthrough
                   </button>
                 </div>
               </div>
@@ -10474,14 +10495,7 @@ function App() {
           <div ref={floatBarRef} className="absolute left-1/2 bottom-6 z-40 flex items-center gap-1 px-3.5 py-2.5 rounded-2xl"
             style={{ background:"var(--panel)", boxShadow:"var(--shadow-float)",
               transform:`translateX(calc(-50% - ${(exprEdit?640:drawer?440:refOpen?400:savePanel?400:helpOpen?360:0)/2}px))`, transition:"transform .3s ease, opacity .2s ease" }}>
-            {/* Walkthrough CTA — reopens the intro popup (→ "Take the walkthrough" → guided tour) so anyone can replay it */}
-            <Tooltip label="Replay walkthrough" side="top"><button onClick={()=>setIntroOpen(true)}
-              className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg text-[length:var(--fs-13)] font-medium transition-colors hover:bg-[var(--pop-hover)]"
-              style={{ color:"var(--accent2)" }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8"/><path d="M10 9l5 3-5 3V9z" fill="currentColor"/></svg>
-              Walkthrough
-            </button></Tooltip>
-            {sep}
+            {/* Walkthrough CTA moved to the Node-reference panel (user 2026-08-19) — no longer on this toolbar. */}
             {/* help */}
             <Tool onClick={()=>{ setHelpOpen(false); setRefSel(null); setRefOpen(true); }} title="Help & node reference">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.6 1 1.3 1 2.1h6c0-.8.4-1.5 1-2.1A6 6 0 0012 3z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
