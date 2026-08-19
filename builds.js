@@ -3,11 +3,16 @@
 // To add a snapshot: copy index.html → index-vN.html, then add one line below.
 // Every existing file picks it up automatically (they all read window.BUILDS).
 // Newest first — the dropdown shows them top-to-bottom in this order.
-// NOTE: index.html === v5.11 and is the LIVE root on GitHub Pages (promoted 2026-07-27, replacing the old v5.6).
-// The v6 experiment that used to live in index.html was discarded on promotion (user-confirmed).
-// v5.11 = the ACTIVE working file (drag-node rework); v5.10 = frozen rollback.
+// NOTE: index.html === v5.16 and is the LIVE root on GitHub Pages (promoted 2026-08-19, replacing v5.11 from 2026-07-27).
+// v5.16 adds the level Merge (v2), the Loop node, the merge connector wire, the orange Split Path node, and dev-only Use Case 9.
+// v5.16 = the ACTIVE working file; v5.15 = rollback; v5.14 = loop-complete rollback; v5.11 = the prior live root.
 window.BUILDS = [
   { label: "v7", file: "index-v7.html" },
+  { label: "v5.16 (working)", file: "index-v5.16.html" },
+  { label: "v5.15", file: "index-v5.15.html" },
+  { label: "v5.14", file: "index-v5.14.html" },
+  { label: "v5.13", file: "index-v5.13.html" },
+  { label: "v5.12", file: "index-v5.12.html" },
   { label: "v5.11 (live)", file: "index-v5.11.html" },
   { label: "v5.10", file: "index-v5.10.html" },
   { label: "v5.9", file: "index-v5.9.html" },

@@ -15,7 +15,7 @@
     --bg:#0a0a0c; --panel:#0f0f12; --panel2:#131317; --topbar:#0c0c0f; --border:#1f1f25;
     --border2:#2a2a32; --text:#e6e6ea; --muted:#86868f; --faint:#5a5a63; --ink-mid:#b0b0b8;
     --pop-bg:#16161b; --pop-hover:#20202a;
-    --accent:#5b6cff; --accent2:#7c89ff; --green:#3fb950; --amber:#d6a531; --red:#f85149;
+    --accent:#5b6cff; --accent2:#7c89ff; --green:#3fb950; --amber:#d6a531; --red:#f85149; --split:#f0873e;
     --find-hl:#ffe27a; /* Ctrl+F-style search-match marker */
     --c-when:#7aa2ff; --c-when-bg:#16213d; --c-when-h:#10192b;
     --c-if:#e3b341;   --c-if-bg:#2a2410;   --c-if-h:#1d1a11;
@@ -59,7 +59,7 @@
     --bg:#ffffff; --panel:#ffffff; --panel2:#f1f5f9; --topbar:#ffffff; --border:#e8ecf1;
     --border2:#d6dde6; --text:#0f172a; --muted:#64748b; --faint:#94a3b8; --ink-mid:#475569;
     --pop-bg:#ffffff; --pop-hover:#f1f5f9;
-    --accent:#4f5dff; --accent2:#5562e6; --green:#1a7f37; --amber:#9a6700; --red:#cf222e;
+    --accent:#4f5dff; --accent2:#5562e6; --green:#1a7f37; --amber:#9a6700; --red:#cf222e; --split:#c2410c;
     --find-hl:#ffe066; /* Ctrl+F-style search-match marker */
     --c-when:#2563eb; --c-when-bg:#e8f0ff; --c-when-h:#f4f8ff;
     --c-if:#c2820a;   --c-if-bg:#fbf1d6;   --c-if-h:#fcf8ee;
@@ -179,6 +179,21 @@
   /* step crossfade */
   @keyframes stepin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   .stepin{ animation:stepin .28s cubic-bezier(.2,.7,.3,1) both; }
+  /* LOOP box outline — a dashed border drawn as an SVG rect so it can travel; on hover it reverse-marches
+     (counter-clockwise) and turns the loop's cyan (variant C, user-approved 2026-08-18). */
+  .loop-frame .loop-ants{ position:absolute; inset:0; width:100%; height:100%; overflow:visible; pointer-events:none; }
+  .loop-frame .loop-ants rect{ fill:none; stroke:var(--border2); stroke-width:1.6; stroke-dasharray:8 8; stroke-linecap:round; }
+  .loop-frame:hover .loop-ants rect{ stroke:#4ec5e0; animation:loopMarch 0.8s linear infinite; }
+  @keyframes loopMarch{ to{ stroke-dashoffset:-16; } }   /* -offset ⇒ dashes travel LEFT→RIGHT along the top (clockwise) */
+  @media (prefers-reduced-motion:reduce){ .loop-frame:hover .loop-ants rect{ animation:none; } }
+  /* MERGE CONNECTOR WIRE (v5.16) — hover-only dashed branch→merge line, drawn in the merge accent, marching */
+  .merge-wire-layer path{ fill:none; stroke:var(--accent); stroke-width:2; stroke-dasharray:7 6; stroke-linecap:round; }
+  .merge-wire-layer .mw-cap{ fill:var(--accent); }
+  .merge-wire-layer .mw-lbl-bg{ fill:var(--panel2); stroke:var(--accent); stroke-width:1; stroke-dasharray:none; }
+  .merge-wire-layer .mw-lbl{ fill:var(--accent2); font-size:10.5px; font-weight:600; letter-spacing:.02em; font-family:'Inter',system-ui,sans-serif; }
+  .merge-wire-layer .mw-on path{ animation:mwMarch 0.8s linear infinite; }   /* -offset ⇒ dashes travel branch→merge */
+  @keyframes mwMarch{ to{ stroke-dashoffset:-13; } }
+  @media (prefers-reduced-motion:reduce){ .merge-wire-layer .mw-on path{ animation:none; } }
 </style>
 </head>
 <body>
@@ -305,7 +320,7 @@ const SUITES = [
   { id:"assets",     label:"Assets & IT",  icon:I.box,    modules:[{id:"assets",label:"Assets"},{id:"cmdb",label:"CMDB"},{id:"patches",label:"Patches"},{id:"packages",label:"Packages"}] },
   { id:"projects",   label:"Projects",     icon:I.kanban, modules:[{id:"projects",label:"Projects"},{id:"reports",label:"Reports"},{id:"myteam",label:"My Team"}] },
   { id:"mywork",     label:"My Work",      icon:I.inbox,  modules:[{id:"approvals",label:"Approvals"},{id:"tasks",label:"Tasks"}] },
-  { id:"automation", label:"Automation",   icon:I.gear,   modules:[{id:"flow_dashboard",label:"Flow Dashboard"},{id:"workflows",label:"Workflows"},{id:"usecase_1",label:"Use Case 1",sep:true},{id:"usecase_2",label:"Use Case 2"},{id:"usecase_3",label:"Use Case 3"},{id:"usecase_4",label:"Use Case 4 · Wide"},{id:"usecase_5",label:"Use Case 5 · Test cases"}] },
+  { id:"automation", label:"Automation",   icon:I.gear,   modules:[{id:"flow_dashboard",label:"Flow Dashboard"},{id:"workflows",label:"Workflows"},{id:"usecase_1",label:"Use Case 1",sep:true},{id:"usecase_2",label:"Use Case 2"},{id:"usecase_3",label:"Use Case 3"},{id:"usecase_4",label:"Use Case 4 · Wide"},{id:"usecase_5",label:"Use Case 5 · Test cases"},{id:"usecase_6",label:"Use Case 6 · Merge"},{id:"usecase_7",label:"Use Case 7 · Loop"},{id:"usecase_9",label:"Use Case 9 · Complex"}] },
 ];
 const RAIL_BOTTOM = [
   { id:"settings",      label:"Settings",      icon:I.gear },
@@ -317,8 +332,81 @@ const RAIL_BOTTOM = [
 // All faithful to the data model: trigger {id,typeId,vals:{module}}; flow nodes use real
 // FIELDS ids (category/subject/requester_dept), real assign targets (ASSIGN_TARGETS) and
 // the update node's field rows (REQUEST_FIELDS ids category/subcategory).
-const USECASE_IDS = ["usecase_1","usecase_2","usecase_3","usecase_4","usecase_5"];
+const USECASE_IDS = ["usecase_1","usecase_2","usecase_3","usecase_4","usecase_5","usecase_6","usecase_7","usecase_9"];
 const USECASE_DOCS = {
+  // Use Case 6 — a Merge sample (v2 level model). A condition branch on priority (High / Medium / Low); the High +
+  // Low lanes feed Merge 1 (they carry `feeds:"m1"`). The merge references them by id, shows each as a folded box,
+  // then forks into Merge Success + Merge Timeout. Only one lane runs → wait:"any" (the soft "or" join).
+  usecase_6: {
+    triggers: [{ id:"t1", typeId:"created", vals:{ module:"Incident" } }],
+    flow: [
+      { id:"br1", kind:"branch",
+        paths: [
+          { id:"b1", combiner:"and", clauses:[{ field:"priority", op:"is", value:"High" }],   feeds:"m1", children:[ { id:"s1", kind:"action", action:"assign", arg:"the on-call team" } ] },
+          { id:"b2", combiner:"and", clauses:[{ field:"priority", op:"is", value:"Medium" }],            children:[ { id:"s2", kind:"action", action:"assign", arg:"the duty manager" } ] },
+          { id:"b3", combiner:"and", clauses:[{ field:"priority", op:"is", value:"Low" }],      feeds:"m1", children:[ { id:"s3", kind:"action", action:"assign", arg:"the support team" } ] },
+        ],
+      },
+      { id:"m1", kind:"merge", num:1, wait:"any", deadline:{ amount:15, unit:"minutes" },
+        feeders:[ "b1", "b3" ],
+        success:  { id:"msx", children:[ { id:"s4", kind:"action", action:"assign", arg:"the requester" } ] },
+        otherwise:{ id:"mto", children:[ { id:"s5", kind:"action", action:"assign", arg:"the IT Head" } ] },
+      },
+    ],
+  },
+  // Use Case 7 — a Loop sample (for reviewing the loop UI). A "repeat until" loop runs its inner steps over and over,
+  // then checks its exit condition at the end of each pass — looping again until the condition is met. The condition
+  // uses the SAME grouping as CHECK IF / Get / Wait: an "and" joins the current group, an "or" starts a new card.
+  usecase_7: {
+    triggers: [{ id:"t1", typeId:"created", vals:{ module:"Incident" } }],
+    flow: [
+      { id:"l1", kind:"loop", mode:"until",
+        clauses: [
+          { field:"priority", op:"is", value:"Low" },
+          { field:"impact",   op:"is", value:"Low",      conn:"and" },
+          { field:"status",   op:"is", value:"Resolved", conn:"or"  },
+        ],
+        children: [
+          { id:"a1", kind:"action", action:"assign", arg:"the on-call team" },
+          { id:"a2", kind:"action", action:"assign", arg:"the incident manager" },
+        ] },
+      { id:"a3", kind:"action", action:"assign", arg:"the requester" },
+    ],
+  },
+  // Use Case 9 — a deliberately COMPLEX sample (stress-tests every structure at once): a top-level SPLIT PATH runs two
+  // parallel lanes that both FEED a level MERGE (wait:"all" — the "+" join); the merge's Success arm then opens a
+  // CONDITION BRANCH on priority, and the High lane runs a LOOP that repeats until the incident is resolved. So one
+  // flow exercises split + merge + condition branches + loop, nested several levels deep. Dev-only (Test cases).
+  usecase_9: {
+    triggers: [{ id:"t1", typeId:"created", vals:{ module:"Incident" } }],
+    flow: [
+      // SPLIT PATH — two lanes run in parallel; both feed Merge 1
+      { id:"sp1", kind:"branch",
+        paths: [
+          { id:"spa", feeds:"m1", children:[ { id:"a1", kind:"action", action:"assign", arg:"the on-call team" } ] },
+          { id:"spb", feeds:"m1", children:[ { id:"a2", kind:"action", action:"assign", arg:"the incident manager" } ] },
+        ] },
+      // LEVEL MERGE — waits for ALL feeding lanes (split → the "+" join), then forks into Success / Timeout
+      { id:"m1", kind:"merge", num:1, wait:"all", deadline:{ amount:15, unit:"minutes" },
+        feeders:[ "spa", "spb" ],
+        success: { id:"msx", children:[
+          // CONDITION BRANCHES after the merge — with a LOOP inside the High lane
+          { id:"br1", kind:"branch",
+            paths: [
+              { id:"b1", combiner:"and", clauses:[{ field:"priority", op:"is", value:"High" }], children:[
+                { id:"l1", kind:"loop", mode:"until",
+                  clauses:[{ field:"status", op:"is", value:"Resolved" }],
+                  children:[ { id:"a3", kind:"action", action:"assign", arg:"the escalation team" } ] },
+              ] },
+              { id:"b2", combiner:"and", clauses:[{ field:"priority", op:"is", value:"Low" }], children:[
+                { id:"a4", kind:"action", action:"assign", arg:"the support team" },
+              ] },
+            ] },
+        ] },
+        otherwise: { id:"mto", children:[ { id:"a5", kind:"action", action:"assign", arg:"the IT Head" } ] },
+      },
+    ],
+  },
   usecase_1: {
     triggers: [{ id:"t1", typeId:"created", vals:{ module:"Incident" } }],
     flow: [
@@ -513,6 +601,12 @@ const USECASE_META = {
     desc:"A demo workflow whose condition carries a long value, so the canvas stretches from the default 720px toward its 900px maximum. Use it to preview the stretched layout. This sample is hidden on the published site." },
   usecase_5: { name:"Use Case 5 — Tech ticket 3-stage escalation (Test cases)",
     desc:"When a ticket is created for the tech department, assign it across the tech team using Smart Balance. Then wait one day and check the status: if it is still pending, escalate by email to the technician's manager. Wait another day and check again: if still pending, escalate to the IT Head. Wait a third day and check once more: if it is still pending, close the ticket and send the requester a regret email that the request could not be completed. At any stage, if the ticket is instead marked Resolved, email the requester that it is resolved and send a congratulations email to whoever handled it at that stage — the technician at stage 1, the manager at stage 2, or the IT Head at stage 3. Built without a Loop: a fixed 3-stage nested branch on status." },
+  usecase_6: { name:"Use Case 6 — Merge sample (Test cases)",
+    desc:"A sample for reviewing the new Merge layout. A condition branch splits on priority; the High and Low lanes feed Merge 1, each shown as a folded box you can click to jump to. The merge then forks into Merge Success and Merge Timeout, which hold the steps. Dev-only, hidden on the published site." },
+  usecase_7: { name:"Use Case 7 — Loop sample (Test cases)",
+    desc:"A sample for reviewing the Loop node's layout. A \"for each\" loop runs its inner steps once for every item in a list (here, each asset linked to the ticket); the steps refer to the current item, the line curves back on the left to show it repeats, and once the list is exhausted the flow continues to the step after the loop. Dev-only, hidden on the published site." },
+  usecase_9: { name:"Use Case 9 — Complex (Test cases)",
+    desc:"A deliberately complex sample that puts every structure in one flow: a split path runs two parallel lanes that both feed a level Merge (wait for all); the merge's Success arm opens a condition branch on priority, and the High lane runs a loop that repeats until the incident is resolved; the Timeout arm assigns the IT Head. Use it to stress-test split + merge + condition branches + loop together. Dev-only, hidden on the published site." },
 };
 
 // trigger picker contents (matches the "When this happens" design)
@@ -1447,8 +1541,17 @@ const ADD_MENU = [
   { header:"Timing & data" },
   { id:"delay",     label:"Add wait",      tone:"util", icon:I.hourglass, sub:"Pause for a time, a date, or until a condition" }, // direct add (2026-07-03) — the ONE wait picker opens on the canvas, so no sub-panel chevron
   { id:"get",       label:"Get records",   tone:"util", icon:I.records,   sub:"Fetch many records — steps below run for each" },
-  { id:"merge",     label:"Merge",         tone:"util", tag:"soon", disabled:true, icon:I.merge,     sub:"Bring separate branches back into one path" },
-  { id:"loop",      label:"Loop",          tone:"util", tag:"soon", disabled:true, icon:I.loop,      sub:"Repeat steps once for each item in a list" },
+  { id:"merge",     label:"Merge",         tone:"util", icon:I.merge,     sub:"Wait for a branch's paths to finish, then continue" },
+  { id:"loop",      label:"Loop",          tone:"util", icon:I.loop,      sub:"Repeat steps once for each item in a list" },
+];
+// The lists a loop can run over (the "in …" slot). Realistic ITSM sources; user gave the first four.
+const LOOP_SOURCES = [
+  { id:"assets",    label:"the linked assets" },
+  { id:"approvers", label:"the approvers" },
+  { id:"users",     label:"the affected users" },
+  { id:"children",  label:"the child tickets" },
+  { id:"tasks",     label:"the tasks on this ticket" },
+  { id:"get",       label:"the records from the last Get" },
 ];
 // shown when "Add condition" is picked — choose the condition's shape (no "group": groups form
 // automatically from adjacent conditions; an explicit group lives only inside branching add-steps)
@@ -1522,7 +1625,6 @@ const ADD_HELP = {
   branching: { title:"Split path", color:"var(--c-branch)", bg:"var(--c-branch-bg)", graphic:G.branch,
     body:"Split the flow into parallel paths — each path runs its own steps. Use it to do several things side by side, or handle cases differently.",
     eg:"Like — notify, log, and escalate all at once." },
-  merge:     UTIL("Merge", "Bring separate branches back together into a single path before continuing."),
   loop:      UTIL("Loop", "Repeat the steps inside it once for every item in a list."),
   delay:     NODE_HELP.delay, // real Wait help (hourglass graphic) — was UTIL → wrongly showed the Action graphic + "Coming soon"
   get:       NODE_HELP.get,   // real Get help (stacked-layers graphic) — was UTIL → wrongly showed the Action graphic + "Coming soon"
@@ -1769,7 +1871,7 @@ const STEPPER = [
 --------------------------------------------------------------------------- */
 // Each node: a one-line summary, a plain-language "how it works", and 2+ real example uses.
 // Condition carries `tabs` (Inline / Branching), each with its own graphic + examples.
-// Split path carries `diff` (how it differs from condition branches). Merge/Loop carry `soon`.
+// Split path carries `diff` (how it differs from condition branches). Loop carries `soon`.
 const NODE_DOCS = [
   {
     id:"trigger", name:"Trigger", icon:I.bolt, color:"var(--c-when)", bg:"var(--c-when-bg)", graphic:"trigger",
@@ -1824,13 +1926,7 @@ const NODE_DOCS = [
     examples:["When a major incident is logged, notify the on-call team, post to the status page, and open a problem record at the same time.","On a new hire request, run the laptop setup and the account setup in parallel."],
   },
   {
-    id:"merge", name:"Merge", icon:I.merge, color:"var(--accent2)", bg:"var(--panel2)", graphic:"merge", soon:true,
-    summary:"Brings split paths back into one.",
-    how:"After a split path has divided the workflow, a merge joins the paths again. The steps after it run once for every path, so you do not have to repeat the same steps inside each one.",
-    examples:["After handling each case, log the outcome and notify the requester once.","Bring every path back together to close the ticket in one place."],
-  },
-  {
-    id:"loop", name:"Loop", icon:I.loop, color:"var(--accent2)", bg:"var(--panel2)", graphic:"loop", soon:true,
+    id:"loop", name:"Loop", icon:I.loop, color:"var(--accent2)", bg:"var(--panel2)", graphic:"loop", soon:false,
     summary:"Repeats the same steps for every item in a list.",
     how:"A loop takes a list of records, usually from a Get, and runs its inner steps once for each one. It lets a single workflow act on many records instead of just one.",
     examples:["Close every related request that is linked to the main ticket.","Send a reminder to each person who has an overdue task."],
@@ -1840,7 +1936,7 @@ const NODE_DOCS = [
 const NODE_GROUPS = [
   { g:"Start", gd:"Every workflow begins here",            ids:["trigger"] },
   { g:"Steps", gd:"The things a workflow does, in order",  ids:["action","get","delay"] },
-  { g:"Flow",  gd:"Decide which steps run, and how often", ids:["condition","branch","merge","loop"] },
+  { g:"Flow",  gd:"Decide which steps run, and how often", ids:["condition","branch","loop"] },
 ];
 
 /* ---------------------------------------------------------------------------
@@ -1963,17 +2059,6 @@ function NODE_GRAPHIC(id){
           <span className="text-[length:var(--fs-10)]" style={{color:"var(--faint)"}}>both run at the same time</span>
         </div>
       );
-    case "merge":
-      return (
-        <div className="flex flex-col items-center gap-1.5">
-          <Row className="gap-4">
-            <GP.Badge {...branch_}>Path A</GP.Badge>
-            <GP.Badge {...branch_}>Path B</GP.Badge>
-          </Row>
-          <svg width="110" height="22" viewBox="0 0 110 22" fill="none" style={{color:"var(--faint)"}}><path d="M25 1v5c0 5 5 5 8 8M85 1v5c0 5-5 5-8 8M55 14v6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          <GP.Badge label="Then" {...then_}>log once, notify once</GP.Badge>
-        </div>
-      );
     case "loop":
       return (
         <Row className="gap-3">
@@ -2079,17 +2164,19 @@ const IS_LIVE = (typeof location!=="undefined") && /\.github\.io$/i.test(locatio
    A branch-descent object always FOLLOWS the number that selected the branch node itself. */
 const isBranchSeg = (s) => s && typeof s === "object";
 // stable string key for a path (segments may be numbers or branch-descent objects)
-const pathKey = (path) => (path||[]).map(s => isBranchSeg(s) ? (s.otherwise ? "ow" : "p"+s.path) : String(s)).join(".");
+const pathKey = (path) => (path||[]).map(s => isBranchSeg(s) ? (s.success ? "sx" : s.otherwise ? "ow" : "p"+s.path) : String(s)).join(".");
 // read the child-array a node exposes for a given (branch-descent) segment
 const segChildren = (node, seg) => {
   if (!node) return []; // guard: nodeAt walked a path that doesn't resolve yet (e.g. a picker reading a just-created lane against a stale flow snapshot) → return empty instead of crashing on undefined.paths
   if (!isBranchSeg(seg)) return node.children || [];
+  if (seg.success) return (node.success && node.success.children) || []; // MERGE — the "Merge Success" continuation arm (steps after the gathered paths rejoin)
   if (seg.otherwise) return (node.otherwise && node.otherwise.children) || [];
   return (node.paths && node.paths[seg.path] && node.paths[seg.path].children) || [];
 };
 // return a clone of `node` with its (branch-descent) child-array replaced by `arr`
 const withSegChildren = (node, seg, arr) => {
   if (!isBranchSeg(seg)) return { ...node, children: arr };
+  if (seg.success) return { ...node, success: { ...node.success, children: arr } }; // MERGE success arm
   if (seg.otherwise) return { ...node, otherwise: { ...node.otherwise, children: arr } };
   const paths = node.paths.map((p,k)=> k===seg.path ? { ...p, children: arr } : p);
   return { ...node, paths };
@@ -2142,7 +2229,7 @@ const hasAction = (nodes) => (nodes||[]).some(n=>n.kind==="action");
 // doesn't silently merge a new condition INTO a split path (user 2026-07-17).
 const isSplitBranch = (n) => !!(n && n.kind==="branch" && !n.otherwise && (n.paths||[]).length>0 && (n.paths||[]).every(p => !(p.clauses && p.clauses.length)));
 // recursive — actions live in branch paths / otherwise too (branches have no .children, they have .paths/.otherwise)
-const branchKids = (n) => n.kind==="branch" ? [...(n.paths||[]).flatMap(p=>p.children||[]), ...((n.otherwise&&n.otherwise.children)||[])] : (n.children||[]);
+const branchKids = (n) => (n.kind==="branch"||n.kind==="merge") ? [...(n.paths||[]).flatMap(p=>p.children||[]), ...((n.success&&n.success.children)||[]), ...((n.otherwise&&n.otherwise.children)||[])] : (n.children||[]);
 const anyAction = (nodes) => (nodes||[]).some(n => n.kind==="action" || anyAction(branchKids(n)));
 // GET PRESETS (user 2026-07-08): some record types must be filtered by a REQUIRED, LOCKED first condition
 // before any other filter — Service Request → a service catalog, Hardware Asset → an asset type. The clause is
@@ -2187,11 +2274,27 @@ const treeFindPath = (nodes, id, base=[]) => {
   for (let i=0;i<nodes.length;i++) {
     const p=[...base,i];
     if (nodes[i].id===id) return p;
-    if (nodes[i].kind==="branch") {
-      (nodes[i].paths||[]).forEach(()=>{}); // searched below
+    if (nodes[i].kind==="branch" || nodes[i].kind==="merge") {
       for (let k=0;k<(nodes[i].paths||[]).length;k++){ const r=treeFindPath(nodes[i].paths[k].children||[], id, [...p,{path:k}]); if(r) return r; }
+      if (nodes[i].success){ const r=treeFindPath(nodes[i].success.children||[], id, [...p,{success:true}]); if(r) return r; } // MERGE success arm
       if (nodes[i].otherwise){ const r=treeFindPath(nodes[i].otherwise.children||[], id, [...p,{otherwise:true}]); if(r) return r; }
     } else if (nodes[i].children) { const r=treeFindPath(nodes[i].children,id,p); if(r) return r; }
+  }
+  return null;
+};
+// find a branch/split LANE by its id anywhere in the flow → { path (lane path), lane, laneIndex, isOtherwise }.
+// used by the MERGE render (v2) to resolve its `feeders` (lane ids) into a display label + a scroll target.
+const findLaneById = (nodes, id, base=[]) => {
+  for (let i=0;i<(nodes||[]).length;i++){ const n=nodes[i]; const p=[...base,i];
+    if (n.kind==="branch" || n.kind==="merge"){
+      for (let k2=0;k2<(n.paths||[]).length;k2++){ const lane=n.paths[k2];
+        if (lane.id===id) return { path:[...p,{path:k2}], lane, laneIndex:k2 };
+        const r=findLaneById(lane.children||[], id, [...p,{path:k2}]); if(r) return r;
+      }
+      if (n.otherwise){ if(n.otherwise.id===id) return { path:[...p,{otherwise:true}], lane:n.otherwise, laneIndex:(n.paths||[]).length, isOtherwise:true };
+        const r=findLaneById(n.otherwise.children||[], id, [...p,{otherwise:true}]); if(r) return r; }
+      if (n.success){ const r=findLaneById(n.success.children||[], id, [...p,{success:true}]); if(r) return r; }
+    } else if (n.children){ const r=findLaneById(n.children, id, p); if(r) return r; }
   }
   return null;
 };
@@ -2436,21 +2539,33 @@ function TokenInput({ value, onChange, placeholder, autoFocus, flushRef, sep }) 
   const add = () => { const v = draft.trim(); if (v && !has(v)) onChange([...toks, v]); setDraft(""); };
   const rm = (i) => { const next = toks.filter((_,k)=>k!==i); onChange(next.length?next:null); };
   const move = (from, to) => { if (from===to || to<0 || to>=toks.length) return; const next=[...toks]; const [m]=next.splice(from,1); next.splice(to,0,m); onChange(next); };
-  // the field is ALSO a search: filter the badges; offer "Add <query>" for any non-exact-duplicate text
-  const shown = toks.map((t,i)=>[t,i]).filter(([t]) => tokenMatch(t, ql));
+  // typing does NOT filter (user 2026-08-18) — every value stays visible; it SORTS the ones matching your text
+  // to the top so an existing value is easy to spot. "Add <query>" still offers a new, non-duplicate value.
+  const scoreOf = (t) => { const tl=t.toLowerCase(); if(!ql) return 0; if(tl===ql) return 3; if(tl.startsWith(ql)) return 2; return tokenMatch(t, ql) ? 1 : 0; };
+  const shown = toks.map((t,i)=>[t,i]);
+  if (ql) shown.sort((a,b)=> (scoreOf(b[0]) - scoreOf(a[0])) || (a[1]-b[1]));   // matches rise to top; stable within a rank
   const showAdd = !!q && !has(q);
   // let the value picker's "Done" flush a typed-but-unadded draft (ref stays current — runs every render)
   React.useEffect(() => { if (flushRef) flushRef.current = () => { const v=draft.trim(); return (v && !has(v)) ? [...toks, v] : toks; }; });
   return (
     <div>
-      {/* real bordered input field — Enter (or the Add row below) commits; the field also filters below */}
-      <div className="rounded-lg px-2.5 py-1" style={{ background:"var(--panel2)", border:"1px solid var(--border2)" }}>
-        <input autoFocus={autoFocus} value={draft} onChange={e=>setDraft(e.target.value)} placeholder={placeholder||"Search or add a value…"}
-          onKeyDown={e=>{ if(e.key==="Enter"||e.key===","){ e.preventDefault(); add(); }
-            else if(e.key==="Backspace" && !draft.trim() && toks.length){ rm(toks.length-1); }
-            // keep cursor keys for text editing — just stop them leaking to the popover / canvas nav
-            else if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Home","End"].includes(e.key)){ e.stopPropagation(); } }}
-          onBlur={add} className="w-full bg-transparent outline-none text-[length:var(--fs-13)] py-1" style={{color:"var(--text)"}}/>
+      {/* bordered input field + a SEPARATE add button OUTSIDE it, on the RIGHT (user 2026-08-18). Enter / the +
+          button / the Add row below all commit; the list below SORTS matches up (no filtering). The button brightens once there's
+          a draft to add; onMouseDown-preventDefault keeps focus in the field so blur-commit doesn't double-fire. */}
+      <div className="flex items-stretch gap-2">
+        <div className="flex-1 min-w-0 rounded-lg px-2.5 py-1 flex items-center" style={{ background:"var(--panel2)", border:"1px solid var(--border2)" }}>
+          <input autoFocus={autoFocus} value={draft} onChange={e=>setDraft(e.target.value)} placeholder={placeholder||"Search or add a value…"}
+            onKeyDown={e=>{ if(e.key==="Enter"||e.key===","){ e.preventDefault(); add(); }
+              else if(e.key==="Backspace" && !draft.trim() && toks.length){ rm(toks.length-1); }
+              // keep cursor keys for text editing — just stop them leaking to the popover / canvas nav
+              else if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Home","End"].includes(e.key)){ e.stopPropagation(); } }}
+            onBlur={add} className="w-full bg-transparent outline-none text-[length:var(--fs-13)] py-1" style={{color:"var(--text)"}}/>
+        </div>
+        <button type="button" tabIndex={-1} onMouseDown={e=>e.preventDefault()} onClick={add} title="Add this value"
+          className="shrink-0 w-9 flex items-center justify-center rounded-lg transition-colors hover:bg-[var(--pop-hover)]"
+          style={{ border:"1px solid var(--border2)", background:"var(--panel2)", color: q ? "var(--accent2)" : "var(--faint)" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+        </button>
       </div>
       {/* full-width separator under the input (value picker only — `sep` bleeds past the popover's p-2.5+px-1 = 14px padding) */}
       {sep && <div className="my-2 -mx-3.5" style={{ borderTop:"1px solid var(--border)" }} />}
@@ -3072,13 +3187,13 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onActive, onClose, on
       if (smart && smart.onReference && (e.key==="Tab" || ((e.key==="ArrowLeft"||e.key==="ArrowRight") && !inText))) {
         stop(); smart.onReference(); return;
       }
-      if (isMulti) { const ch = (choices||[]).filter(c=>!(c&&c.header)).map(c=>(c&&typeof c==="object")?c.id:c); const last = ch.length; // flat value ids (skip {header} rows); index `last` == the Done button
-        const toggle=(v)=>{ if(v!=null) setMultiVal(m=> m.includes(v)?m.filter(x=>x!==v):[...m,v]); };
+      if (isMulti) { const chObjs = (choices||[]).filter(c=>!(c&&c.header)); const ch = chObjs.map(c=>(c&&typeof c==="object")?c.id:c); const last = ch.length; // flat value rows (skip {header}); index `last` == the Done button
+        const toggle=(idx)=>{ const o=chObjs[idx]; if(o && typeof o==="object" && o.disabled) return; const v=(o&&typeof o==="object")?o.id:o; if(v!=null) setMultiVal(m=> m.includes(v)?m.filter(x=>x!==v):[...m,v]); }; // never toggle a locked row
         if (e.key==="ArrowDown"||e.key==="ArrowUp"){ stop(); setKbIdx(i=> e.key==="ArrowDown"?Math.min(last,i+1):Math.max(0,i-1)); return; }
-        if (e.key===" " && !(e.target && e.target.tagName==="INPUT")){ stop(); if(kbIdx<last) toggle(ch[kbIdx]); return; } // don't eat spaces typed into the search field (multi-word labels)
+        if (e.key===" " && !(e.target && e.target.tagName==="INPUT")){ stop(); if(kbIdx<last) toggle(kbIdx); return; } // don't eat spaces typed into the search field (multi-word labels)
         if (e.key==="Enter"){ stop();
           if (kbIdx>=last){ onPick({ id: multiVal.length?multiVal:null, label:"" }); onClose(); }   // Enter on "Done" → confirm + close
-          else toggle(ch[kbIdx]);                                                                    // Enter on an option → toggle, stay open
+          else toggle(kbIdx);                                                                        // Enter on an option → toggle, stay open
           return; }
         return;
       }
@@ -3297,13 +3412,13 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onActive, onClose, on
               const items = (choices||[]).map(norm);
               const q2 = q.trim().toLowerCase();
               const valMatch = (it)=> !it.header && tokenMatch(String(it.label), q2);
-              const allVals = items.filter(it=>!it.header);
+              const allVals = items.filter(it=>!it.header && !it.disabled);   // locked rows don't count toward the total / Select all
               // display list = matching value rows + headers that still have ≥1 visible child under them
               const disp = [];
               for(let idx=0; idx<items.length; idx++){ const it=items[idx];
                 if(it.header){ let any=false; for(let j=idx+1;j<items.length && !items[j].header;j++){ if(valMatch(items[j])){ any=true; break; } } if(any) disp.push(it); }
                 else if(valMatch(it)) disp.push(it); }
-              const visVals = disp.filter(it=>!it.header);
+              const visVals = disp.filter(it=>!it.header && !it.disabled);
               const allOn = visVals.length>0 && visVals.every(it=>multiVal.includes(it.id));
               const ind = !allOn && visVals.some(it=>multiVal.includes(it.id)); // some (not all) → dash
               const toggleAll = ()=> setMultiVal(allOn ? multiVal.filter(x=>!visVals.some(it=>it.id===x)) : Array.from(new Set([...multiVal, ...visVals.map(it=>it.id)])));
@@ -3320,7 +3435,14 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onActive, onClose, on
                   {disp.length===0 && <div className="px-2 py-2 text-[length:var(--fs-12)]" style={{color:"var(--faint)"}}>No matches</div>}
                   {disp.map((it, di)=>{
                     if(it.header) return <div key={"h"+di} className="px-2 pt-2 pb-1 text-[length:var(--fs-10)] font-semibold uppercase tracking-wider" style={{color:"var(--faint)"}}>{it.header}</div>;
-                    vIdx++; const on=multiVal.includes(it.id); const act=vIdx===kbIdx;
+                    vIdx++;
+                    if(it.disabled) return (   // a locked lane (already feeding another merge): shown, greyed, with a reason — not pickable
+                      <div key={it.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-[length:var(--fs-13)] cursor-default select-none" title={it.note||""}>
+                        <span className="w-4 h-4 rounded shrink-0" style={{ border:"1.5px solid var(--border2)", background:"var(--border)" }} />
+                        <span className="flex-1 min-w-0 truncate" style={{color:"var(--faint)"}}>{it.label}</span>
+                        {it.note && <span className="text-[length:var(--fs-10)] shrink-0 px-1.5 py-0.5 rounded" style={{background:"var(--border)", color:"var(--muted)"}}>{it.note}</span>}
+                      </div>);
+                    const on=multiVal.includes(it.id); const act=vIdx===kbIdx;
                     return <button key={it.id} ref={act?activeRef:null} onMouseEnter={()=>{ if(!noHover){ navByMouseRef.current = true; setKbIdx(vIdx); } }} onClick={()=>setMultiVal(on?multiVal.filter(x=>x!==it.id):[...multiVal,it.id])} className={"flex items-center gap-2.5 px-2 py-1.5 rounded-md text-[length:var(--fs-13)] text-left transition-colors " + (noHover ? "" : (act?"bg-[var(--pop-hover)]":"hover:bg-[var(--pop-hover)]"))} style={{color:"var(--text)"}}>
                       <Check on={on} />{it.label}
                     </button>; })}
@@ -3330,7 +3452,7 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onActive, onClose, on
         <button onClick={done} className="mt-2 w-full rounded-lg py-1.5 text-sm font-medium transition-shadow" style={{background:"var(--accent)",color:"#fff", ...(inputType==="multi" && kbIdx===(choices||[]).filter(c=>!(c&&c.header)).length ? {boxShadow:"0 0 0 2px var(--pop-bg), 0 0 0 4px var(--accent)"} : {})}}>{inputType==="tokens" && multiVal.length ? `Done · ${multiVal.length} value${multiVal.length>1?"s":""}` : "Done"}</button>
       </div>
       {smartExprFooter}
-    </>, smart ? SMART_W : "w-56");
+    </>, smart ? SMART_W : (wide ? "w-[340px]" : "w-56"));   // `wide` opt-in → match the add-menu width (e.g. the Merge picker); other multi-pickers stay w-56
   }
   if (duration) {
     // ONE combined picker: pick the UNIT first (top — matches how users think about a delay), then the count.
@@ -4496,7 +4618,7 @@ function App() {
   // is a condition too, so its "from {source}" chip re-scopes the fields (user 2026-07-22). Anything else → trigger.
   const flowCat = (node, path) => {
     if (node && node.kind==="get") return conditionFieldsFor(node.module);
-    if (node && (node.kind==="condition" || node.kind==="branch" || (node.kind==="delay" && node.mode==="event"))) {
+    if (node && (node.kind==="condition" || node.kind==="branch" || (node.kind==="delay" && node.mode==="event") || (node.kind==="loop" && node.mode==="until"))) {
       const rec = condSubjectRec(path, node);
       return conditionFieldsFor(rec ? rec.module : (node.recMod || triggerModName()));
     }
@@ -4537,6 +4659,7 @@ function App() {
     (i)=>{ if (i.id!==currentBuild) window.location.href = i.id; },
     "Experiments", { noSearch:true, selected: currentBuild, initActive: -1 });
   const [pop, setPop] = useState(null);
+  const [confirmDlg, setConfirmDlg] = useState(null); // { title, body, confirmLabel, onConfirm } → a centered modal confirm
   // When the right-side DRAWER opens, dismiss any open canvas popover. The outside-close guard (Popover) skips
   // closing on a mousedown that lands on a drawer-opener card (the form-node "Set up" card etc.) so its click
   // isn't eaten by the remount; that card opens the drawer instead of replacing the popover, so without this the
@@ -4545,6 +4668,7 @@ function App() {
   useEffect(() => { if (drawer != null) setPop(null); }, [drawer]);
   const [railHelp, setRailHelp] = useState(null); // Quick Help shown in the context rail while a menu is open
   const [name, setName] = useState("Untitled rule");
+  const [mergeWire, setMergeWire] = useState(null); // v5.16 — the hover-only branch→merge connector wire { d, mx, my }
   const [editingName, setEditingName] = useState(false); // header name: click-to-edit
   const [enabled, setEnabled] = useState(true);
   const [theme, setTheme] = useState("dark");
@@ -4583,6 +4707,25 @@ function App() {
   const publishBtnRef = useRef(null); // the Publish button — final tour coachmark points here
   const floatBarRef = useRef(null);   // the bottom floating toolbar — final tour step frames the WHOLE bar
   const setRowRef = (key, el) => { if (el) rowRefs.current[key] = el; };
+  const flowColRef = useRef(null); // the flow column — coordinate origin for the merge connector wire (v5.16)
+  // MERGE CONNECTOR WIRE (v5.16, new element — merge only for now). Hover a feeding branch's "Merge N" card and a dashed
+  // line leaves its rail point, runs out to 60px LEFT of the main line, drops down that channel, and joins the merge on
+  // the main line. Drawn in the MERGE accent (var(--accent)), marching branch→merge. Measured relative to the flow
+  // column so the coordinates hold through scroll. A Station marker centres at left:9; feeder card row markerY=26.
+  const MW_RAIL = 9;
+  const computeMergeWire = (feedKey, mergeKey) => {
+    const col = flowColRef.current, fe = rowRefs.current[feedKey], me = rowRefs.current[mergeKey];
+    if (!col || !fe || !me) return null;
+    const c = col.getBoundingClientRect(), f = fe.getBoundingClientRect(), m = me.getBoundingClientRect();
+    const padL = parseFloat(getComputedStyle(col).paddingLeft) || 32;      // the flow column's left padding
+    const fx = f.left - c.left + MW_RAIL, fy = f.top - c.top + 26;         // feeder rail point
+    const mx = m.left - c.left + MW_RAIL, my = m.top - c.top + PAD + HEAD/2;// merge marker point
+    const mainX = padL + 7;                                                // the level-1 main line (rail x=7 inside the padding)
+    const chX = mainX - 60, endX = mx;                                     // channel 60px left of the main line; join the merge marker
+    const r = 10, dn = my >= fy ? 1 : -1;
+    const d = `M ${fx.toFixed(1)} ${fy.toFixed(1)} H ${(chX+r).toFixed(1)} Q ${chX.toFixed(1)} ${fy.toFixed(1)} ${chX.toFixed(1)} ${(fy+dn*r).toFixed(1)} L ${chX.toFixed(1)} ${(my-dn*r).toFixed(1)} Q ${chX.toFixed(1)} ${my.toFixed(1)} ${(chX+r).toFixed(1)} ${my.toFixed(1)} H ${endX.toFixed(1)}`;
+    return { d, mx: endX, my, lx: (fx+chX)/2, ly: fy };   // lx/ly = centre of the top run → "click to scroll" hint
+  };
   const triggerSlotRefs = useRef({});
   const setTriggerSlotRef = (tid, key, el) => { if (el) triggerSlotRefs.current[`${tid}:${key}`] = el; };
   // AUTO-COLLAPSE the left sidebar while ANY right-side panel is open (Expression Builder rail `exprEdit`,
@@ -5223,6 +5366,11 @@ function App() {
     setFlow(f => treeUpdate(f, branchPath, (()=>{ const n=nodeAt(f,branchPath); return { paths:[...(n.paths||[]), lane] }; })()));
     openLaneFirst(branchPath, pi, lane, step, bnode, anchor);
   };
+  // add a LOOP node (its type / list / condition are chosen in the sentence, so no follow-up picker)
+  const addLoopAndPick = (path, anchor, index) => {
+    const idx = index===undefined ? childrenAt(flow, path).length : index;
+    setFlow(withReplaceRemoved(g => treeInsertAt(g, path, idx, { id:nid(), kind:"loop", mode:"forEach", itemLabel:"item", sourceLabel:null, children:[] })));
+  };
   // ── SPLIT PATH (2026-07-17, wrap model) — a split can ONLY come from the trigger. Picking "Split path" WRAPS
   //    the whole current flow into lane 1 + opens an empty lane 2 (all lanes run in parallel from the trigger).
   //    Modelled as a clauses-less `kind:"branch"` at flow[0] (isSplitBranch true) so it reuses all branch/lane
@@ -5232,6 +5380,7 @@ function App() {
     kind==="condition" ? { id, kind:"condition", clauses:[{ field:null, op:"is", value:null }], combiner:"and" } :
     kind==="get"       ? { id, kind:"get", module:null, qty:null, sort:null, sortBy:null, clauses:[{ field:null, op:"is", value:null }] } :
     kind==="delay"     ? { id, kind:"delay", mode:null, amount:null, unit:"hours", hours:"calendar", bizHours:null, date:null, time:null } :
+    kind==="loop"      ? { id, kind:"loop", mode:"forEach", itemLabel:"item", sourceLabel:null, children:[] } :
                          { id, kind:"action", action:null, arg:null }
   );
   // A new split lane starts with a default ACTION node shown at LOW OPACITY (a preview). The picker is the SAME
@@ -5248,7 +5397,7 @@ function App() {
       const el = rowRefs.current[pathKey(nodePath)] || branchAddRefs.current[pathKey(lanePath)] || fallbackEl || addStepBtnRef.current;
       if (!el) return;
       const cfg = mainMenuConfig(lanePath, el);
-      const items = cfg.items.filter(i => i.id !== "branching"); // no "Split path" inside a lane
+      const items = cfg.items.filter(i => i.id !== "branching" && i.id !== "merge"); // no "Split path" or "Merge" as a new lane's first node
       const back = () => chooseSplitFirstNode(lanePath, nodeId, fallbackEl);
       setPop({ ...cfg, items, flat: addMenuFlat(lanePath, items),
         settleHover: true, // opens under the cursor — don't let a spurious open-time hover override the default
@@ -5892,6 +6041,142 @@ function App() {
       ]),
     ];
   };
+  // ── MERGE authoring (v2 · level model, 2026-08-17) ──────────────────────────────────────────────────────────
+  // A merge REFERENCES a branch's lanes by id (never adopts them). CREATE: pick which lanes feed it → a merge node
+  // is inserted right AFTER that branch, and each picked lane gets a `feeds` tag (→ its "Feeds Merge N" pointer).
+  // MANAGE reopens the picker to change the set; DELETE clears the tags, then removes the merge.
+  const gatherableFork = (n) => !!(n && n.kind==="branch" && (n.paths||[]).length>=1);
+  const gatherableForkAncestor = (flow, insertPath) => { let best=null;
+    for (let j=1; j<=(insertPath||[]).length; j++){ const pref=insertPath.slice(0,j);
+      if (typeof pref[pref.length-1] !== "number") continue;
+      const n = nodeAt(flow, pref); if (gatherableFork(n)) best={ path:pref, node:n }; }
+    return best; };
+  const firstBranchDFS = (nodes, base=[]) => { for (let i=0;i<(nodes||[]).length;i++){ const n=nodes[i]; const p=[...base,i];
+      if (gatherableFork(n)) return { path:p, node:n };
+      if (n.kind==="branch" || n.kind==="merge"){
+        for (let k2=0;k2<(n.paths||[]).length;k2++){ const r=firstBranchDFS(n.paths[k2].children||[], [...p,{path:k2}]); if(r) return r; }
+        if (n.success){ const r=firstBranchDFS(n.success.children||[], [...p,{success:true}]); if(r) return r; }
+        if (n.otherwise){ const r=firstBranchDFS(n.otherwise.children||[], [...p,{otherwise:true}]); if(r) return r; }
+      } else if (n.children){ const r=firstBranchDFS(n.children, p); if(r) return r; } }
+    return null; };
+  const firstGatherableFork = (flow, insertPath) => gatherableForkAncestor(flow||[], insertPath||[]) || firstBranchDFS(flow||[]);
+  const countMerges = (nodes) => (nodes||[]).reduce((a,n)=> a + (n.kind==="merge"?1:0) + countMerges(branchKids(n)), 0);
+  const mergeNumById = (id) => { const p = treeFindPath(flowRef.current, id); const m = p && nodeAt(flowRef.current, p); return m ? m.num : null; };
+  const laneChoices = (fork, exceptMergeId) => (fork.paths||[]).map((l,pi)=>{
+    const nm = l.name ? `Branch ${pi+1} : ${l.name}` : `Branch ${pi+1}`;
+    const gate=(l.clauses&&l.clauses.length)?condText(l):null; const label = gate?`${nm} — ${gate}`:nm;
+    // a lane already feeding ANOTHER merge is shown but LOCKED (a lane can only feed one merge)
+    if (l.feeds && l.feeds!==exceptMergeId){ const mn=mergeNumById(l.feeds); return { id:String(pi), label, disabled:true, note: mn?`In Merge ${mn}`:"In a merge" }; }
+    return { id:String(pi), label }; });
+  const openFeederPicker = (fork, anchor, back, preSel, onDone, exceptMergeId, anchorKey) => { if (!fork) return;
+    const el = anchor || addStepBtnRef.current;
+    // anchorKey (a LIVE [data-anchor] selector, re-queried every frame) makes the popover TRACK the canvas on
+    // scroll instead of freezing to the viewport when the raw anchor node is replaced by a re-render.
+    open(el, [], (r)=>{ const arr = Array.isArray(r?.id) ? r.id : []; onDone(arr.map(Number).filter(x=>!isNaN(x))); },
+      "Which branches feed the merge", { inputType:"multi", choices: laneChoices(fork, exceptMergeId), selected: preSel, wide:true, back, ...(anchorKey ? {anchorKey} : (el?{}:{anchorKey:"mergepick"})) }); };
+  // ── connect a branch to an EXISTING merge (Phase 1 · SAME fork, 2026-08-18) ──────────────────
+  // Picking "Merge" offers the merges already born from THIS branch (a chooser) + "Make a new merge".
+  // Join from a lane = that ONE lane joins instantly; join from the main line = manage that merge's feeders.
+  // Cross-split joins (gathering two different splits into one merge) are deliberately deferred to Phase 2.
+  const allMergeNodes = (nodes) => (nodes||[]).flatMap(n => (n.kind==="merge" ? [n] : []).concat(allMergeNodes(branchKids(n))));
+  const mergeForkPath = (flow, m) => { const ff=(m.feeders||[])[0]; const hit=ff&&findLaneById(flow,ff); return hit?hit.path.slice(0,-1):null; };
+  const laneCtxFromPath = (path) => { const seg=(path||[])[(path||[]).length-1];
+    if (seg && typeof seg==="object" && seg.path!==undefined){ const branchPath=path.slice(0,-1); const fork=nodeAt(flowRef.current, branchPath);
+      if (fork && fork.kind==="branch" && fork.paths && fork.paths[seg.path]) return { branchPath, pi:seg.path, lane:fork.paths[seg.path], fork }; }
+    return null; };
+  const connectLaneToMerge = (branchPath, pi, mergeId) => {
+    setFlow(flow => { const fork=nodeAt(flow, branchPath); if(!fork||fork.kind!=="branch"||!fork.paths||!fork.paths[pi]) return flow;
+      const lane=fork.paths[pi]; const id=lane.id||nid();
+      const newPaths=fork.paths.map((l,idx)=> idx===pi ? {...l, id, feeds:mergeId} : l);   // tag THIS lane via the parent's paths array
+      let f=treeUpdate(flow, branchPath, { paths:newPaths });
+      const mp=treeFindPath(f, mergeId); if(!mp) return f; const m=nodeAt(f, mp); if(!m) return f;
+      if ((m.feeders||[]).includes(id)) return f;
+      return treeUpdate(f, mp, { feeders:[...(m.feeders||[]), id] }); });
+    setPop(null); setOpenSlot(null); setBranchMenuPath(null);
+    requestAnimationFrame(()=>{ const mp=treeFindPath(flowRef.current, mergeId); if(mp){ const el=rowRefs.current[pathKey(mp)]; if(el) el.scrollIntoView({behavior:"smooth", block:"center"}); } });
+  };
+  const laneAnchorKey = (path) => { const k="branchadd:"+pathKey(path); return document.querySelector(`[data-anchor="${k}"]`) ? k : null; };
+  const openCreateMerge = (path, anchor, back) => { const fork=firstGatherableFork(flowRef.current, path); if(!fork){ setPop(null); return; }
+    const preSel=(fork.node.paths||[]).map((l,ix)=> l.feeds ? null : String(ix)).filter(x=>x!=null);   // pre-check only the FREE lanes
+    openFeederPicker(fork.node, anchor, back, preSel, (sel)=>commitMerge(fork.path, sel), null, laneAnchorKey(path)); };
+  const startMergeFlow = (path, anchor, back) => {
+    const flow=flowRef.current; const laneCtx=laneCtxFromPath(path);
+    const forkPath = laneCtx ? laneCtx.branchPath : (firstGatherableFork(flow, path)||{}).path;
+    const forkKey = forkPath ? pathKey(forkPath) : null;
+    const merges = allMergeNodes(flow).filter(m => forkKey && pathKey(mergeForkPath(flow,m)||[])===forkKey).sort((a,b)=>(a.num||0)-(b.num||0));
+    if (!merges.length) { openCreateMerge(path, anchor, back); return; }   // nothing to join → straight to create (as today)
+    const items = merges.map(m => { const n=(m.feeders||[]).length; return { id:"m:"+m.id, label:`Merge ${m.num}`, icon:I.merge, sub:`${n} branch${n===1?"":"es"} so far · waits for ${m.wait==="all"?"all to finish":"any to finish"}` }; });
+    // "Make a new merge" lives in its OWN footer SECTION (user 2026-08-18): a distinct PURPLE action — a BARE +
+    // glyph (no tile), no subtext, light-purple on hover — so it never reads as just another merge to join.
+    const newMergeFooter = (
+      <button type="button" onMouseDown={e=>e.preventDefault()} onClick={()=>openCreateMerge(path, anchor, back)}
+        onMouseEnter={e=>{ e.currentTarget.style.background="color-mix(in srgb, var(--accent) 16%, transparent)"; }}
+        onMouseLeave={e=>{ e.currentTarget.style.background="transparent"; }}
+        className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg transition-colors text-left"
+        style={{ color:"var(--accent2)", background:"transparent" }}>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round"/></svg>
+        <span className="text-[length:var(--fs-13)] font-semibold">Make a new merge</span>
+      </button>
+    );
+    open(anchor, items, (i)=>{
+      if (typeof i.id==="string" && i.id.startsWith("m:")) { const mid=i.id.slice(2);
+        if (laneCtx) { connectLaneToMerge(laneCtx.branchPath, laneCtx.pi, mid); return true; }   // a lane → join it directly
+        const mp=treeFindPath(flowRef.current, mid); if(mp) openMergeManage(mp, anchor); return true; }   // main line → manage that merge
+      return true;
+    }, "Add to a merge", { wide:true, back, footer:newMergeFooter, searchPlaceholder:"Search merges…", anchorKey: laneAnchorKey(path) });
+  };
+  const commitMerge = (forkPath, selIdx) => {
+    if (!selIdx || !selIdx.length) { setPop(null); return; }
+    const mergeId = nid();
+    setFlow(flow => {
+      const fork = nodeAt(flow, forkPath); if (!fork || fork.kind!=="branch") return flow;
+      const feederIds=[]; const newPaths=(fork.paths||[]).map((l,idx)=>{ if(selIdx.includes(idx)){ const id=l.id||nid(); feederIds.push(id); return {...l, id, feeds:mergeId}; } return l; });
+      if (!feederIds.length) return flow;
+      const num = countMerges(flow)+1; const wait = isSplitBranch(fork)?"all":"any";
+      const merge = { id:mergeId, kind:"merge", num, wait, deadline:{amount:15,unit:"minutes"}, feeders:feederIds, success:{id:nid(),children:[]}, otherwise:{id:nid(),children:[]} };
+      const parentLevel = forkPath.slice(0,-1); const idx = forkPath[forkPath.length-1]; const arr = childrenAt(flow, parentLevel);
+      return treeSetLevel(flow, parentLevel, arr.flatMap((n,j)=> j===idx ? [{...fork, paths:newPaths}, merge] : [n]));
+    });
+    setPop(null); setOpenSlot(null); setBranchMenuPath(null);
+    requestAnimationFrame(()=>{ const mp = treeFindPath(flowRef.current, mergeId); if (mp){ const el = rowRefs.current[pathKey(mp)]; if (el) el.scrollIntoView({behavior:"smooth", block:"center"}); } });
+  };
+  const updateMergeFeeders = (mergePath, forkPath, selIdx) => {
+    setFlow(flow => {
+      const merge = nodeAt(flow, mergePath); if (!merge || merge.kind!=="merge") return flow;
+      const fork = nodeAt(flow, forkPath); if (!fork || fork.kind!=="branch") return flow;
+      const feederIds=[]; const newPaths=(fork.paths||[]).map((l,idx)=>{
+        if (selIdx.includes(idx)){ const id=l.id||nid(); feederIds.push(id); return {...l, id, feeds:merge.id}; }
+        if (l.feeds===merge.id){ const {feeds, ...rest}=l; return rest; }
+        return l; });
+      let f = treeUpdate(flow, forkPath, { paths:newPaths }); f = treeUpdate(f, mergePath, { feeders:feederIds }); return f;
+    });
+    setPop(null); setOpenSlot(null);
+  };
+  const openMergeManage = (mergePath, anchor) => {
+    const merge = nodeAt(flowRef.current, mergePath); if (!merge || !anchor) return;
+    const ff = (merge.feeders||[])[0]; const hit = ff && findLaneById(flowRef.current, ff); if (!hit) return;
+    const forkPath = hit.path.slice(0,-1); const fork = nodeAt(flowRef.current, forkPath); if (!fork) return;
+    const preSel = (fork.paths||[]).map((l,ix)=> l.feeds===merge.id ? String(ix) : null).filter(x=>x!=null);
+    openFeederPicker(fork, anchor, null, preSel, (sel)=>updateMergeFeeders(mergePath, forkPath, sel), merge.id);
+  };
+  // raw whole-merge removal (no confirm) — clears every feeder's `feeds` tag then drops the merge node. Shared by
+  // the merge's own × (removeMerge) and by removing a branch when the merge would fall below two feeders.
+  const dissolveMerge = (mergePath) => { setFlow(flow => {
+    let f=flow; const m=nodeAt(f,mergePath);
+    (m?.feeders||[]).forEach(fid=>{                       // clear each feeder's `feeds` tag — patch the PARENT branch's
+      const hit=findLaneById(f,fid); if(!hit) return;     // paths array (a lane can't be patched via its own branch-seg path)
+      const forkPath = hit.path.slice(0,-1); const fork = nodeAt(f, forkPath); if(!fork) return;
+      const newPaths = (fork.paths||[]).map(l => l.id===fid ? (()=>{ const {feeds, ...rest}=l; return rest; })() : l);
+      f = treeUpdate(f, forkPath, { paths:newPaths });
+    });
+    return treeRemove(f, mergePath);
+  }); setPop(null); };
+  const removeMerge = (mergePath) => {
+    const merge = nodeAt(flowRef.current, mergePath) || {};
+    const n = ((merge.success&&merge.success.children)||[]).length + ((merge.otherwise&&merge.otherwise.children)||[]).length;
+    if (n>0) setConfirmDlg({ title:"Remove this merge?", body:`The ${n} step${n===1?"":"s"} in its outcomes will be removed too. The branches that fed it stay put. This can't be undone.`, confirmLabel:"Remove merge", onConfirm:()=>dissolveMerge(mergePath) });
+    else dissolveMerge(mergePath);
+  };
   const mainMenuConfig = (path, anchor, index) => {
     // "Add trigger" shows ONLY in the add-step directly after the trigger (trunk, insert index 0) — and never
     // when the start is periodic. (There is NO "Condition group" item — groups form automatically from adjacent conditions.)
@@ -5928,6 +6213,11 @@ function App() {
         const GATE_HINT = "Add a Get step first to fetch records — these steps act on a record";
         list = list.filter(it => !it.chips).map(it => (it.header || it.id==="get" || it.disabled) ? it : { ...it, disabled:true, hint: it.hint || GATE_HINT });
       }
+      // MERGE gate — actionable only when a branch with lanes exists to gather (relative to this insert point).
+      const mmi = list.findIndex(it => it.id==="merge");
+      if (mmi>=0) { const canMerge = !noRecord && !!firstGatherableFork(flowRef.current, path);
+        list[mmi] = canMerge ? { ...list[mmi], disabled:false, hint:undefined }
+                             : { ...list[mmi], disabled:true, hint:"Add a Branch first — Merge waits for a branch's paths to finish, then continues" }; }
       return list; })();
     return {
     anchor, items, flat: noRecord ? undefined : addMenuFlat(path, items), // no source → no deep action search either (can't add an action yet)
@@ -5942,7 +6232,9 @@ function App() {
       if (i.id==="branching") { setPop(null); addSplit(anchor); return true; } // Split path WRAPS the whole flow into parallel lanes + asks what the new lane starts with — a split only forks from the trigger (wrap model 2026-07-17).
       if (i.id==="delay") { addDelayAndPick(path, anchor, index); return; } // direct add — the ONE wait picker (duration/date/condition) opens on the canvas
       if (i.id==="get")   { addGetAndPick(path, anchor, index); return; }
+      if (i.id==="merge")  { startMergeFlow(path, anchor, backToMain); return true; }
       if (i.id==="action") { openAddActionMenu(path, anchor, ()=>setPop(mainMenuConfig(path, anchor, index)), index); return true; } // swap to the action picker; create the row only on pick
+      if (i.id==="loop")   { addLoopAndPick(path, anchor, index); return; } // Loop: insert directly — the type/list are picked in the sentence
     },
     };
   };
@@ -5953,7 +6245,7 @@ function App() {
     const node = nodeAt(flowRef.current, path) || nodeAt(flow, path); if (!node) return;
     const parent = path.slice(0, -1), idx = path[path.length - 1];
     const cfg = mainMenuConfig(parent, anchor, idx);
-    const items = cfg.items.filter(i => i.header || i.id !== "trigger"); // a step can't become a trigger
+    const items = cfg.items.filter(i => i.header || (i.id !== "trigger" && i.id !== "merge")); // a step can't become a trigger, nor a merge (merge gathers existing paths, it doesn't replace a node)
     const backHere = () => openChangeNodeMenu(path, anchor);
     setPop({
       ...cfg, items, flat: addMenuFlat(parent, items),
@@ -5966,6 +6258,7 @@ function App() {
         if (i.id === "delay") { addDelayAndPick(parent, anchor, idx); return; }
         if (i.id === "get") { addGetAndPick(parent, anchor, idx); return; }
         if (i.id === "action") { openAddActionMenu(parent, anchor, backHere, idx); return true; }
+        if (i.id === "loop") { addLoopAndPick(parent, anchor, idx); return; }
       },
     });
   };
@@ -6066,11 +6359,13 @@ function App() {
             setPop(actionMenuConfig(targetPath, el, back, undefined, { onLeaf:(leaf)=>{ commitDrop(); addActionLeaf(targetPath, leaf, index); }, selected:null }));
             return true;
           }
-          // direct commits (Quick chip / wait / get) → drop then add (no sub-chooser)
+          // direct commits (Quick chip / wait / get / merge) → drop then add (no sub-chooser)
           commitDrop();
+          if (i.id==="merge")  { startMergeFlow(targetPath, el, back); return true; }
           if (i._leaf) { addActionLeaf(targetPath, i._leaf, index); return; }
           if (i.id==="delay") { addDelayAndPick(targetPath, el, index); return; }
           if (i.id==="get")   { addGetAndPick(targetPath, el, index); return; }
+          if (i.id==="loop")  { addLoopAndPick(targetPath, el, index); return; }
         },
       });
     }));
@@ -6087,8 +6382,8 @@ function App() {
     const cfg = mainMenuConfig(path, anchor, index);
     let items = opts.noBranching ? cfg.items.filter(i=>i.id!=="branching") : cfg.items;
     items = items.filter(i=>!i.chips).map(i =>
-      (i.header || i.id==="condition" || i.id==="branching" || i.disabled) ? i
-        : {...i, disabled:true, hint:"Next to a branch, you can only add another branch path (Condition) or a Split path"});
+      (i.header || i.id==="condition" || i.id==="branching" || i.id==="merge" || i.disabled) ? i
+        : {...i, disabled:true, hint:"Next to a branch, you can only add another branch path (Condition), a Split path, or Merge the branch's paths back together"});
     const back = () => openBranchAdjacentAddMenu(path, branchPath, anchor, opts, index);
     const openCondChooser = () => {
       const kc = condKindMenuConfig(path, anchor, back, index);
@@ -6117,6 +6412,7 @@ function App() {
       onPick:(i)=>{
         if (i.id==="condition") { openCondChooser(); return true; }
         if (i.id==="branching") { setPop(null); addSplit(anchor); return true; }
+        if (i.id==="merge")     { startMergeFlow(path, anchor, back); return true; } // merge the adjacent branch's paths — new/join chooser
         return true; // everything else here is disabled → swallow
       } });
   };
@@ -6177,7 +6473,9 @@ function App() {
         if (i.id==="action") { openAddActionMenu(path, anchor, back); return true; }
         if (i.id==="delay")  { addDelayAndPick(path, anchor); return; }
         if (i.id==="get")    { addGetAndPick(path, anchor); return; }
-        if (i.id==="condition") {
+        if (i.id==="loop")   { setBranchMenuPath(null); addLoopAndPick(path, anchor); return; } // Loop inside a gated / merge / otherwise lane — insert into the lane's children
+        if (i.id==="merge")  { setBranchMenuPath(null); startMergeFlow(path, anchor, back); return true; }
+          if (i.id==="condition") {
           // a GATED condition-branch lane holds ONE condition → picking "condition" adds an AND CLAUSE to its gate,
           // NOT a second CHECK IF node (user 2026-07-05). Clauses-less lanes (split/action/get/wait) fall through.
           const seg = path[path.length-1];
@@ -6757,7 +7055,7 @@ function App() {
   const duplicateLane = (branchPath, pi) => setFlow(f => {
     const n = nodeAt(f, branchPath); if(!n || !n.paths || !n.paths[pi]) return f;
     const src = n.paths[pi];
-    const { collapsed, name, ...rest } = src;
+    const { collapsed, name, _num, ...rest } = src; // a copy renumbers positionally — drop any preserved _num
     const clone = { ...rest, id:nid(),
       clauses:(src.clauses||[]).map(c=>({ ...c, value: Array.isArray(c.value) ? [...c.value] : (c.value && typeof c.value==="object" ? {...c.value} : c.value) })),
       children:(src.children||[]).map(cloneWithIds) };
@@ -7557,18 +7855,28 @@ function App() {
   const RAIL_SOLID = { width:`${RAIL_W}px`, background:"var(--border2)" };
   const RAIL_DASH  = { width:0, borderLeft:`${RAIL_W}px dashed var(--border2)` };
   // o: rightDashed → left solid + right dashed (condition branch); bothDashed → both dashed (End placeholder)
-  const vLines = (x, pos, o={}) => (<>
-    <div className="absolute" style={{ left:`${x}px`, ...pos, ...(o.bothDashed ? RAIL_DASH : RAIL_SOLID) }}/>
-    <div className="absolute" style={{ left:`${x+RAIL_OFF}px`, ...pos, ...((o.rightDashed||o.bothDashed) ? RAIL_DASH : RAIL_SOLID) }}/>
-  </>);
-  const vSingle = (x, pos) => <div className="absolute" style={{ left:`${x}px`, ...pos, width:`${RAIL_W}px`, background:"var(--border2)" }}/>;
+  // `o.col` overrides the line colour (used by the MERGE loop line, drawn in the merge accent so it reads as one path).
+  const vLines = (x, pos, o={}) => { const cs = o.col ? { background:o.col, borderColor:o.col } : {}; return (<>
+    <div className="absolute" style={{ left:`${x}px`, ...pos, ...(o.bothDashed ? RAIL_DASH : RAIL_SOLID), ...cs }}/>
+    <div className="absolute" style={{ left:`${x+RAIL_OFF}px`, ...pos, ...((o.rightDashed||o.bothDashed) ? RAIL_DASH : RAIL_SOLID), ...cs }}/>
+  </>); };
+  const vSingle = (x, pos, o={}) => <div className="absolute" style={{ left:`${x}px`, ...pos, width:`${RAIL_W}px`, background:(o.col||"var(--border2)") }}/>;
   // family-tree elbow (spine → lane): double = two parallel curves; single (condition) = only the RIGHT line curves off.
   const elbowLines = (xL, h, w, o={}) => {
-    const one = (x, hh, ww, r) => <div className="absolute" style={{ left:`${x}px`, top:0, width:`${ww}px`, height:`${hh}px`, borderLeft:`${RAIL_W}px solid var(--border2)`, borderBottom:`${RAIL_W}px solid var(--border2)`, borderBottomLeftRadius:`${r}px` }}/>;
+    const c = o.col || "var(--border2)";
+    const one = (x, hh, ww, r) => <div className="absolute" style={{ left:`${x}px`, top:0, width:`${ww}px`, height:`${hh}px`, borderLeft:`${RAIL_W}px solid ${c}`, borderBottom:`${RAIL_W}px solid ${c}`, borderBottomLeftRadius:`${r}px` }}/>;
     if (o.single) return one(xL+RAIL_OFF, h, w-RAIL_OFF, 12);
     return (<>{one(xL, h, w, 12)}{one(xL+RAIL_OFF, h-RAIL_OFF, w-RAIL_OFF, Math.max(2, 12-RAIL_OFF))}</>);
   };
-  const Station = ({ marker, isFirst, isLast, head, headColor, headBg, hoverBg, onRemove, removeLabel, onInsert, onCopy, onHead, onAddCond, addLabel="new condition", addAccent="var(--c-if)", addActive=false, addHoverOnly=false, addAlwaysShow=false, addDisabled=false, addDisabledTip=null, wideContent, dnd, onFocus, onClick, focused, help, innerRef, dense, gapBottom, okBorder, editing, bgLeft="16px", bgRight="16px", padLeft="34px", padRight="28px", padY, markerY, headerBg, doubleRail, dashRail, dim, dimBg, children }) => {
+  // CONVERGE — the mirror of elbowLines for a LOOP CLOSE: a lane on the RIGHT comes DOWN and curves LEFT back onto the
+  // spine (borderRight + borderBottom + rounded bottom-right). Used at the bottom of a merge to bring the paths together.
+  const convergeLines = (xL, h, w, o={}) => {
+    const c = o.col || "var(--border2)";
+    const one = (x, hh, ww, r) => <div className="absolute" style={{ left:`${x}px`, top:0, width:`${ww}px`, height:`${hh}px`, borderRight:`${RAIL_W}px solid ${c}`, borderBottom:`${RAIL_W}px solid ${c}`, borderBottomRightRadius:`${r}px` }}/>;
+    if (o.single) return one(xL, h, w-RAIL_OFF, 12);
+    return (<>{one(xL, h, w, 12)}{one(xL+RAIL_OFF, h-RAIL_OFF, w-RAIL_OFF, Math.max(2, 12-RAIL_OFF))}</>);
+  };
+  const Station = ({ marker, isFirst, isLast, head, headColor, headBg, hoverBg, onRemove, removeLabel, onInsert, onCopy, onHead, onAddCond, addLabel="new condition", addAccent="var(--c-if)", addActive=false, addHoverOnly=false, addAlwaysShow=false, addDisabled=false, addDisabledTip=null, wideContent, dnd, onFocus, onClick, focused, help, innerRef, dense, gapBottom, okBorder, editing, bgLeft="16px", bgRight="16px", padLeft="34px", padRight="28px", padY, markerY, headerBg, doubleRail, dashRail, noRail, dim, dimBg, children }) => {
     const [xHover, setXHover] = useState(false);
     const pt0 = padY!==undefined ? padY : (dense ? 6 : PAD), bgBottom = gapBottom!==undefined ? gapBottom : (dense ? 12 : GAP), pb0 = pt0 + bgBottom, mc0 = markerY!==undefined ? markerY : (pt0 + HEAD/2);
     // GAP-OPENING drop feedback (v5.11 Slice 2): while another node hovers this row, physically open a gap
@@ -7608,9 +7916,9 @@ function App() {
       {okBorder && <div className="absolute rounded-lg pointer-events-none" style={{ top:0, bottom:`${bgBottom}px`, left:bgLeft, right:bgRight, border:"1px solid var(--rdy-bd)" }}/>}
       {/* rail — DOUBLE line on the main path + parallel (action/get/wait) branches; SINGLE line on condition
           branches (user 2026-07-16). `doubleRail` decides. Both centred on the 9px marker. */}
-      {doubleRail
+      {noRail ? null : (doubleRail
         ? vLines(7, { top:isFirst?`${mc}px`:0, bottom:isLast?`calc(100% - ${mc}px)`:0 }, dashRail ? { bothDashed:true } : {})
-        : vSingle(8.2, { top:isFirst?`${mc}px`:0, bottom:isLast?`calc(100% - ${mc}px)`:0 })}
+        : vSingle(8.2, { top:isFirst?`${mc}px`:0, bottom:isLast?`calc(100% - ${mc}px)`:0 }))}
       {/* marker (optional) — dimmed with the content while the node is just a preview */}
       {marker && <span className="absolute flex items-center justify-center transition-opacity" style={{ left:"9px", top:`${mc}px`, transform:"translate(-50%,-50%)", opacity: dim?0.5:undefined }}>{marker}</span>}
       {/* drag handle — the FAR-LEFT grip is the drag SOURCE. Suppressed on LOCKED rows (periodic Get, split-lane
@@ -7737,14 +8045,14 @@ function App() {
       {/* hollow-circle add-point on the rail — a clean "the flow can continue here" node */}
       <span className="absolute rounded-full" style={{ left:"9px", top:`${markerY}px`, transform:"translate(-50%,-50%)", width:"13px", height:"13px", border:"2px solid var(--border2)", background:"var(--bg)", boxShadow:"0 0 0 3px var(--bg)", zIndex:2 }}/>
       <div className="flex items-center gap-2" style={{ marginLeft:"30px", marginTop:"2px" }}>
-        <button data-slotctl type="button" onClick={(e)=>openBranchAdd(path,e)} className={pill} style={{ borderColor:"var(--border2)", background: addOpen ? "var(--panel2)" : "transparent" }}>
+        <button data-slotctl data-anchor={"branchadd:"+pathKey(path)} type="button" onClick={(e)=>openBranchAdd(path,e)} className={pill} style={{ borderColor:"var(--border2)", background: addOpen ? "var(--panel2)" : "transparent" }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>
           Add step
         </button>
         {onBranch && (
         <button data-slotctl type="button" onClick={(e)=>onBranch(e.currentTarget)} className={pill} style={{ borderColor:"var(--border2)", background:"transparent" }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6 4v5a3 3 0 0 0 3 3h9M6 20v-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M15 9l3 3-3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          Add if/else
+          Add if/else branch
         </button>)}
       </div>
     </div>
@@ -7834,7 +8142,7 @@ function App() {
     else if (i.id==="orif") br.onOrIf(anchor);
     else if (i.id==="orelse" && !br.hasOtherwise) br.onOrElse(anchor);
   }, "Add", {noSearch:true});
-  const inlineClauses = (path, node, wide, noInlineAdd) => {
+  const inlineClauses = (path, node, wide, noInlineAdd, lead, opts={}) => {   // `lead` = JSX shown before clause 0 (e.g. the loop's "repeat until" slot) so the condition flows after it. `opts.headOnly`/`opts.restOnly` = the loop's split render (see below)
     const k = pathKey(path);
     const clauses = node.clauses || [];
     clauseLocRef.current[k] = { path, pi:null }; // register this clause container for cross-branch drag resolution
@@ -7903,8 +8211,9 @@ function App() {
             wrapped line after the value (moves WITH the content). The AND/OR connector (ci>0) is the FIRST inline
             child → it sits at the sentence's LEFT MARGIN (aligned with the field text), not in a side column. */}
         <span className="flex-1 min-w-0 self-center clause-flow" style={{minHeight:`${HEAD}px`, lineHeight:`${HEAD}px`}}>
+          {ci===0 && lead}
           {ci!==0 && !isBoundary && <>{connBadge(ci)}{" "}</>}
-          {ci===0 && node.clauses[0]?.mode!=="expr" && condSubjectEls(path, node)}
+          {ci===0 && !lead && node.clauses[0]?.mode!=="expr" && condSubjectEls(path, node)}
           {clauseEls(ci)}
         </span>
         {/* right cluster — "+ new condition │ copy × " (matches the trigger node's "+ add trigger │ ⟳ ×"). */}
@@ -7924,6 +8233,84 @@ function App() {
       </div>
       );
     };
+    // LOOP "repeat until" — a SPLIT render (user 2026-08-18): the loop NODE stays a single inline line (clause 0 flows
+    // right after the "repeat until" lead, wrapping to a 2nd line on overflow — `opts.headOnly`); the EXTRA and/or
+    // conditions live OUTSIDE the loop node as plain rows (`opts.restOnly`), NO cards, NO 72px gutter. Both reuse
+    // clauseEls + connBadge; the "+ new condition" opens the same and/or menu the other nodes use (no branch-convert).
+    const loopAdd = (ci, anchor) => { setOpenSlot(`${k}:c${ci}:add`); openNewCondition(anchor, node.clauses, null, (c)=>addClauseAndPick(path,node,c,ci)); };
+    const loopAddBtn = (ci, hoverScope) => (
+      <button onClick={(e)=>{ e.stopPropagation(); loopAdd(ci, e.currentTarget); }} title="Add condition"
+        className={"inline-flex items-center gap-1 self-center text-[length:var(--fs-12)] font-medium whitespace-nowrap transition-all "+(openSlot===`${k}:c${ci}:add` ? "text-[var(--text)] opacity-100" : "text-[var(--muted)] hover:text-[var(--text)] opacity-0 "+hoverScope)} style={{ padding:"2px 5px" }}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+        new condition
+      </button>);
+    if (opts.headOnly) {
+      // clause 0 only, flowing inline after the lead. When it is the ONLY clause, a hover "+ new condition" trails it
+      // (once there are extras, each rest-row carries its own +, so the header + retires to avoid a duplicate).
+      return (
+        <span className="flex-1 min-w-0 self-center clause-flow" style={{ minHeight:`${HEAD}px`, lineHeight:`${HEAD}px` }}>
+          {lead}
+          {clauseEls(0)}
+          {!noInlineAdd && clauses.length<=1 && <>{" "}{loopAddBtn(0, "group-hover/lh:opacity-100")}</>}
+        </span>
+      );
+    }
+    if (opts.restOnly) {
+      if (clauses.length<=1) return null;
+      // MATCH THE FOUNDATION (CHECK IF / Wait / Get wide form) for clauses 1..n. Each OR-group is a faint panel that
+      // tints on hover; groups are separated by gap-4, clauses within a group by gap-2.5. A 72px GUTTER holds the
+      // connector: a group BOUNDARY connector sits flush-LEFT in it (under the LOOP badge), its condition just after
+      // the gutter (attached — not floating). A WITHIN-group connector runs INLINE at the sentence start so its
+      // condition STEPS RIGHT (the staircase). Clause 0 lives in the header, so group 0's panel here holds only its
+      // within-group "and" lines. (Neutral tint like Wait/Get — the loop conditions aren't gold.)
+      const GUT = 72;
+      // the whole "+ new condition │ ×" cluster (SEPARATOR INCLUDED) is opacity-gated on the OUTER span — hidden until
+      // the row is hovered, and pinned visible while a popover on THIS row is open (lineActive). Matches CHECK IF's
+      // right cluster exactly; before, the separator had no gating so a lone │ showed on every row at rest.
+      const ctrls = (ci) => { if (noInlineAdd) return null;
+        const lineActive = !!openSlot && openSlot.indexOf(`${k}:c${ci}:`)===0;
+        return (
+        <span className={"shrink-0 flex items-center gap-1 transition-opacity " + (lineActive ? "opacity-100" : "opacity-0 group-hover/cl:opacity-100")} style={{ height:`${HEAD}px` }}>
+          <button onClick={(e)=>{ e.stopPropagation(); loopAdd(ci, e.currentTarget); }} title="Add condition"
+            className={"inline-flex items-center gap-1 self-center text-[length:var(--fs-12)] font-medium whitespace-nowrap transition-colors "+(openSlot===`${k}:c${ci}:add` ? "text-[var(--text)]" : "text-[var(--muted)] hover:text-[var(--text)]")} style={{ padding:"2px 5px" }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+            new condition
+          </button>
+          <span className="self-center shrink-0" style={{ width:"1px", height:"14px", background:"var(--border2)" }} />
+          <DeleteBtn onClick={(e)=>{ e.stopPropagation(); removeClause(path, ci); }} title="Remove condition" />
+        </span>);
+      };
+      return (
+        <div className="flex flex-col gap-4 w-full">
+          {groups.map((grp,gi)=>{
+            const rows = grp.filter(ci=>ci!==0);
+            if (!rows.length) return null;
+            const grpActive = grp.some(ci => !!openSlot && openSlot.indexOf(`${k}:c${ci}:`)===0);
+            return (
+            <div key={gi} className={"flex flex-col gap-2.5 rounded-lg transition-colors " + (grpActive?"bg-[var(--pop-hover)]":"hover:bg-[var(--pop-hover)]")}
+                 style={{ marginLeft:"-10px", marginRight:"-10px", paddingLeft:"10px", paddingRight:"10px", paddingTop:`${PAD}px`, paddingBottom:`${PAD}px` }}>
+              {rows.map(ci=>{
+                const isBoundary = (gi>0 && ci===grp[0]);
+                return (
+                <div key={ci} className="group/cl relative flex flex-wrap items-start gap-x-2.5" style={{ minHeight:`${HEAD}px` }}>
+                  {/* within-group keeps an empty 72px gutter so its condition STEPS RIGHT (staircase). The BOUNDARY has
+                      NO gutter — its connector sits flush-left (under the LOOP badge) and its condition follows
+                      immediately, so the connector→text gap matches the LOOP/AND badge→text gap (user 2026-08-18).
+                      Both render the connector INLINE in the flow (just one text space before the field). */}
+                  {!isBoundary && <span className="shrink-0" style={{ width:`${GUT}px`, height:`${HEAD}px` }} />}
+                  <span className="flex-1 min-w-0 self-center clause-flow" style={{ minHeight:`${HEAD}px`, lineHeight:`${HEAD}px` }}>
+                    {connBadge(ci)}{" "}{clauseEls(ci)}
+                  </span>
+                  {ctrls(ci)}
+                </div>
+                );
+              })}
+            </div>
+            );
+          })}
+        </div>
+      );
+    }
     // FLAT form (Get "where"): flex-COL so each clause line stretches full-width (its ml-auto cluster reaches the
     // card's right edge); multiple clauses stack. No group cards.
     if (!wide) return (<div className="flex-1 min-w-0 flex flex-col gap-1.5">{clauses.map((c,ci)=>clauseLine(ci, ci===0))}</div>);
@@ -8129,7 +8516,7 @@ function App() {
   /* between-node insert: a thin gap that EXPANDS on hover into a node-sized space; the connector line
      runs straight through (never breaks), a + marker sits on the line, and a ghost-node CARD (same
      height as a normal node) reads "Add step in the main path". */
-  const InsertZone = ({ basePath, index, dbl=true, label="Add step in the main path" }) => {
+  const InsertZone = ({ basePath, index, dbl=true, noRail=false, label="Add step in the main path" }) => {
     const izOpen = openInsertKey === (pathKey(basePath)+":"+index); // this zone's add-menu is open → stay expanded
     // while a node is being dragged, FREEZE these zones: no hover-expand (the growing "Add step" ghost would shove
     // rows around and fight the drop target) and no pointer capture — so placement stays stable (user 2026-07-27).
@@ -8139,8 +8526,8 @@ function App() {
     // SWITCHES (the press opens this one and prevents the global close listener from just closing the old one).
     <button onMouseDown={(e)=>{ e.stopPropagation(); openInsert(basePath, index, e.currentTarget.querySelector('[data-iz-card]')||e.currentTarget); }}
       className={"relative block w-full text-left group/iz focus:outline-none " + (dragging ? "pointer-events-none " : "cursor-pointer")} style={{ background:"transparent" }}>
-      {/* continuous connector line — full height, grows with the zone. DOUBLE = main path / parallel lane; SINGLE = a condition branch (user 2026-07-21). */}
-      {dbl ? vLines(7, { top:0, bottom:0 }) : vSingle(8.2, { top:0, bottom:0 })}
+      {/* continuous connector line — full height, grows with the zone. DOUBLE = main path / parallel lane; SINGLE = a condition branch (user 2026-07-21). noRail = the LOOP body, where the box border is the one edge line. */}
+      {noRail ? null : (dbl ? vLines(7, { top:0, bottom:0 }) : vSingle(8.2, { top:0, bottom:0 }))}
       {/* collapsed = the resting gap; opens on hover OR while its menu is open (izOpen → no collapse-jump). During a
           drag the hover-expand is disabled so the zone stays a stable 31px gap. */}
       <div className={"relative overflow-hidden transition-[height] duration-200 ease-out " + (izOpen ? "h-[64px]" : (dragging ? "h-[31px]" : "h-[31px] group-hover/iz:h-[64px]"))}>
@@ -8177,6 +8564,10 @@ function App() {
       const isFirst = i===0 && !!opts.headless;
       // double rail if on the main trunk OR inside a double (action/get/wait) branch lane (opts.dbl); condition lanes = single
       const dbl = isTrunk || !!opts.dbl;
+      // noRail = the row draws NO rail of its own. The LOOP body passes this so the ONLY right-edge line is the box
+      // border itself — otherwise each step's own line doubles up on the border and the edge reads thick in the middle
+      // (steps) and thin at top/bottom. (2026-08-16)
+      const noRail = !!opts.noRail;
       // dim (50% opacity) a split-lane's FIRST node while it's only a preview (the What-happens-next chooser is open
       // and no kind is committed yet) — the "highlighted node shows at low opacity" behavior (user 2026-07-20).
       const dim = splitPreviewKey!=null && k===splitPreviewKey;
@@ -8190,7 +8581,7 @@ function App() {
         // whole node (bg + badge + marker + rail) uniformly so it reads clearly as a dummy, not a real committed step.
         return (
           <div key={node.id} style={{ opacity:0.7 }}>
-            <Station marker={MARK.split} doubleRail={dbl} isFirst={isFirst} isLast={opts.last && i===nodes.length-1}
+            <Station marker={MARK.split} doubleRail={dbl} noRail={noRail} isFirst={isFirst} isLast={opts.last && i===nodes.length-1}
               head="SPLIT PATH" headColor="var(--c-branch)" headBg="var(--c-branch-bg)" hoverBg="var(--c-branch-h)"
               dim dimBg="var(--c-branch-h)">
               <span className="text-[length:var(--fs-15)]" style={{ color:"var(--c-branch)" }}>will run in parallel with the other paths</span>
@@ -8213,7 +8604,7 @@ function App() {
         const _hasCard = ((def && def.details) || _spec) && !(def && def.arg && !node.arg);
         const nodeGood = !!(_hasCard && _complete && node.confirmed);
         return (
-          <Station key={node.id} marker={MARK.action} doubleRail={dbl} dim={dim} dimBg="var(--c-then-h)" isFirst={isFirst} isLast={isLast} head={head} headColor="var(--c-then)" headBg="var(--c-then-bg)" hoverBg="var(--c-then-h)" help={NODE_HELP.action} editing={drawer===node.id}
+          <Station key={node.id} marker={MARK.action} doubleRail={dbl} noRail={noRail} dim={dim} dimBg="var(--c-then-h)" isFirst={isFirst} isLast={isLast} head={head} headColor="var(--c-then)" headBg="var(--c-then-bg)" hoverBg="var(--c-then-h)" help={NODE_HELP.action} editing={drawer===node.id}
             innerRef={(el)=>setRowRef(k, el)} removeLabel="Remove action" onCopy={()=>copyNode(path)} onInsert={isTrunk ? null : insertBelow} gapBottom={branchGap} dnd={dnd(node, path)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)} onRemove={()=>remove(path)}>
             {node.action === "assign" ? (<>
@@ -8373,7 +8764,7 @@ function App() {
         // convertInlineToBranch / openInlineAddBranch, ready to wire to a button later. Branch-lane CHECK IFs
         // DO show "Add branch" (AddBranchBtn in the lane render).
         return (
-          <Station key={node.id} marker={MARK.cond} doubleRail={dbl} dim={dim} dimBg="var(--c-if-h)" isFirst={isFirst} isLast={isLast} hoverBg="transparent" wideContent
+          <Station key={node.id} marker={MARK.cond} doubleRail={dbl} noRail={noRail} dim={dim} dimBg="var(--c-if-h)" isFirst={isFirst} isLast={isLast} hoverBg="transparent" wideContent
             padY={0} markerY={PAD + HEAD/2} dnd={dnd(node, path)}
             innerRef={(el)=>setRowRef(k, el)} onInsert={isTrunk ? null : insertBelow} gapBottom={branchGap}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)}>
@@ -8386,7 +8777,7 @@ function App() {
       if (node.kind === "delay") {
         const isLast = opts.last && i===nodes.length-1;
         return (
-          <Station key={node.id} marker={MARK.delay} doubleRail={dbl} dim={dim} isFirst={isFirst} isLast={isLast} head={node.mode==="event"?undefined:"Wait"} headColor="var(--text)" headBg="var(--panel2)" hoverBg={node.mode==="event"?"transparent":"var(--panel2)"} wideContent={node.mode==="event"} padY={node.mode==="event"?0:undefined} markerY={node.mode==="event"?(PAD+HEAD/2):undefined} help={NODE_HELP.delay}
+          <Station key={node.id} marker={MARK.delay} doubleRail={dbl} noRail={noRail} dim={dim} isFirst={isFirst} isLast={isLast} head={node.mode==="event"?undefined:"Wait"} headColor="var(--text)" headBg="var(--panel2)" hoverBg={node.mode==="event"?"transparent":"var(--panel2)"} wideContent={node.mode==="event"} padY={node.mode==="event"?0:undefined} markerY={node.mode==="event"?(PAD+HEAD/2):undefined} help={NODE_HELP.delay}
             innerRef={(el)=>setRowRef(k, el)} onInsert={isTrunk ? null : insertBelow} gapBottom={branchGap} dnd={dnd(node, path)}
             removeLabel={node.mode==="event"?undefined:"Remove wait"} onCopy={node.mode==="event"?undefined:()=>copyNode(path)} onRemove={node.mode==="event"?undefined:()=>remove(path)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)}>
@@ -8424,7 +8815,7 @@ function App() {
       if (node.kind === "get") {
         const isLast = opts.last && i===nodes.length-1;
         return (
-          <Station key={node.id} marker={MARK.get} doubleRail={dbl} dim={dim} isFirst={isFirst} isLast={isLast} head="Get" headColor="var(--text)" headBg="var(--panel2)" hoverBg="var(--panel2)" headerBg wideContent help={NODE_HELP.get}
+          <Station key={node.id} marker={MARK.get} doubleRail={dbl} noRail={noRail} dim={dim} isFirst={isFirst} isLast={isLast} head="Get" headColor="var(--text)" headBg="var(--panel2)" hoverBg="var(--panel2)" headerBg wideContent help={NODE_HELP.get}
             innerRef={(el)=>setRowRef(k, el)} onInsert={isTrunk ? null : insertBelow} gapBottom={branchGap} dnd={dnd(node, path)}
             focused={focusKey===k} onFocus={()=>setFocusKey(k)}>
             {(() => { const single = String(node.qty).trim()==="1"; // single record (qty 1) → no sort; "where" inline
@@ -8491,6 +8882,292 @@ function App() {
         );
       }
 
+
+      // ── LOOP (v5.14 element, 2026-08-16) — the NEW loop shape (user-approved): a fixed 52px box the main line
+      //    enters at the top-middle and leaves at the bottom-middle (loop icon on each join); the body steps hang off
+      //    the box's RIGHT edge (= their rail) and sit OUTSIDE the box — never inside; the left edge just closes the
+      //    loop. Body is real nodes via renderFlow(kids, path) so a nested loop is just another box off the outer
+      //    right edge. Header is an editable sentence (Slot): "for each [item] in [list]" / "repeat until [cond]" /
+      //    "repeat [N] times". Only the badge + loop icons use cyan; box/branches/rails stay neutral (= branches). ──
+      if (node.kind === "loop") {
+        const loopIsTerminal = !!opts.last && i===nodes.length-1;
+        const LOOP = "#4ec5e0";
+        const mode = node.mode || "forEach";
+        const kids = node.children || [];
+        const item = node.itemLabel || "item";
+        // geometry: body rail lands on the box's right edge; box is 80px; radius 12 = the branch-elbow radius.
+        // TRUNK_X = 7 so the main-path double line here sits exactly on the main path's x=7/10 (seamless with the
+        // InsertZone doubles above/below); TRUNK_DASH = its right line, dashed alongside the loop (like a branch).
+        const BODY_ML = 104, BOX_R = 112, BOX_W = 80, BOX_L = BOX_R - BOX_W, BOX_M = BOX_L + BOX_W/2, TRUNK_X = 7, TRUNK_DASH = TRUNK_X + RAIL_OFF, RAD = 12, HEAD_ML = BODY_ML + 34;
+        const loopGlyph = (c, s=13) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6" stroke={c} strokeWidth="2.6" strokeLinecap="round"/><path d="M18 3v4h-4M6 21v-4h4" stroke={c} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg>);
+        const loopIcon = (pos) => (<span className="absolute flex items-center justify-center rounded-full" style={{ left:`${BOX_M-11}px`, ...pos, width:"22px", height:"22px", background:"var(--panel2)", boxShadow:"0 0 0 4px var(--bg), inset 0 0 0 1px var(--border2)", zIndex:4 }}>{loopGlyph("var(--muted)",13)}</span>);
+        // a small node point where each arm meets the main path — so the arm lands on a clear point (like a branch's fork
+        // node) instead of hanging off the dashed line. Centred on the main-path line (x = TRUNK_X + RAIL_OFF/2).
+        const junctionDot = (pos) => (<span className="absolute rounded-full" style={{ left:`${TRUNK_X + RAIL_OFF/2 - 4}px`, ...pos, width:"8px", height:"8px", background:"var(--muted)", boxShadow:"0 0 0 3px var(--bg)", zIndex:3 }}/>);
+        const sk = (s)=>`${k}:${s}`;
+        const slotOpen = (key, items, onPick, title, o={}) => (e)=>{ setOpenSlot(sk(key)); open(e.currentTarget, items, onPick, title, o); };
+        const typeWord = mode==="until" ? "repeat until" : mode==="times" ? "repeat" : "for each";
+        const typeSlot = (
+          <Slot value={typeWord} open={openSlot===sk("type")} onClick={slotOpen("type", [
+            {id:"forEach", label:"for each item in a list"},
+            {id:"until",   label:"repeat until a condition"},
+            {id:"times",   label:"repeat a set number of times"},
+          ], (x)=>update(path, x.id==="until" ? { mode:x.id, clauses:(node.clauses&&node.clauses.length)?node.clauses:[{ field:null, op:"is", value:null }] } : { mode:x.id }), "Loop type", {noSearch:true, selected:mode})} />
+        );
+        // "repeat until" flows its FIRST condition INLINE right after the type word (like CHECK IF's lead), filling the
+        // row to the node width and WRAPPING the overflow down (opts.headOnly). Any EXTRA and/or conditions do NOT go in
+        // the loop node — they render as plain rows BELOW it (loopRestConds, opts.restOnly). "for each" / "repeat N
+        // times" stay a simple inline sentence.
+        const headerContent = mode==="until"
+          ? inlineClauses(path, node, false, false, <>{typeSlot}{" "}</>, {headOnly:true})
+          : (
+          <span className="self-center inline-flex flex-wrap items-baseline gap-x-1.5" style={{ minHeight:`${HEAD}px` }}>
+            {typeSlot}
+            {mode==="forEach" && (()=>{
+              // for-each loops the records fetched by the Get DIRECTLY ABOVE — the record auto-derives from it, so
+              // there is no manual "in [list]" source. (LOOP_SOURCES kept in code for a possible future manual source.)
+              const prevNode = i>0 ? nodes[i-1] : null;
+              const getAbove = (prevNode && prevNode.kind==="get") ? prevNode : null;
+              const rec = getAbove && getAbove.module ? getAbove.module.toLowerCase() : null;
+              const warn = (txt) => (
+                <span className="inline-flex items-baseline gap-1 text-[length:var(--fs-135)]" style={{ color:"var(--amber)" }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ alignSelf:"center" }}><path d="M10.3 4l-7 12A2 2 0 0 0 5 19h14a2 2 0 0 0 1.7-3l-7-12a2 2 0 0 0-3.4 0z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M12 9.5v4M12 16.5h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                  {txt}
+                </span>);
+              if (rec) return <span className="font-medium" style={{ color:"var(--text)", textDecoration:"underline dotted", textDecorationColor:"var(--border2)", textUnderlineOffset:"4px" }}>{rec}</span>;
+              if (getAbove) return warn(<span>finish the <b style={{fontWeight:600}}>Get</b> above — pick what it fetches</span>);
+              return warn(<span>add a <b style={{fontWeight:600}}>Get</b> step right above to loop its records</span>);
+            })()}
+            {mode==="times" && <>
+              <Slot value={node.countLabel!=null?String(node.countLabel):null} placeholder="3" open={openSlot===sk("count")} onClick={slotOpen("count", [], (x)=>update(path,{countLabel:x.id}), "How many times?", {inputType:"number"})} />
+              <Word>times</Word>
+            </>}
+          </span>
+        );
+        const remLoop = ()=>{ const n=(node.children||[]).length; if (n>0) setConfirmDlg({ title:"Remove this loop?", body:`The ${n} step${n===1?"":"s"} inside the loop will be removed too. This can’t be undone.`, confirmLabel:"Remove loop", cancelLabel:"Keep the loop", onConfirm:()=>remove(path) }); else remove(path); };
+        // The EXTRA "repeat until" conditions (clause 1+) — plain and/or rows that sit OUTSIDE the loop node (no card,
+        // no loop tint), just below its header, indented to align under the "repeat until" sentence.
+        const loopRestConds = (mode==="until" && (node.clauses||[]).length>1)
+          ? inlineClauses(path, node, false, false, null, {restOnly:true}) : null;
+        // TOP_GAP = clearance above the loop. The loop's top (box edge, arm, cyan icon) overhangs ~20px ABOVE its flow
+        // row, so without this the expanded "Add step" zone above collides with it on hover. The margin drops the whole
+        // loop; the trunk lines extend up by the same amount so the main path stays one continuous line.
+        const TOP_GAP = 14, TRUNK_TOP = `-${10 + TOP_GAP}px`;
+        const loopEl = (
+          <div className="relative" style={{ marginTop:`${TOP_GAP}px`, paddingBottom:"36px" }}>
+            {/* main path — a DOUBLE line beside the loop, exactly like beside a branch: the LEFT line stays solid + straight
+                (the main path never changes), the RIGHT line turns DASHED alongside the loop. Sits at x=7/10 so it's seamless
+                with the main-path/InsertZone doubles above and below. Top extends up through TOP_GAP to bridge the margin. */}
+            <div className="absolute" style={{ left:`${TRUNK_X}px`, top:TRUNK_TOP, bottom: loopIsTerminal ? "27px" : "0", width:`${RAIL_W}px`, background:"var(--border2)", zIndex:0 }}/>
+            <div className="absolute" style={{ left:`${TRUNK_DASH}px`, top:TRUNK_TOP, bottom: loopIsTerminal ? "27px" : "0", width:0, borderLeft:`${RAIL_W}px dashed var(--border2)`, zIndex:0 }}/>
+            {/* the box frame — its RIGHT edge is the body's rail. Outline is an SVG dashed rect (see .loop-frame CSS)
+                so it can travel around on hover; the box keeps its size + background otherwise. */}
+            <div className="loop-frame absolute" style={{ left:`${BOX_L}px`, width:`${BOX_W}px`, top:"-9px", bottom:"27px", borderRadius:`${RAD}px`, background:"color-mix(in srgb, var(--panel2) 55%, transparent)", zIndex:2 }}>
+              <svg className="loop-ants" preserveAspectRatio="none"><rect x="0" y="0" width="100%" height="100%" rx={RAD} ry={RAD}/></svg>
+            </div>
+            {/* TOP arm: peels off the RIGHT (dashed) line → box top-middle, loop icon on the join. Starts at the dashed
+                line (not the left solid one) so the main path's left line runs straight through, uninterrupted. */}
+            <div className="absolute" style={{ left:`${TRUNK_DASH}px`, top:"-9px", width:`${BOX_M-TRUNK_DASH}px`, height:`${RAIL_W}px`, background:"var(--border2)", zIndex:1 }}/>
+            {junctionDot({ top:`${-9 + RAIL_W/2 - 4}px` })}
+            {loopIcon({ top:"-20px" })}
+            {/* BOTTOM arm: box bottom-middle → the RIGHT (dashed) line, loop icon on the join */}
+            <div className="absolute" style={{ left:`${TRUNK_DASH}px`, bottom:"27px", width:`${BOX_M-TRUNK_DASH}px`, height:`${RAIL_W}px`, background:"var(--border2)", zIndex:1 }}/>
+            {junctionDot({ bottom:`${27 + RAIL_W/2 - 4}px` })}
+            {loopIcon({ bottom:"16px" })}
+            {/* header sentence, to the right of the box */}
+            <div className="group/lh relative flex items-center" style={{ marginLeft:`${BODY_ML}px`, paddingTop:`${PAD}px`, paddingBottom:`${PAD + GAP}px`, paddingLeft:"34px", paddingRight:"28px", zIndex:3 }} ref={(el)=>setRowRef(k, el)} onMouseDown={()=>setFocusKey(k)}>
+              {/* the loop's OWN marker — cyan point at left:9 like a Station marker, centred on the HEAD row (x = BODY_ML+9). */}
+              <span className="absolute block w-2.5 h-2.5 rounded-full" style={{ left:"9px", top:`${PAD + HEAD/2}px`, transform:"translate(-50%,-50%)", background:LOOP, boxShadow:"0 0 0 4px var(--bg)", zIndex:2 }}/>
+              {/* hover background — IDENTICAL metrics to a Station row (top:0 bottom:GAP, left:16 right:16) so the card is the
+                  same HEIGHT as every other node; tinted in the loop's cyan (each node tints its own hover). */}
+              <div className="absolute rounded-lg opacity-0 group-hover/lh:opacity-100 transition-opacity pointer-events-none" style={{ top:0, bottom:`${GAP}px`, left:"16px", right:"16px", background:`color-mix(in srgb, ${LOOP} 13%, transparent)`, zIndex:0 }}/>
+              {/* content — badge + sentence on the LEFT, the × pushed to the FAR RIGHT (like a node's controls). */}
+              {/* items-START + min-height so "repeat until" can WRAP to more rows; the badge + loop-× are boxed to
+                  HEAD height so they stay centred on the FIRST row while the condition flows below. */}
+              <div className="relative flex items-start flex-1 min-w-0" style={{ zIndex:1, minHeight:`${HEAD}px`, lineHeight:`${HEAD}px` }}>
+                <span className="shrink-0 flex items-center mr-2" style={{ height:`${HEAD}px` }}>
+                  <Badge color={LOOP} bg={`color-mix(in srgb, ${LOOP} 16%, transparent)`}>Loop</Badge>
+                </span>
+                {headerContent}
+                <button onClick={remLoop} title="Remove loop" className="ml-auto shrink-0 flex items-center opacity-0 group-hover/lh:opacity-100 transition-opacity" style={{ height:`${HEAD}px`, color:"var(--faint)" }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                </button>
+              </div>
+            </div>
+            {/* EXTRA "repeat until" conditions — plain and/or rows OUTSIDE the loop node (no card, no cyan tint), sitting
+                just below the header and indented so the fields line up under "repeat until"'s first field. */}
+            {loopRestConds && (
+              <div className="relative" style={{ marginLeft:`${BODY_ML + 34}px`, paddingRight:"28px", marginTop:`-${GAP - 2}px`, paddingBottom:`${PAD}px`, zIndex:3 }}>
+                {loopRestConds}
+              </div>
+            )}
+            {/* body — real editable nodes. noRail: they draw NO line of their own, so the box border is the ONE right-edge
+                line at a uniform width (their own line used to double it up in the middle). z:2 lifts the step markers ABOVE
+                the box border (z:1) so the line passes cleanly BEHIND each dot — no grey stripe across the markers. Safe now
+                that the body's own rail + insert-zone lines are suppressed (nothing else in the body sits on the border). */}
+            <div className="relative" style={{ marginLeft:`${BODY_ML}px`, zIndex:3 }}>
+              {renderFlow(kids, path, { dbl:false, noRail:true })}
+              {/* + Add step inside the loop — reuses the OUTLINE "Add step" CTA the branches use (BranchAdd's pill), not a
+                  bespoke one: a hollow add-point on the box's right edge + the bordered "Add step" button. */}
+              <div className="group/add relative" style={{ paddingTop:`${PAD}px`, paddingBottom:`${GAP}px` }}>
+                {/* hollow-circle add-point, sitting on the box's right edge like the branch add-point sits on its rail */}
+                <span className="absolute rounded-full" style={{ left:"9px", top:`${PAD+17}px`, transform:"translate(-50%,-50%)", width:"13px", height:"13px", border:"2px solid var(--border2)", background:"var(--bg)", boxShadow:"0 0 0 3px var(--bg)", zIndex:2 }}/>
+                <div className="flex items-center" style={{ marginLeft:"30px", marginTop:"2px" }}>
+                  <button data-slotctl type="button" onMouseDown={(e)=>{ e.stopPropagation(); openInsert(path, kids.length, e.currentTarget); }} title="Add a step inside the loop"
+                    className="inline-flex items-center gap-1.5 h-[30px] rounded-lg px-2.5 text-[length:var(--fs-12)] font-medium border transition-colors text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--panel2)]"
+                    style={{ borderColor:"var(--border2)", background:"transparent" }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>
+                    Add step
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+        return <React.Fragment key={node.id}>{loopEl}</React.Fragment>;
+      }
+
+      // ── MERGE (v2 · level model, 2026-08-17) — sits on the MAIN line and REFERENCES its feeding branches by id
+      //    (they stay put — nothing is adopted). Each feeder shows as a folded box (click → jump to it); a "+" join
+      //    for wait:"all" (split — every lane) or a soft "or" for wait:"any" (condition — whichever ran). The merge
+      //    line holds NO steps; its two level-3 outcomes do — Merge Success + Merge Timeout fork off below.
+      //    Data: { kind:"merge", num, wait, deadline, feeders:[laneId…], success:{children}, otherwise:{children} }.
+      if (node.kind === "merge") {
+        const mergeIsTerminal = !!opts.last && i===nodes.length-1;
+        const ACC2 = "var(--accent2)";
+        const wait = node.wait || "all";
+        const mnum = node.num || 1;
+        const jump = (key) => { const el = key && rowRefs.current[key]; if (el) el.scrollIntoView({ behavior:"smooth", block:"center" }); };
+        const MERGE_MARK = <span className="block w-2.5 h-2.5 rounded-full" style={{ background:"var(--accent)", boxShadow:"0 0 0 4px var(--bg)" }}/>;
+        const feeders = (node.feeders||[]).map(fid => {
+          const hit = findLaneById(flowRef.current, fid);
+          if (!hit) return { id:fid, label:"(branch not found)", key:null };
+          const bn = hit.lane._num || (hit.laneIndex+1);
+          const nm = hit.isOtherwise ? "Otherwise" : (hit.lane.name ? `Branch ${bn} : ${hit.lane.name}` : `Branch ${bn}`);
+          const gate = hit.isOtherwise ? "nothing above matched" : ((hit.lane.clauses&&hit.lane.clauses.length) ? condText(hit.lane) : null);
+          return { id:fid, label: gate ? `${nm} — ${gate}` : nm, key: pathKey(hit.path) };
+        });
+        const joinGlyph = wait==="all" ? "and" : "or";
+        const MERGE_BADGE_BG = "color-mix(in srgb, var(--accent) 16%, var(--panel2))";
+        const openWaitPicker = (e)=>{ e.stopPropagation(); setOpenSlot(`${k}:wait`); open(e.currentTarget, [
+          { id:"all", label:"all branches finish", sub:"wait for every feeding branch — joins with AND" },
+          { id:"any", label:"any branch finishes", sub:"whichever branch ran / finishes first — joins with OR" },
+        ], (i)=>{ setFlow(f=>treeUpdate(f, path, { wait:i.id })); setPop(null); setOpenSlot(null); }, "Wait until"); };
+        const header = (
+          <>
+            {/* MERGE node — its identity badge (same look as WHEN / THEN / CHECK IF) + manage/delete */}
+            <Station key="mh" marker={MERGE_MARK} isFirst noRail head={`Merge ${mnum}`} headColor="var(--accent2)" headBg={MERGE_BADGE_BG} wideContent hoverBg="var(--panel2)" gapBottom={LANE_GAP}
+              innerRef={(el)=>setRowRef(k, el)} focused={focusKey===k} onFocus={()=>setFocusKey(k)}>
+              <span className="w-full flex items-center justify-end gap-2.5" style={{ height:`${HEAD}px` }}>
+                <button onClick={(e)=>{ e.stopPropagation(); openMergeManage(path, e.currentTarget); }} title="Add or remove the branches that feed this merge"
+                  className="inline-flex items-center gap-1.5 text-[length:var(--fs-12)] font-medium whitespace-nowrap transition-colors text-[var(--muted)] hover:text-[var(--text)]" style={{ padding:"2px 4px" }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L18.5 9.5l-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M13.5 6.5l4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                  Manage branches
+                </button>
+                <span className="self-center shrink-0" style={{ width:"1px", height:"16px", background:"var(--border2)" }} />
+                <DeleteBtn onClick={(e)=>{ e.stopPropagation(); removeMerge(path); }} title="Remove merge" />
+              </span>
+            </Station>
+            {/* WAIT node — a SEPARATE node below the merge badge; holds the all / any choice */}
+            <Station key="mw" marker={MARK.delay} noRail head="Wait" headColor="var(--text)" headBg="var(--panel2)" wideContent hoverBg="var(--panel2)" gapBottom={GAP}>
+              <span className="text-[length:var(--fs-175)] inline-flex items-baseline gap-1.5 flex-wrap" style={{ color:"var(--muted)", lineHeight:`${HEAD}px` }}>
+                until
+                <Slot value={wait==="all" ? "all branches finish" : "any branch finishes"} open={openSlot===`${k}:wait`} dataAnchor={`mwait:${node.id}`} onClick={openWaitPicker} />
+              </span>
+            </Station>
+          </>
+        );
+        // remove ONE branch from the merge (from a feeder box). With 3+ branches, just detach this one. But a merge
+        // needs at least TWO branches — so removing one of the LAST TWO can't leave a stub; it DISSOLVES the whole
+        // merge, taking its Success / Timeout steps with it. The confirm warns about exactly that (user 2026-08-18).
+        const removeFeeder = (feederId) => {
+          const count = (node.feeders||[]).length;
+          if (count <= 2) {
+            const steps = ((node.success&&node.success.children)||[]).length + ((node.otherwise&&node.otherwise.children)||[]).length;
+            setConfirmDlg({ title:"Remove the whole merge?", confirmLabel:"Remove merge", cancelLabel:"Keep it",
+              body:`A merge needs at least two branches, so removing this one removes the entire merge${steps?`, along with the ${steps} step${steps===1?"":"s"} you set up in its Success and Timeout`:""}. This can't be undone.`,
+              onConfirm:()=>dissolveMerge(path) });
+          } else {
+            setFlow(flow => {
+              let f = flow;
+              const hit = findLaneById(f, feederId);
+              if (hit) { const forkPath = hit.path.slice(0,-1); const fork = nodeAt(f, forkPath);
+                if (fork) f = treeUpdate(f, forkPath, { paths:(fork.paths||[]).map(l => l.id===feederId ? (()=>{ const {feeds, ...rest}=l; return rest; })() : l) }); }
+              const m = nodeAt(f, path);
+              if (m) f = treeUpdate(f, path, { feeders:(m.feeders||[]).filter(x=>x!==feederId) });
+              return f;
+            });
+            setPop(null);
+          }
+        };
+        const gathered = (
+          <div key="mg" className="relative" style={{ marginLeft:"34px", marginRight:"28px", paddingBottom:`${BRANCH_LANE_GAP}px` }}>
+            {feeders.map((f, gi) => (
+              <React.Fragment key={f.id}>
+                {gi>0 && (
+                  <div className="flex items-center" style={{ height:"42px" }}>
+                    <span className="flex items-center justify-center rounded-md" style={{ padding:"4px 13px", background:"var(--panel2)", color:"var(--muted)", fontSize:"13px", fontWeight:700, lineHeight:1, textTransform:"uppercase", letterSpacing:"0.05em" }}>{joinGlyph}</span>
+                  </div>
+                )}
+                <div role="button" onClick={()=>jump(f.key)} title="Go to this branch" className="group/fd w-full flex items-center gap-3 rounded-lg cursor-pointer transition-colors" style={{ background:"var(--panel2)", border:"1px solid var(--border)", padding:"8px 13px", marginTop:0 }} onMouseEnter={(e)=>{ e.currentTarget.style.borderColor="var(--border2)"; const w=computeMergeWire((f.key||"")+":feed", k); if(w) setMergeWire(w); }} onMouseLeave={(e)=>{ e.currentTarget.style.borderColor="var(--border)"; setMergeWire(null); }}>
+                  <span className="flex-1 min-w-0 truncate text-[length:var(--fs-15)] font-semibold" style={{ color:"var(--text)" }}>{f.label}</span>
+                  {/* right slot: "open ↗" at rest fades to a REMOVE × on hover (same spot → no layout shift) */}
+                  <span className="shrink-0 relative flex items-center justify-end" style={{ minWidth:"46px", height:"22px" }}>
+                    <span className="text-[length:var(--fs-11)] opacity-100 group-hover/fd:opacity-0 transition-opacity" style={{ color:"var(--faint)" }}>open ↗</span>
+                    <button type="button" onClick={(e)=>{ e.stopPropagation(); removeFeeder(f.id); }} title="Remove this branch from the merge"
+                      className="absolute right-0 w-6 h-6 rounded-md flex items-center justify-center opacity-0 group-hover/fd:opacity-100 transition-all hover:bg-[var(--pop-hover)] hover:text-[var(--red)]" style={{ color:"var(--muted)" }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+                    </button>
+                  </span>
+                </div>
+              </React.Fragment>
+            ))}
+          </div>
+        );
+        // Success / Timeout outcomes read as NEUTRAL sub-nodes (user 2026-08-18): a grey marker dot + a neutral badge
+        // (same treatment as WAIT) + a very small muted line saying what the outcome does. No green / amber.
+        const outcome = (arm, seg, label, desc, isLastLane) => {
+          const lanePath = [...path, seg];
+          const lk = pathKey(lanePath);
+          const body = (arm && arm.children) || [];
+          return (
+            <div key={label} className="relative" style={{ marginLeft:"100px", paddingBottom:`${BRANCH_LANE_GAP}px` }}>
+              {/* rail alongside this outcome: a non-last outcome carries it full-height to reach the next fork; the LAST
+                  outcome stops it at its own marker (height MC) so nothing dangles below the final fork. */}
+              {vLines(-93, isLastLane ? { top:0, height:`${MC}px` } : { top:0, bottom:0 }, { rightDashed:true })}
+              {elbowLines(-93, MC, 102, { single:true })}
+              <Station marker={<span className="block w-2.5 h-2.5 rounded-full" style={{ background:"var(--muted)", boxShadow:"0 0 0 4px var(--bg)" }}/>} isFirst head={label} headColor="var(--text)" headBg="var(--panel2)" wideContent hoverBg="transparent" gapBottom={body.length?0:GAP} innerRef={(el)=>setRowRef(lk, el)}>
+                <span className="text-[length:var(--fs-12)]" style={{ color:"var(--faint)", lineHeight:`${HEAD}px` }}>{desc}</span>
+              </Station>
+              {renderFlow(body, lanePath, { dbl:false })}
+              <BranchAdd path={lanePath} branchId={arm.id} empty={!body.length} dbl={false} />
+            </div>
+          );
+        };
+        const mergeBody = (
+          <div className="relative">
+            {/* LEVEL-1 main line — the merge peels off it; it continues down to the next trunk step (stops at the
+                sprout when the merge is the last thing on the flow). */}
+            {vLines(7, mergeIsTerminal ? { top:0, height:`${MC}px` } : { top:0, bottom:0 })}
+            {/* the MERGE itself = a LEVEL-2 branch sprouting off the main line (elbow from the main line to its marker) */}
+            <div className="relative" style={{ marginLeft:"100px", paddingBottom: mergeIsTerminal ? 0 : `${BRANCH_LANE_GAP}px` }}>
+              {elbowLines(-93, MC, 102, { single:true })}
+              {/* the merge's level-2 rail runs from the marker down THROUGH the header + gathered boxes to the first
+                  outcome (scoped to this wrapper so it ends there). Each outcome then carries the rail through itself,
+                  and the LAST outcome stops it at its fork — so the rail no longer dangles below the final outcome. */}
+              <div className="relative">
+                {vLines(7, { top:`${MC}px`, bottom:0 }, { rightDashed:true })}
+                {header}
+                {gathered}
+              </div>
+              {outcome(node.success, {success:true}, `Merge ${mnum} Success`, "Runs once the branches finish", false)}
+              {outcome(node.otherwise, {otherwise:true}, `Merge ${mnum} Timeout`, "Runs if they don’t finish in time", true)}
+            </div>
+          </div>
+        );
+        return <React.Fragment key={node.id}>{mergeBody}</React.Fragment>;
+      }
+
       // ── BRANCH (explicit fork) ──────────────────────────────────────────
       const lanes = [];
       const branchIsTerminal = !!opts.last && i===nodes.length-1; // nothing (not even the End cap) follows → stop the trunk rail at the fork
@@ -8506,6 +9183,32 @@ function App() {
         // branch); an ACTION/GET/WAIT lane = DOUBLE line (parallel/split path). Trunk stays double either way.
         const laneDbl = !hasGate; // parallel/split lane (action/get/wait) = DOUBLE solid; condition lane = main path keeps its LEFT line solid but its RIGHT line goes DASHED, and the branch peels off the right line (user 2026-07-16)
         const spineBottom = (pi===(node.paths||[]).length-1 && !node.otherwise && branchIsTerminal) ? `calc(100% - ${MC+eyeH}px)` : 0;
+        // a lane that FEEDS a merge ends on a rail POINT (the merge diamond) carrying its "Feeds Merge N" box — it
+        // REPLACES the Add-step pills (a feeder branch continues into the merge, so it takes no more steps below).
+        const feedRow = (dbl2) => { const mp = treeFindPath(flowRef.current, pobj.feeds); const mk = mp && pathKey(mp); const mn = (mp && (nodeAt(flowRef.current, mp)||{}).num) || 1;
+          const goMerge = ()=>{ const el = mk && rowRefs.current[mk]; if (el) el.scrollIntoView({ behavior:"smooth", block:"center" }); };
+          // rail POINT = a plain accent dot, same size as every other node marker (no diamond, no ring)
+          const dot = <span className="block w-2.5 h-2.5 rounded-full" style={{ background:"var(--accent)", boxShadow:"0 0 0 4px var(--bg)" }}/>;
+          return (
+            <Station marker={dot} isLast doubleRail={dbl2} wideContent hoverBg="transparent" gapBottom={GAP} markerY={26} onClick={goMerge} innerRef={(el)=>setRowRef(pathKey(lanePath)+":feed", el)}>
+              {/* the merge reference card — same footprint as an action's form-editor card; dashed neutral at rest,
+                  turns purple on hover (it's a pointer to the merge, not an editable value). */}
+              <span data-slotctl onClick={(e)=>{ e.stopPropagation(); goMerge(); }}
+                onMouseEnter={()=>{ const w=computeMergeWire(pathKey(lanePath)+":feed", mk); if(w) setMergeWire(w); }}
+                onMouseLeave={()=>setMergeWire(null)}
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5 cursor-pointer transition-all w-full max-w-[420px] border-2 border-dashed [border-color:var(--border2)] hover:[border-color:var(--accent2)] hover:bg-[var(--pop-hover)] hover:shadow-sm"
+                style={{ background:"var(--panel)" }}>
+                <span className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ background:"color-mix(in srgb, var(--accent) 15%, transparent)", color:"var(--accent2)" }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3v3a6 6 0 006 6 6 6 0 006-6V3M12 12v9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </span>
+                <span className="flex flex-col min-w-0 flex-1 gap-0.5">
+                  <span className="text-[length:var(--fs-13)] font-semibold leading-tight truncate" style={{ color:"var(--text)" }}>Merge {mn}</span>
+                  <span className="text-[length:var(--fs-115)] leading-tight truncate" style={{ color:"var(--muted)" }}>Go to this merge ↓</span>
+                </span>
+              </span>
+            </Station>
+          );
+        };
         lanes.push(
           <div key={pobj.id} className="relative" data-lane={node.id+"#"+pi} style={{marginLeft:"100px", paddingBottom: `${isSplitBranch(node) ? SPLIT_LANE_GAP : BRANCH_LANE_GAP}px`, opacity: pobj._dimPreview ? 0.5 : undefined, ...(dropHint && dropHint.lane===node.id+"#"+pi ? {outline:"2px dashed var(--accent)", outlineOffset:"4px", borderRadius:"12px"} : {})}}>
             {laneDbl ? (<>
@@ -8525,7 +9228,10 @@ function App() {
             {hasGate ? (()=>{
               // a CUSTOM name shows as "Branch N : <name>" — the branch NUMBER is kept as a prefix (user 2026-07-21);
               // an unnamed lane is just "Branch N". The rename input still edits ONLY the custom part (pobj.name).
-              const lk = pathKey(lanePath), renaming = renamingLane===lk, label = pobj.name ? `Branch ${pi+1} : ${pobj.name}` : `Branch ${pi+1}`;
+              // a lane popped out of a merge carries `_num` = the branch number it had inside the merge, so it stays
+              // "Branch 2" even though it is now the only path here (user 2026-08-15: keep the number consistent).
+              const bn = pobj._num || (pi+1);
+              const lk = pathKey(lanePath), renaming = renamingLane===lk, label = pobj.name ? `Branch ${bn} : ${pobj.name}` : `Branch ${bn}`;
               // commit guard (reviewer 2026-07-21): the unmount blur after Enter/Escape must NOT re-fire the save
               const commit = (v)=>{ if(renameGuardRef.current) return; renameGuardRef.current=true; setLaneName(path, pi, (v||"").trim()); setRenamingLane(null); };
               const cancel = ()=>{ renameGuardRef.current=true; setRenamingLane(null); };
@@ -8589,19 +9295,33 @@ function App() {
                           {pathClauses(path, node, pi, true, false)}
                         </Station>
                         {renderFlow(pobj.children||[], lanePath, {dbl:false})}
-                        <BranchAdd path={lanePath} branchId={pobj.id} empty={!(pobj.children||[]).length} dbl={false}
-                          onBranch={(el)=>openAddBranch(lanePath, el)} />
+                        {pobj.feeds ? feedRow(false) : <BranchAdd path={lanePath} branchId={pobj.id} empty={!(pobj.children||[]).length} dbl={false}
+                          onBranch={(el)=>openAddBranch(lanePath, el)} />}
                       </>}
                 </>
               );
-            })() : (
-              // NON-gate lane (split / action-first) — no header/collapse; its first real node renders directly
+            })() : ( isSplitBranch(node) ? (
+              // SPLIT lane — LEADS with a "Split Path N" node (amber badge). It looks + behaves like every other node
+              // (same card, same hover, same × in the same spot, removable) but its name is fixed. Being the lane's
+              // isFirst row, the fork elbow lands ON it; the real steps link BELOW it (so drop headless). (user 2026-08-19)
+              <>
+                <Station marker={<span className="block w-2.5 h-2.5 rounded-full" style={{ background:"var(--split)", boxShadow:"0 0 0 4px var(--bg)" }}/>}
+                  isFirst doubleRail head={`Split Path ${pi+1}`} headColor="var(--split)" headBg="color-mix(in srgb, var(--split) 18%, var(--panel2))"
+                  wideContent hoverBg="var(--panel2)" gapBottom={4} onRemove={()=>removePath(path, pi)} removeLabel="Remove this split path"
+                  innerRef={(el)=>setRowRef(pathKey(lanePath), el)}>
+                  <span className="text-[length:var(--fs-12)]" style={{ color:"var(--faint)", lineHeight:`${HEAD}px` }}>runs in parallel with the other paths</span>
+                </Station>
+                {renderFlow(pobj.children||[], lanePath, {dbl:true})}
+                {pobj.feeds ? feedRow(laneDbl) : <BranchAdd path={lanePath} branchId={pobj.id} empty={!(pobj.children||[]).length} dbl={laneDbl} onBranch={undefined} />}
+              </>
+            ) : (
+              // other NON-gate lane (action-first, non-split) — no header/collapse; its first real node renders directly
               <>
                 {renderFlow(pobj.children||[], lanePath, {headless:true, dbl:true})}
-                <BranchAdd path={lanePath} branchId={pobj.id} empty={!(pobj.children||[]).length} dbl={laneDbl}
-                  onBranch={ isSplitBranch(node) ? undefined : (el)=>addConditionBranch(lanePath, el) } />
+                {pobj.feeds ? feedRow(laneDbl) : <BranchAdd path={lanePath} branchId={pobj.id} empty={!(pobj.children||[]).length} dbl={laneDbl}
+                  onBranch={(el)=>addConditionBranch(lanePath, el)} />}
               </>
-            )}
+            ))}
           </div>
         );
       });
@@ -8698,8 +9418,9 @@ function App() {
     const izLabel = isTrunk ? "Add step in the main path" : "Add step in this branch";
     const showLead = nodes.length>0 && !opts.headless && (isTrunk ? hasTrigger : true);
     const out = [];
-    if (showLead) out.push(<InsertZone key="iz-lead" basePath={basePath} index={0} dbl={izDbl} label={izLabel} />);
-    rendered.forEach((el, i) => { out.push(el); if (i < rendered.length-1) out.push(<InsertZone key={"iz-"+i} basePath={basePath} index={i+1} dbl={izDbl} label={izLabel} />); });
+    const izNoRail = !!opts.noRail;
+    if (showLead) out.push(<InsertZone key="iz-lead" basePath={basePath} index={0} dbl={izDbl} noRail={izNoRail} label={izLabel} />);
+    rendered.forEach((el, i) => { out.push(el); if (i < rendered.length-1) out.push(<InsertZone key={"iz-"+i} basePath={basePath} index={i+1} dbl={izDbl} noRail={izNoRail} label={izLabel} />); });
     return out;
   }
 
@@ -8707,7 +9428,7 @@ function App() {
     <>
       <div className="h-14 shrink-0 flex items-center px-4 text-[length:var(--fs-15)] font-semibold border-b" style={{color:"var(--text)", borderColor:"var(--side-bd)"}}>{suiteDef.label}</div>
       <div className="flex-1 overflow-auto py-2 px-2">
-        {suiteDef.modules.filter(m=> !(IS_LIVE && (m.id==="usecase_4" || m.id==="usecase_5"))).map(m=>{  /* Use Case 4 (wide demo) + Use Case 5 (test cases) = dev-only, hidden on the live github.io site */
+        {suiteDef.modules.filter(m=> !(IS_LIVE && (m.id==="usecase_4" || m.id==="usecase_5" || m.id==="usecase_6" || m.id==="usecase_7" || m.id==="usecase_9"))).map(m=>{  /* Use Case 4 (wide demo) + Use Cases 5/6/7/9 (test cases) = dev-only, hidden on the live github.io site */
           const on = m.id===activeModule;
           return (
             <React.Fragment key={m.id}>
@@ -8870,7 +9591,18 @@ function App() {
         <div data-canvas className="flex-1 overflow-y-auto relative">
           <div className="canvas-layer"></div>
           {/* pb clears the floating toolbar (absolute bottom-6, ~80px tall) so the END / Add-step never scroll under it */}
-          <div className="relative z-10 mx-auto px-8 pb-[140px] min-h-full flex flex-col" style={{width:"fit-content", minWidth:"min(720px, 100%)", maxWidth:"900px", paddingTop:"20vh"}}>
+          <div ref={flowColRef} className="relative z-10 mx-auto px-8 pb-[140px] min-h-full flex flex-col" style={{width:"fit-content", minWidth:"min(720px, 100%)", maxWidth:"900px", paddingTop:"20vh"}}>
+            {/* MERGE CONNECTOR WIRE (v5.16) — a hover-only dashed line from a feeding branch to its merge, in the merge
+                accent. Spans the whole flow column so it can link two far-apart rows; pointer-events:none so it never blocks. */}
+            <svg className="merge-wire-layer" width="100%" height="100%" style={{ position:"absolute", inset:0, overflow:"visible", pointerEvents:"none", zIndex:20 }} aria-hidden="true">
+              {mergeWire && <g className="mw-on">
+                <path d={mergeWire.d}/>
+                <circle className="mw-cap" cx={mergeWire.mx} cy={mergeWire.my} r="4.5"/>
+                {/* "click to scroll" — a small pill on the wire's top run so it's clear the card/box jumps you there */}
+                <rect className="mw-lbl-bg" x={mergeWire.lx-47} y={mergeWire.ly-23} width="94" height="18" rx="5"/>
+                <text className="mw-lbl" x={mergeWire.lx} y={mergeWire.ly-10} textAnchor="middle">click to scroll</text>
+              </g>}
+            </svg>
             {/* while a form editor is open: dim + block the whole canvas; the edited node (z-40) stays above this */}
             {(drawer||exprEdit) && <div className="absolute inset-0 z-30" style={{ background:"color-mix(in srgb, var(--bg) 62%, transparent)", cursor:"default" }} onMouseDown={(e)=>e.stopPropagation()} />}
 
@@ -9635,6 +10367,28 @@ function App() {
         </div>
       )}
 
+
+      {/* Merge-dissolve confirmation — a real centered DIALOG (user 2026-08-15: not a dropdown), warning that the merge
+          AND the steps added to it will be removed. Destructive (red) confirm; backdrop / Keep both cancel. */}
+      {confirmDlg && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center px-4" style={{background:"rgba(0,0,0,.55)"}} onMouseDown={()=>setConfirmDlg(null)}>
+          <div className="guidein w-[440px] max-w-full rounded-2xl overflow-hidden flex flex-col" style={{background:"var(--panel2)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-pop)"}} onMouseDown={e=>e.stopPropagation()}>
+            <div className="px-6 pt-6 pb-1">
+              <div className="flex items-center gap-3 mb-3">
+                <span className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{background:"color-mix(in srgb, #e5484d 17%, transparent)", color:"#ff6b6b"}}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </span>
+                <div className="text-[length:var(--fs-title)] font-semibold leading-snug" style={{color:"var(--text)"}}>{confirmDlg.title}</div>
+              </div>
+              <p className="text-[length:var(--fs-135)] leading-relaxed" style={{color:"var(--muted)"}}>{confirmDlg.body}</p>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-6 py-4">
+              <button onClick={()=>setConfirmDlg(null)} className="px-4 py-2 rounded-lg text-[length:var(--fs-13)] font-medium transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--text)", border:"1px solid var(--border2)"}}>{confirmDlg.cancelLabel || "Cancel"}</button>
+              <button onClick={()=>{ const fn=confirmDlg.onConfirm; setConfirmDlg(null); if(fn) fn(); }} className="px-4 py-2 rounded-lg text-[length:var(--fs-13)] font-semibold text-white transition-colors" style={{background:"#e5484d"}} onMouseEnter={e=>e.currentTarget.style.background="#d13b40"} onMouseLeave={e=>e.currentTarget.style.background="#e5484d"}>{confirmDlg.confirmLabel}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* WARN-DON'T-BLOCK toast (v5.11 drag) — a drop moved a step above the record source it uses. Amber, auto-dismisses. */}
       {dragToast && (
