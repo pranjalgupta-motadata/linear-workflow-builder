@@ -9428,7 +9428,7 @@ function App() {
     <>
       <div className="h-14 shrink-0 flex items-center px-4 text-[length:var(--fs-15)] font-semibold border-b" style={{color:"var(--text)", borderColor:"var(--side-bd)"}}>{suiteDef.label}</div>
       <div className="flex-1 overflow-auto py-2 px-2">
-        {suiteDef.modules.filter(m=> !(IS_LIVE && (m.id==="usecase_4" || m.id==="usecase_5" || m.id==="usecase_6" || m.id==="usecase_7" || m.id==="usecase_9"))).map(m=>{  /* Use Case 4 (wide demo) + Use Cases 5/6/7/9 (test cases) = dev-only, hidden on the live github.io site */
+        {suiteDef.modules.filter(m=> !(IS_LIVE && (m.id==="usecase_4" || m.id==="usecase_5" || m.id==="usecase_9"))).map(m=>{  /* Use Case 4 (wide demo) + Use Cases 5/9 (test cases) = dev-only; Use Case 6 (Merge) + 7 (Loop) now SHOW on the live site too (user 2026-08-19) */
           const on = m.id===activeModule;
           return (
             <React.Fragment key={m.id}>
