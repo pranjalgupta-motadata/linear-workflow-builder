@@ -1390,7 +1390,7 @@ function actionCatalogFor(mid) {
     { id:"assign", label:"assign it to", arg:ASSIGN_TARGETS, argPlaceholder:"user/group", icon:I.user },
     { id:"set_auto_assignment", label:"set auto assignment using", arg:["Round Robin","Smart Balance"], argPlaceholder:"method", icon:I.user },
     // Cross-module (§4.2)
-    { id:"execute_integration", label:"execute integration", arg:Object.keys(APP_INTEGRATIONS), argPlaceholder:"an app", icon:I.link }, // v8: "execute {integration} in {app} for {record}" + input mappings
+    { id:"execute_integration", label:"execute integration", arg:Object.keys(APP_INTEGRATIONS), argPlaceholder:"an app", icon:I.link }, // v8: "for {record}, {integration} is executed in {app}" + input mappings (drawer)
     { id:"add_relation", label:"add a relation", icon:I.link },
     { id:"add_task",     label:"add a task", icon:I.task, details:true }, // v8: field-row drawer (locked start date + subject)
     { id:"create_deployment", label:"create a Deployment", menuLabel:"Create deployment", icon:I.box },
@@ -3434,7 +3434,8 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onActive, onClose, on
   // else the picker's own title (e.g. "Wait for…") or the generic "Specific value". Never the bare record name.
   const smartHeading = smartTabNow==="ref" ? "Dynamic value" : ((smart && smart.title) || "Specific value");
   // FULL-WIDTH segmented tabs with TEXT labels [ Specific | Dynamic ] (each half). Replaces the compact icon toggle.
-  const smartTabs = smart ? (
+  // smart.refOnly → a Dynamic-only popover (no Specific value exists, e.g. the loop's attribute) → no tabs at all.
+  const smartTabs = (smart && !smart.refOnly) ? (
     <div className="flex items-stretch w-full p-0.5 rounded-lg gap-0.5" style={{background:"var(--bg)", border:"1px solid var(--border2)"}}>
       {[["specific","Specific"],["ref","Dynamic"]].map(([id,label])=>{ const on = smartTabNow===id;
         return <button key={id} onClick={()=>{ if(smartTabNow===id) return; id==="ref" ? (smart.onReference && smart.onReference()) : (smart.onSpecific && smart.onSpecific()); }}
@@ -6815,7 +6816,7 @@ function App() {
     // chosen source and (when >1 record is in scope) is CLICKABLE to switch sources; Specific/Expression from `chrome`.
     const sm = (rec, steps) => ({ tab:"ref", crumb: crumb(rec, steps),
       source: rec.label.replace(/^the\s+/i,""), onSource: scope.length>1 ? recStep : null,
-      onSpecific: chrome && chrome.onSpecific, onExpression: chrome && chrome.onExpression, exprDisabled: chrome && chrome.exprDisabled });
+      onSpecific: chrome && chrome.onSpecific, onExpression: chrome && chrome.onExpression, exprDisabled: chrome && chrome.exprDisabled, refOnly: chrome && chrome.refOnly });
     // ONE drill level. `fields` = rows shown, `steps` = the path picked so far, `goBack` = the level above.
     // Object fields (enum/user/multi) drill deeper (chevron + sub-field count tag); leaf fields commit the path.
     const drillStep = (rec, fields, steps, goBack) => { setOpenSlot(slotKey);
@@ -6830,7 +6831,7 @@ function App() {
     const recStep = () => { setOpenSlot(slotKey);
       open(el, scope.map(r=>({id:r.id, label:r.label.replace(/^the\s+/i,""), sub:recSub(r)})),
         (i)=>{ const rec=scope.find(x=>x.id===i.id); drillStep(rec, recordFieldsFor(rec.module)||[], [], undefined); return true; },
-        "Reference which record", {...anc, noSearch:true, smart: { tab:"ref", crumb:"", onSpecific: chrome && chrome.onSpecific, onExpression: chrome && chrome.onExpression, exprDisabled: chrome && chrome.exprDisabled }, ...opts}); };
+        "Reference which record", {...anc, noSearch:true, smart: { tab:"ref", crumb:"", onSpecific: chrome && chrome.onSpecific, onExpression: chrome && chrome.onExpression, exprDisabled: chrome && chrome.exprDisabled, refOnly: chrome && chrome.refOnly }, ...opts}); };
     // Auto-pick the FIRST in-scope source and go straight to its fields; the "From" header lets you switch source.
     drillStep(scope[0], recordFieldsFor(scope[0].module)||[], [], undefined);
   };
@@ -7531,15 +7532,13 @@ function App() {
     const argNodeId = (nodeAt(flowRef.current, path) || nodeAt(flow, path))?.id;
     const backArg = argNodeId ? backToActionMenu(path, argNodeId) : undefined; // arg pickers back → the Action menu (→ back → Change this step)
     if (actionId==="assign") { setPop(assignTargetConfig(path, el, anchorKey, backArg)); return; }
+    if (actionId==="execute_integration") { pickIntegApp(path, el, anchorKey); return; } // v8: app comes AFTER the integration
     // once the arg is set, AUTO-OPEN the form the FIRST time (if this action has a form & isn't set up yet).
     // Read the node from flowRef (LIVE) — the node was created after this picker's closure was captured.
     const commitArg = (val)=>{
         const node = nodeAt(flowRef.current, path); const patch = { arg:val };
         // auto-assignment: first method pick on a pool-less node → default the pool and chain the pool picker
         if (node && actionId==="set_auto_assignment" && !node.pool){ patch.pool = "all"; requestAnimationFrame(()=>openPoolPicker(path, null, `apool:${node.id}`)); }
-        // execute_integration (v8): a NEW app clears the old app's integration + mappings, then chains the integration picker
-        if (node && actionId==="execute_integration") { if (node.arg!==val) { patch.integration = null; patch.mappings = null; }
-          if (node.arg!==val || !node.integration) requestAnimationFrame(()=>pickIntegration(path, null, val)); }
         if (node && ((a && a.details) || formSpecFor(node.action) || node.action==="add_relation") && !node.formAutoOpened && !node.confirmed){ patch.formAutoOpened = true; requestAnimationFrame(()=>openFormFlow(path, node.id, node.action)); }
         update(path, patch);
       };
@@ -7665,7 +7664,7 @@ function App() {
     // Update record → opens the fields drawer DIRECTLY (no "how?" step; auto methods are field values now — user 2026-07-04). Falls through to the form logic below.
     if (leaf.a === "set_auto_assignment" && leaf._arg) { requestAnimationFrame(()=>openPoolPicker(path, null, `apool:${nodeId}`)); return; } // method preset (level-3 search) → the pool picks on the canvas
     const adef = actionCatAll.byId[leaf.a];
-    if (leaf.a==="execute_integration") { requestAnimationFrame(()=>startIntegrationFlow(path, nodeId)); return; } // v8: record → app → integration
+    if (leaf.a==="execute_integration") { requestAnimationFrame(()=>startIntegrationFlow(path, nodeId)); return; } // v8: record → integration → app
     if (adef && adef.arg && !leaf._arg) requestAnimationFrame(()=>openArgByKey(path, leaf.a, `aarg:${nodeId}`));
     else if ((adef && adef.details) || formSpecFor(leaf.a) || leaf.a==="add_relation") requestAnimationFrame(()=>openFormFlow(path, nodeId, leaf.a)); // no arg + form → source pick (if record-acting) then form
   };
@@ -7737,7 +7736,7 @@ function App() {
     // Update record → opens the fields drawer DIRECTLY (no "how?" step — auto methods are field values now, user 2026-07-04). Falls through to the form logic below.
     if (leaf.a === "set_auto_assignment" && leaf._arg) { requestAnimationFrame(()=>openPoolPicker(newPath, null, `apool:${node.id}`)); return; } // method preset (level-3 search) → the pool picks on the canvas
     const adef = actionCatAll.byId[leaf.a];
-    if (leaf.a==="execute_integration") { requestAnimationFrame(()=>startIntegrationFlow(newPath, node.id)); return; } // v8: record → app → integration
+    if (leaf.a==="execute_integration") { requestAnimationFrame(()=>startIntegrationFlow(newPath, node.id)); return; } // v8: record → integration → app
     if (adef && adef.arg && !leaf._arg) requestAnimationFrame(()=>openArgByKey(newPath, leaf.a, `aarg:${node.id}`));
     else if ((adef && adef.details) || formSpecFor(leaf.a) || leaf.a==="add_relation") requestAnimationFrame(()=>openFormFlow(newPath, node.id, leaf.a)); // no arg + form → source pick (if record-acting) then form
   };
@@ -7839,7 +7838,8 @@ function App() {
     if (id==="close")   return { verb:"close",  tpl:" {record}" };
     if (id==="add_relation") return { verb:"add", tpl:" a relation from {record} to {relmod}" }; // v8: module is a sentence blank (no drawer)
     if (id==="add_task") return { verb:"add", tpl:" a task to {record}" };
-    if (id==="execute_integration") return { verb:"execute", tpl:" {integ} in {arg} for {record}" }; // v8: record → app → integration, then input mappings // v8: source record is a conscious pick, like add_relation
+    // v8: passive, so the blanks read left → right in FILL order (record → integration → app); {verb} = the action slot
+    if (id==="execute_integration") return { verb:"executed", tpl:"for {record}{comma}{integ} is {verb} in {arg}" };
     // Create deployment (v8): the SOURCE record is a conscious pick (like add_relation) and the sentence reads
     // the drawer's config back — "create a Deployment to install 3 packages for the Incident".
     if (id==="create_deployment") { const d = node.data || {}; const n = (d.packages||[]).length;
@@ -7881,11 +7881,16 @@ function App() {
     const relEl = <Slot tone="action" value={node.relModule} placeholder="a module" open={openSlot===`${k}:relmod`} dataAnchor={`rmod:${node.id}`} onClick={(e)=>pickRelModule(path, e.currentTarget)} />;
     // integ slot (execute_integration, v8): which integration of the chosen app — click opens that app's list
     const integEl = <Slot tone="action" value={node.integration} placeholder="an integration" open={openSlot===`${k}:integ`} dataAnchor={`integ:${node.id}`} onClick={(e)=>pickIntegration(path, e.currentTarget)} />;
-    const parts = sent.tpl.split(/(\{record\}|\{arg\}|\{channel\}|\{pool\}|\{assignval\}|\{relmod\}|\{integ\})/).filter(p=>p!=="");
+    const parts = sent.tpl.split(/(\{record\}|\{arg\}|\{channel\}|\{pool\}|\{assignval\}|\{relmod\}|\{integ\}|\{verb\}|\{comma\})/).filter(p=>p!=="");
+    // the action (verb) slot LEADS the sentence, unless the template places it with {verb} (passive wording)
+    const verbEl = <Slot tone="action" value={sent.verb} open={openSlot===`${k}:action`} dataAnchor={`act:${node.id}`} innerRef={(el)=>{ if(el) actionSlotRefs.current[node.id]=el; }} onClick={(e)=>pickAction(path,e)} />;
+    const verbInline = sent.tpl.includes("{verb}");
     return (
       <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
-        <Slot tone="action" value={sent.verb} open={openSlot===`${k}:action`} dataAnchor={`act:${node.id}`} innerRef={(el)=>{ if(el) actionSlotRefs.current[node.id]=el; }} onClick={(e)=>pickAction(path,e)} />
+        {!verbInline && verbEl}
         {parts.map((p,pi)=> p==="{record}" ? <React.Fragment key={pi}>{recEl}</React.Fragment>
+          : p==="{verb}" ? <React.Fragment key={pi}>{verbEl}</React.Fragment>
+          : p==="{comma}" ? <span key={pi} style={{ marginLeft:"-0.375rem", color:"var(--ink-mid)" }}>,</span>
           : p==="{arg}" ? <React.Fragment key={pi}>{argEl}</React.Fragment>
           : p==="{channel}" ? <React.Fragment key={pi}>{chanEl}</React.Fragment>
           : p==="{pool}" ? <React.Fragment key={pi}>{poolEl}</React.Fragment>
@@ -7915,38 +7920,61 @@ function App() {
         if (n && n.relModule===i.id) openCondFieldPicker(path, cur.id, 0, null); else if (++tries < 20) setTimeout(go, 25); }; setTimeout(go, 0); }
     }, "Relate to which module", { noSearch:true, selected:n0.relModule, ...(el ? {} : { anchorKey:`rmod:${n0.id}` }) });
   };
-  // Execute app integration (v8) — the {integration} blank: the chosen app's integrations. Picking one seeds the
-  // first (empty) input-mapping row; re-picking a DIFFERENT integration resets the mappings to one empty row.
-  const pickIntegration = (path, el, appNow) => { // appNow = the app just picked (the node may not have re-rendered yet)
+  // Execute app integration (v8) — the sentence reads left → right in fill order:
+  //   "for {record}, {integration} is executed in {app}"
+  // The {integration} blank lists EVERY integration (sub = the apps offering it); the {app} blank then lists only
+  // the apps that offer the picked integration — ONE app → prefilled, no popup. Once both are set the INPUT MAPPING
+  // opens in the right-side drawer. A DIFFERENT integration resets the mappings (they belong to the old one).
+  const appsForIntegration = (integ) => Object.keys(APP_INTEGRATIONS).filter(a=>(APP_INTEGRATIONS[a]||[]).includes(integ));
+  const openIntegDrawer = (path) => requestAnimationFrame(()=>{ const n=nodeAt(flowRef.current, path); if (n && n.integration && n.arg) setDrawer(n.id); });
+  const pickIntegration = (path, el) => {
     const n0 = nodeAt(flowRef.current, path) || {};
-    const app = appNow || n0.arg;
-    if (!app) { openArg(path, "execute_integration", el, el ? undefined : `aarg:${n0.id}`); return; } // no app yet → pick the app first
+    // a search preset ("Slack" typed in the action search) chose the app first → offer only that app's integrations
+    const preset = n0.arg && !n0.integration ? n0.arg : null;
+    const names = preset ? (APP_INTEGRATIONS[preset]||[]) : [...new Set(Object.values(APP_INTEGRATIONS).flat())];
     setOpenSlot(`${pathKey(path)}:integ`);
-    open(el, (APP_INTEGRATIONS[app]||[]).map(x=>({ id:x, label:x })), (i)=>{
+    open(el, names.map(x=>({ id:x, label:x, sub: appsForIntegration(x).join(", ") })), (i)=>{
       const cur = nodeAt(flowRef.current, path) || {};
-      update(path, { integration:i.id, ...(cur.integration!==i.id ? { mappings:[{ key:null, value:"" }] } : {}) });
-    }, app+" integration", { selected: appNow ? null : n0.integration, ...(el ? {} : { anchorKey:`integ:${n0.id}` }) });
+      const apps = appsForIntegration(i.id);
+      const changed = cur.integration!==i.id;
+      const arg = cur.arg && apps.includes(cur.arg) ? cur.arg : (apps.length===1 ? apps[0] : null);
+      update(path, { integration:i.id, arg, ...(changed ? { mappings:[{ key:null, value:"" }], confirmed:false } : {}) });
+      if (!arg) requestAnimationFrame(()=>pickIntegApp(path, null));
+      else if (changed || !cur.confirmed) openIntegDrawer(path);
+    }, "Which integration?", { selected:n0.integration, ...(el ? {} : { anchorKey:`integ:${n0.id}` }) });
   };
-  // the add flow: "Which record?" → app (skipped when a search preset already chose it) → integration
-  const startIntegrationFlow = (path, nodeId) => {
+  // the {app} blank — only the apps offering the chosen integration (no integration yet → pick that first)
+  const pickIntegApp = (path, el, anchorKey) => {
+    const n0 = nodeAt(flowRef.current, path) || {};
+    if (!n0.integration) { pickIntegration(path, el); return; }
+    setOpenSlot(`${pathKey(path)}:arg`);
+    open(el, appsForIntegration(n0.integration).map(a=>({ id:a, label:a })), (i)=>{
+      const cur = nodeAt(flowRef.current, path) || {};
+      update(path, { arg:i.id });
+      if (!cur.confirmed) openIntegDrawer(path);
+    }, "Which app?", { noSearch:true, selected:n0.arg, ...(el ? {} : { anchorKey: anchorKey || `aarg:${n0.id}` }) });
+  };
+  // The SOURCE-record step of an add flow ("Which record?"), shared by every record-acting action. With ONLY ONE
+  // record in scope there is nothing to choose → it is PREFILLED (no popup) and the flow moves straight on; the
+  // sentence's record slot still shows it. `extra()` = more fields to set alongside the record.
+  const pickSourceRecord = (path, nodeId, then, extra) => {
     const scope = recordsInScope(path);
-    const next = () => requestAnimationFrame(()=>{ const n=nodeAt(flowRef.current, path)||{}; n.arg ? pickIntegration(path, null) : openArgByKey(path, "execute_integration", `aarg:${nodeId}`); });
-    if (!scope.length) { next(); return; }
+    const commit = (recId) => { update(path, { record:recId, ...(extra ? extra() : {}) }); then(); };
+    if (!scope.length) { if (extra) update(path, extra()); then(); return; }
+    if (scope.length===1) { commit(scope[0].id); return; }
     setOpenSlot(`${pathKey(path)}:record`);
-    open(null, scope.map(r=>({id:r.id, label:r.label})), (i)=>{ update(path, { record:i.id }); next(); },
+    open(null, scope.map(r=>({id:r.id, label:r.label})), (i)=>commit(i.id),
       "Which record?", { anchorKey:`act:${nodeId}`, noSearch:true, selected: nodeAt(flow,path)?.record, back: backToActionMenu(path, nodeId) });
   };
+  // the add flow (v8, left → right as the sentence reads): "Which record?" → integration → app (→ input-mapping drawer)
+  const startIntegrationFlow = (path, nodeId) =>
+    pickSourceRecord(path, nodeId, () => requestAnimationFrame(()=>pickIntegration(path, null)));
   const openFormFlow = (path, nodeId, actionId) => {
     const def = actionCatAll.byId[actionId]; const spec = formSpecFor(actionId);
     // Add relation (v8): no drawer — "Which record?" then the {module} popup, both on the canvas sentence.
     // Conditions are optional and added from the row's "+ add condition" (Get-style "where …").
     if (actionId==="add_relation") {
-      const scope = recordsInScope(path);
-      const toModule = () => requestAnimationFrame(()=>pickRelModule(path, null));
-      if (!scope.length) { toModule(); return; }
-      setOpenSlot(`${pathKey(path)}:record`);
-      open(null, scope.map(r=>({id:r.id, label:r.label})), (i)=>{ update(path, { record:i.id }); toModule(); },
-        "Which record?", { anchorKey:`act:${nodeId}`, noSearch:true, selected: nodeAt(flow,path)?.record, back: backToActionMenu(path, nodeId) });
+      pickSourceRecord(path, nodeId, () => requestAnimationFrame(()=>pickRelModule(path, null)));
       return;
     }
     if (!((def && def.details) || spec)) return;                       // no form → nothing to open
@@ -7958,10 +7986,7 @@ function App() {
     // Add task (v8): seed the two mandatory rows (Task start date + Subject) the moment the drawer opens
     const seed = () => actionId==="add_task" ? { fields: ensureTaskRows((nodeAt(flowRef.current, path)||{}).fields) } : {};
     if (recordActionSentence({action:actionId}, def, true) && scope.length) {
-      setOpenSlot(`${pathKey(path)}:record`);
-      open(null, scope.map(r=>({id:r.id, label:r.label})),
-        (i)=>{ update(path, { record:i.id, ...seed() }); requestAnimationFrame(()=>setDrawer(nodeId)); },
-        "Which record?", { anchorKey:`act:${nodeId}`, noSearch:true, selected: nodeAt(flow,path)?.record, back: backToActionMenu(path, nodeId) });
+      pickSourceRecord(path, nodeId, () => requestAnimationFrame(()=>setDrawer(nodeId)), seed);
     } else {
       if (actionId==="add_task") update(path, seed());
       setDrawer(nodeId);
@@ -8941,44 +8966,6 @@ function App() {
                 each, the ghost "a field" row) once a first condition exists. Before that, the row's "+ add condition" adds it. */}
             {node.action==="add_relation" && node.relModule && (node.clauses||[]).length>0 && (
               <div className="w-full mt-2">{groupedClauses(path, node, {word:"where", outdentConn:true})}</div>)}
-            {/* EXECUTE APP INTEGRATION input mapping (v8) — on the canvas, once the sentence is complete: one row per
-                key → value. Key = searchable "Select key" dropdown (keys already used elsewhere are hidden); value = typeable
-                with the email Subject's { } Insert-placeholder button; × deletes a row; "+ add mapping" rides on the LAST row. */}
-            {node.action==="execute_integration" && node.integration && (()=>{
-              const maps = node.mappings || [];
-              const setMaps = (fn)=> setFlow(f=>{ const n=nodeAt(f,path); return treeUpdate(f, path, { mappings: fn(n.mappings||[]) }); });
-              const pickKey = (mi, el)=>{ setOpenSlot(`${k}:map${mi}:key`); const used = maps.map((m,j)=>j!==mi && m.key).filter(Boolean);
-                open(el, INTEGRATION_KEYS.filter(x=>!used.includes(x)).map(x=>({id:x, label:x})),
-                  (i)=> setMaps(ms=>ms.map((m,j)=>j===mi?{...m, key:i.id}:m)), "Select key", { selected:maps[mi]?.key, searchPlaceholder:"Search" }); };
-              const addMap = ()=> setMaps(ms=>[...ms, { key:null, value:"" }]);
-              const addBtn = (<button type="button" onClick={(e)=>{ e.stopPropagation(); addMap(); }}
-                className="shrink-0 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[length:var(--fs-12)] font-medium whitespace-nowrap transition-colors hover:text-[var(--c-then)]" style={{color:"var(--muted)"}}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>add mapping</button>);
-              return (
-                <div data-slotctl className="mt-3 w-full max-w-[640px] flex flex-col gap-2" onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()}>
-                  <span className="text-[length:var(--fs-11)] font-semibold uppercase tracking-[0.08em]" style={{color:"var(--faint)"}}>Input mapping</span>
-                  {maps.map((m,mi)=>{ const keyOpen = openSlot===`${k}:map${mi}:key`;
-                    return (
-                    <div key={mi} className="flex items-center gap-2">
-                      <button type="button" data-anchor={`mapk:${node.id}:${mi}`} onClick={(e)=>pickKey(mi, e.currentTarget)}
-                        className="shrink-0 w-[176px] h-[38px] rounded-lg pl-3 pr-2.5 flex items-center gap-2 text-left text-[length:var(--fs-13)] transition-colors hover:bg-[var(--pop-hover)]"
-                        style={{ background:"var(--panel2)", border:"1px solid "+(keyOpen?"var(--accent2)":"var(--border2)"), color: m.key?"var(--text)":"var(--faint)" }}>
-                        <span className="flex-1 min-w-0 truncate">{m.key || "Select key"}</span>
-                        <svg className="shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      </button>
-                      <svg className="shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      <div data-anchor={`mapv:${node.id}:${mi}`} title={typeof m.value==="string" && m.value ? phPretty(m.value) : undefined} className="flex-1 min-w-0 h-[38px] overflow-hidden rounded-lg px-3 flex items-center text-[length:var(--fs-13)]" style={{background:"var(--panel2)", border:"1px solid var(--border2)"}}><div className="w-full min-w-0">
-                        <MapValueInput value={typeof m.value==="string"?m.value:""} canPlaceholder={recordsInScope(path).length>0}
-                          onCommit={(v)=> setMaps(ms=>ms.map((x,j)=>j===mi?{...x, value:v}:x))}
-                          onPlaceholder={(d)=>{ setMaps(ms=>ms.map((x,j)=>j===mi?{...x, value:d}:x));   // keep what was typed, then append each pick
-                            openPhPicker(`${k}:map${mi}:val`, null, (label)=> setMaps(ms=>ms.map((x,j)=>j===mi?{...x, value:(x.value||"")+"{{"+label+"}}"}:x)), `mapv:${node.id}:${mi}`); }} /></div>
-                      </div>
-                      <span className="shrink-0 w-[104px] flex justify-end">{mi===maps.length-1 && addBtn}</span>   {/* fixed slot → every row's value box is the same width */}
-                      <DeleteBtn onClick={(e)=>{ e.stopPropagation(); setMaps(ms=>ms.filter((_,j)=>j!==mi)); }} title="Delete mapping" />
-                    </div>); })}
-                  {!maps.length && <div>{addBtn}</div>}
-                </div>);
-            })()}
             {/* detail card — actions that carry extra data get an attached card (click → side drawer):
                 create/update use field rows (node.fields); task/approval/http/plugin/notifications use a
                 form spec (node.data). Shown only once the sentence's own slot is filled. */}
@@ -9003,20 +8990,27 @@ function App() {
               }
               // send_* are EXEMPT from the arg gate: their recipient is set INSIDE the drawer now, so the
               // card must show immediately — it IS the way into the form (user 2026-07-03).
-              if (!((def && def.details) || spec) || (def && def.arg && !node.arg && !String(node.action||"").startsWith("send_"))) return null;
+              // execute_integration (v8): its INPUT MAPPING lives in the drawer → the same card, once integration + app are set
+              const isInteg = node.action==="execute_integration";
+              if (isInteg && !(node.integration && node.arg)) return null;
+              if (!((def && def.details) || spec || isInteg) || (def && def.arg && !node.arg && !String(node.action||"").startsWith("send_"))) return null;
               const data = node.data || {}, rows = node.fields || [], nf = rows.length;
+              const maps = isInteg ? (node.mappings||[]) : [], nm = maps.filter(m=>m.key).length;
               const filled = spec ? spec.fields.filter(fd=>data[fd.k]).length : nf;
               const title = spec ? spec.title : (node.action==="create" ? (node.arg||"Record")+" details" : "Fields to update");
               // state: complete = every required form field filled (incl. every stage) / every row filled
               const stagesOK = !spec || !spec.stages || ((data.stages||[]).length>0 && (data.stages||[]).every(st=>spec.stages.fields.filter(f3=>!f3.opt).every(f3=>st[f3.k])));
-              const complete = spec ? (spec.fields.filter(fd=>!fd.opt && (!fd.showIf || fd.showIf(data))).every(fd=>data[fd.k]) && stagesOK)
+              const complete = isInteg ? (maps.length>0 && maps.every(m=>m.key && m.value))
+                                    : spec ? (spec.fields.filter(fd=>!fd.opt && (!fd.showIf || fd.showIf(data))).every(fd=>data[fd.k]) && stagesOK)
                                     : (nf>0 && rows.every(rw=>rw.field && rw.value));
-              const countLine = spec ? ((filled ? `${filled} of ${spec.fields.length} filled` : "Not configured") + (spec.stages ? ` · ${(data.stages||[]).length} stage${(data.stages||[]).length===1?"":"s"}` : ""))
+              const countLine = isInteg ? (nm ? `${nm} mapping${nm>1?"s":""} set` : "No mappings yet")
+                                    : spec ? ((filled ? `${filled} of ${spec.fields.length} filled` : "Not configured") + (spec.stages ? ` · ${(data.stages||[]).length} stage${(data.stages||[]).length===1?"":"s"}` : ""))
                                     : (nf ? `${nf} field${nf>1?"s":""} set` : "No fields yet");
               // a plain-text summary (same sentence as the form's overview) for the card subtitle — truncated + tooltip
               // field CHANGES ("Field → Value"): the compact card line (first 2 + "+N more") comes from these, and the
               // hover tooltip lists EVERY field as a bullet — no "+N more" (user 2026-07-23: all fields visible, bulleted).
               const cardRows = (()=>{
+                if (isInteg) return maps.filter(m=>m.key).map(m=>({ c: m.key+" → "+(m.value ? valueDisplay(m.value) : "…"), f: m.key+" → "+(m.value ? valueDisplay(m.value, true) : "…") }));
                 if (spec) return null;
                 const sc = recordsInScope(path);
                 const modName = node.action==="create" ? node.arg : (()=>{ const r=sc.find(x=>x.id===node.record)||sc[sc.length-1]; return r?r.label.replace(/^the\s+/i,""):(triggers[0]&&triggers[0].vals&&triggers[0].vals.module); })();
@@ -9033,7 +9027,7 @@ function App() {
               // full hover tooltip: every field-change as a bullet (update/create), or the whole overview (spec forms).
               const cardTip = spec ? cardSummary : (cardChangesFull && cardChangesFull.length ? cardChangesFull.map(c=>"• "+c).join("\n") : null);
               // when not configured: ONE line, just the prompt (no subtext)
-              const prompt = spec ? "Choose options" : "Choose fields";
+              const prompt = isInteg ? "Set up input mapping" : spec ? "Choose options" : "Choose fields";
               // "Good to go" only once the user has confirmed the form via Done (and it is still complete)
               const good = complete && node.confirmed;
               const cardEditing = drawer===node.id; // this card's form is open → highlight it, lift above the dim
@@ -9230,7 +9224,15 @@ function App() {
         const sk = (s)=>`${k}:${s}`;
         const slotOpen = (key, items, onPick, title, o={}) => (e)=>{ setOpenSlot(sk(key)); open(e.currentTarget, items, onPick, title, o); };
         const typeWord = mode==="until" ? "repeat until" : mode==="times" ? "repeat" : "for each";
-        const typeSlot = (
+        // v8: "for each item" is the ONLY loop type now → a locked, prefilled (disabled-look) value, not a dropdown.
+        // Legacy "repeat until" / "repeat N times" loops keep the clickable type slot so they can be switched back.
+        const typeSlot = mode==="forEach" ? (
+          <span title="Loops always run for each item in a list" aria-disabled="true"
+            className="inline-flex items-center self-center rounded-md px-1.5 font-medium select-none"
+            style={{ background:"var(--panel2)", border:"1px solid var(--border2)", color:"var(--muted)", cursor:"not-allowed", lineHeight:1.6 }}>
+            for each item
+          </span>
+        ) : (
           <Slot value={typeWord} open={openSlot===sk("type")} onClick={slotOpen("type", [
             {id:"forEach", label:"for each item in a list"},
             // v8: "repeat until a condition" / "repeat a set number of times" removed from the picker (existing loops still render)
@@ -9248,28 +9250,31 @@ function App() {
             {mode==="forEach" && (()=>{
               // v8: "for each item in {source | attribute} {value}" — an explicit pick (replaces auto-deriving the Get above).
               //  · source    → a 2nd blank: a record from the previous steps (recordsInScope: trigger + any Get/Create above)
-              //  · attribute → the Specific | Dynamic popup: Specific = typed values (tokens), Dynamic = the reference drill
+              //  · attribute → a DYNAMIC value only (the reference drill) — there are no specific values to type here
               const kind = node.listKind || null;
               const scope = recordsInScope(path);
               const vKey = sk("lval"), vAnchor = `lval:${node.id}`;
               const pickSource = (el)=>{ setOpenSlot(vKey);
                 open(el, scope.map(r=>({ id:r.id, label:r.label })), (x)=>update(path, { listSource:x.id }), "Which record?",
                   { noSearch:true, selected:node.listSource, ...(el ? {} : { anchorKey:vAnchor }) }); };
-              const pickAttr = (el)=>{ setOpenSlot(vKey); const commit = (v)=>update(path, { listVal:v });
-                const sm = smartCfg(path, node.listVal, vKey, el, el ? null : vAnchor, commit, "Attribute", ()=>pickAttr(el), false);
-                open(el, [], (x)=>commit(x.id), "Attribute values", { inputType:"tokens", selected: Array.isArray(node.listVal) ? node.listVal : [],
-                  ...(sm ? { smart:sm } : {}), ...(el ? {} : { anchorKey:vAnchor }) }); };
+              const pickAttr = (el)=>{ const commit = (v)=>update(path, { listVal:v });
+                openSmartRef(path, vKey, el, el ? null : vAnchor, (ref)=>commit({ref}),
+                  { refOnly:true, onExpression: ()=>openExprBuilder(commit, node.listVal, "Attribute", scope, vKey) }); };
               const pickKind = (e)=>{ setOpenSlot(sk("lkind"));
                 open(e.currentTarget, [
                   { id:"source",    label:"Source",    sub:"the records from a previous step" },
-                  { id:"attribute", label:"Attribute", sub:"a field's values — specific or dynamic" },
-                ], (x)=>{ update(path, { listKind:x.id, ...(x.id!==kind ? { listSource:null, listVal:null } : {}) });
+                  { id:"attribute", label:"Attribute", sub:"a field's value from a previous step" },
+                ], (x)=>{ const fresh = x.id!==kind;
+                  // only ONE record in scope → the source is prefilled, no "Which record?" popup
+                  const auto = x.id==="source" && scope.length===1 ? { listSource:scope[0].id } : {};
+                  update(path, { listKind:x.id, ...(fresh ? { listSource:null, listVal:null } : {}), ...auto });
+                  if (auto.listSource) return;
                   requestAnimationFrame(()=> x.id==="source" ? pickSource(null) : pickAttr(null)); },   // chain straight into the 2nd blank
                   "Loop over", { noSearch:true, selected:kind }); };
               const srcLabel = node.listSource ? ((scope.find(r=>r.id===node.listSource)||{}).label || null) : null;
               const valDisp = kind==="source" ? srcLabel : (node.listVal!=null ? valueDisplay(node.listVal, openSlot===vKey) : null);
               return (<>
-                <Word>item in</Word>
+                <Word>in</Word>
                 <Slot value={kind} placeholder="source or attribute" open={openSlot===sk("lkind")} onClick={pickKind} />
                 {kind && <Slot value={valDisp} smartKind={kind==="attribute" ? smartKindOf(node.listVal) : undefined}
                   placeholder={kind==="source" ? "a record" : "a value"} open={openSlot===vKey} dataAnchor={vAnchor}
@@ -10205,6 +10210,64 @@ function App() {
                     <button type="button" onClick={apply} disabled={!sel.length} className="px-4 py-2 rounded-lg text-[length:var(--fs-13)] font-semibold transition-colors hover:brightness-110" style={{background:"var(--accent)", color:"#fff"}}>
                       {sel.length ? `Add ${sel.length} package${sel.length===1?"":"s"}` : "Add"}
                     </button>
+                  </div>
+                </div>
+              );
+            }
+            // ── EXECUTE APP INTEGRATION — INPUT MAPPING drawer (v8). Opens once the sentence's integration + app are set
+            // (moved off the canvas). One row per key → value: key = searchable "Select key" dropdown (keys used by other
+            // rows are hidden); value = typeable with the { } Insert-placeholder button; × deletes; "+ Add mapping" below.
+            // Done confirms → the canvas card reads the mappings back ("Username → {{Requester Email}} · …").
+            if (dnode.action==="execute_integration") {
+              const dk = pathKey(dpath);
+              const maps = dnode.mappings || [];
+              const setMaps = (fn)=> setFlow(f=>{ const n=nodeAt(f,dpath); return treeUpdate(f, dpath, { mappings: fn(n.mappings||[]) }); });
+              const pickKey = (mi, el)=>{ setOpenSlot(`${dk}:map${mi}:key`); const used = maps.map((m,j)=>j!==mi && m.key).filter(Boolean);
+                open(el, INTEGRATION_KEYS.filter(x=>!used.includes(x)).map(x=>({id:x, label:x})),
+                  (i)=> setMaps(ms=>ms.map((m,j)=>j===mi?{...m, key:i.id}:m)), "Select key", { selected:maps[mi]?.key, searchPlaceholder:"Search" }); };
+              const iSegs = [{t:"For"},{t:recordLabel(dScope, dnode.record)||"the record",em:true},{t:","},{t:dnode.integration||"an integration",em:!!dnode.integration,dim:!dnode.integration},{t:"is executed in"},{t:dnode.arg||"an app",em:!!dnode.arg,dim:!dnode.arg}];
+              return (
+                <div className="h-full w-full flex flex-col" style={{background:"var(--panel)"}}>
+                  <div className="px-4 h-16 shrink-0 flex items-center gap-2.5 border-b" style={{borderColor:"var(--border)"}}>
+                    <div className="min-w-0">
+                      <div className="text-[length:var(--fs-145)] font-semibold truncate" style={{color:"var(--text)"}}>Input mapping</div>
+                      <div className="text-[length:var(--fs-115)] truncate" style={{color:"var(--muted)"}}>Map each input key of the integration to a value</div>
+                    </div>
+                    <CloseBtn onClick={()=>setDrawer(null)} kbd="Esc" className="ml-auto" />
+                  </div>
+                  <div className="px-4 pt-3.5 pb-4 shrink-0 border-b" style={{borderColor:"var(--border)"}}>
+                    <div className="text-[length:var(--fs-10)] uppercase tracking-[0.13em] mb-1.5" style={{color:"var(--faint)"}}>Summary</div>
+                    <div className="rounded-lg px-3.5 py-3" style={{ background:"var(--panel2)" }}>
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[length:var(--fs-145)] leading-relaxed">
+                        {iSegs.map((s,i)=> <span key={i} style={{ color: s.em?"var(--text)":(s.dim?"var(--faint)":"var(--muted)"), fontWeight:s.em?600:400, ...(s.t===","?{marginLeft:"-0.5rem"}:{}) }}>{s.t}</span>)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-2.5">
+                    {maps.map((m,mi)=>{ const keyOpen = openSlot===`${dk}:map${mi}:key`;
+                      return (
+                      <div key={mi} className="flex items-center gap-2">
+                        <button type="button" data-anchor={`mapk:${dnode.id}:${mi}`} onClick={(e)=>pickKey(mi, e.currentTarget)}
+                          className="shrink-0 w-[136px] h-[38px] rounded-lg pl-3 pr-2.5 flex items-center gap-2 text-left text-[length:var(--fs-13)] transition-colors hover:bg-[var(--pop-hover)]"
+                          style={{ background:"var(--panel2)", border:"1px solid "+(keyOpen?"var(--accent2)":"var(--border2)"), color: m.key?"var(--text)":"var(--faint)" }}>
+                          <span className="flex-1 min-w-0 truncate">{m.key || "Select key"}</span>
+                          <svg className="shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </button>
+                        <svg className="shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        <div data-anchor={`mapv:${dnode.id}:${mi}`} title={typeof m.value==="string" && m.value ? phPretty(m.value) : undefined} className="flex-1 min-w-0 h-[38px] overflow-hidden rounded-lg px-3 flex items-center text-[length:var(--fs-13)]" style={{background:"var(--panel2)", border:"1px solid var(--border2)"}}><div className="w-full min-w-0">
+                          <MapValueInput value={typeof m.value==="string"?m.value:""} canPlaceholder={dScope.length>0}
+                            onCommit={(v)=> setMaps(ms=>ms.map((x,j)=>j===mi?{...x, value:v}:x))}
+                            onPlaceholder={(d)=>{ setMaps(ms=>ms.map((x,j)=>j===mi?{...x, value:d}:x));   // keep what was typed, then append each pick
+                              openPhPicker(`${dk}:map${mi}:val`, null, (label)=> setMaps(ms=>ms.map((x,j)=>j===mi?{...x, value:(x.value||"")+"{{"+label+"}}"}:x)), `mapv:${dnode.id}:${mi}`); }} /></div>
+                        </div>
+                        <DeleteBtn onClick={(e)=>{ e.stopPropagation(); setMaps(ms=>ms.filter((_,j)=>j!==mi)); }} title="Delete mapping" />
+                      </div>); })}
+                    <button type="button" onClick={()=>setMaps(ms=>[...ms, { key:null, value:"" }])} className="w-full rounded-xl border px-3 py-2.5 text-[length:var(--fs-13)] font-medium flex items-center justify-center gap-1.5 transition-colors hover:brightness-110" style={{border:"1px solid var(--accent2)", color:"var(--accent2)", background:"color-mix(in srgb, var(--accent) 8%, transparent)"}}>
+                      + Add mapping
+                    </button>
+                  </div>
+                  <div className="px-4 py-3.5 border-t shrink-0 flex" style={{borderColor:"var(--border)"}}>
+                    <button onClick={()=>{ update(dpath, {confirmed:true}); setDrawer(null); }} className="ml-auto px-4 py-2 rounded-lg text-[length:var(--fs-13)] font-semibold transition-colors hover:brightness-110" style={{background:"var(--accent)", color:"#fff"}}>Done</button>
                   </div>
                 </div>
               );
