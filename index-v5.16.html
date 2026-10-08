@@ -102,11 +102,6 @@
   .ph-chip .ph-x{ width:0; opacity:0; overflow:hidden; display:inline-flex; align-items:center; justify-content:center; border-radius:9999px; transition:width .12s ease, opacity .12s ease, margin .12s ease; margin-left:0; cursor:pointer; color:var(--faint); }
   .ph-chip:hover .ph-x{ width:13px; opacity:1; margin-left:3px; }
   .ph-chip .ph-x:hover{ color:var(--red); }
-  /* Execute app integration mapping VALUE (v8): ONE line — typed text + {#placeholder#} chips run horizontally; at rest
-     whatever overflows the field width is truncated with "…"; while editing it scrolls sideways instead of wrapping. */
-  .map-val [contenteditable="true"]{ white-space:nowrap !important; overflow:hidden; text-overflow:ellipsis; word-break:normal !important; overflow-wrap:normal !important; }
-  .map-val [contenteditable="true"]:focus{ text-overflow:clip; overflow-x:auto; scrollbar-width:none; }
-  .map-val [contenteditable="true"]:focus::-webkit-scrollbar{ display:none; }
   /* Notion-style ghost placeholder for the expression canvas — a ::before driven by data-empty, so it is
      NEVER a real text node (can't be selected, typed-over, or serialized). Toggled from syncFromDom. */
   .exprcanvas{ position:relative; }
@@ -597,23 +592,6 @@ const QA_TESTS = [
     doc:{ triggers:[{id:"t1",typeId:"created",vals:{module:"Incident"}}], flow:[{id:"n1", kind:"get", qty:"100", module:"Incident", sort:"asc", sortBy:"Created Time", clauses:[{field:null,op:"is",value:null}] }] } },
 ];
 
-// The linear builder no longer has an inline CHECK IF — convert any in the samples to an IF / Else whose IF path
-// holds the steps the inline check used to gate (ELSE starts empty).
-(function inlineToIfElse(){
-  const conv = (nodes) => { const out=[]; for (let j=0;j<(nodes||[]).length;j++){ const n = fix(nodes[j]);
-      if (n.kind==="condition") { out.push({ id:n.id, kind:"branch", ifelse:true,
-          paths:[{ id:n.id+"_if", combiner:n.combiner||"and", clauses:(n.clauses||[]).map((c,ci)=>{ const {or, ...r}=c; return ci>0 ? { ...r, conn: or ? "or" : (r.conn||"and") } : r; }), children:conv(nodes.slice(j+1)) },
-                 { id:n.id+"_else", isElse:true, combiner:"and", clauses:[], children:[] }],
-          otherwise:null }); return out; }
-      out.push(n); } return out; };
-  const fix = (n) => { const m = { ...n };
-    if (m.paths) m.paths = m.paths.map(p => ({ ...p, children:conv(p.children) }));
-    if (m.otherwise) m.otherwise = { ...m.otherwise, children:conv(m.otherwise.children) };
-    if (m.success) m.success = { ...m.success, children:conv(m.success.children) };
-    if (m.children) m.children = conv(m.children);
-    return m; };
-  Object.keys(USECASE_DOCS).forEach(k => { const d = USECASE_DOCS[k]; if (d && d.flow) d.flow = conv(d.flow); });
-})();
 const USECASE_META = {
   usecase_1: { name:"Use Case 1 — Route Incidents by Category",
     desc:"When an incident is created, the workflow must automatically read the Category field of the ticket and assign it to the appropriate technician group mapped to that category. For example, a network-related incident must go to the Network Support Group, a hardware issue must go to the Hardware Support Group, and an application issue must go to the Application Support Group." },
@@ -1102,38 +1080,8 @@ const MODULE_ACTIONS = {
   nonit_asset:    [{ id:"add_barcode", label:"add a Barcode" }],
   cmdb:           [{ id:"sync_rule", label:"execute Sync Rule" }, { id:"warranty_sync", label:"execute Warranty Sync" }],
   announcement:   [{ id:"create_announcement", label:"create an Announcement" }],
-  deployment:     [], // create_deployment is now a UNIVERSAL action (any workflow) — see actionCatalogFor (v8)
+  deployment:     [{ id:"create_deployment", label:"create a Deployment" }],
 };
-// Create deployment (v8) — the package catalog behind "+ Add packages". Grid columns: ID · name · version · architecture · package type · user type.
-// Sample catalog (32 packages) shown in the "Add packages" listing (paged, 10 per page). Compact rows →
-// [name, version, architecture, package type, user type]; ids run PKG-75 down so the newest sit on top.
-const DEPLOY_PACKAGES = [
-  ["Google Chrome","128.0.6613","64-bit","MSI","System"], ["Notepad++","8.6.9","64-bit","EXE","System"], ["7-Zip","24.08","64-bit","EXE","System"],
-  ["AnyDesk","8.1.0","64-bit","EXE","Logged-in user"], ["Mozilla Firefox","130.0","64-bit","EXE","System"], ["Microsoft Teams","24.215","64-bit","MSI/MSP","Logged-in user"],
-  ["Adobe Acrobat Reader","24.003","64-bit","EXE","System"], ["Zoom Workplace","6.2.0","64-bit","MSI/MSP","Logged-in user"], ["Visual Studio Code","1.93","64-bit","EXE","Logged-in user"],
-  ["X-Lite","5.8.3","32-bit","Script","System"], ["VLC Media Player","3.0.21","64-bit","EXE","System"], ["Slack","4.40","64-bit","MSI/MSP","Logged-in user"],
-  ["Java Runtime (JRE)","8u421","64-bit","EXE","System"], [".NET Framework 3.5","3.5 SP1","64-bit","Zip","System"], [".NET Desktop Runtime","8.0.8","64-bit","EXE","System"],
-  ["Python","3.12.6","64-bit","EXE","System"], ["Git for Windows","2.46.0","64-bit","EXE","System"], ["PuTTY","0.81","64-bit","MSI/MSP","System"],
-  ["WinSCP","6.3.5","32-bit","EXE","System"], ["FileZilla Client","3.67.1","64-bit","EXE","Logged-in user"], ["Microsoft Edge","129.0","64-bit","MSI/MSP","System"],
-  ["Office 365 Apps","2408","64-bit","Script","System"], ["Cisco AnyConnect","4.10.08","64-bit","MSI/MSP","System"], ["FortiClient VPN","7.4.0","64-bit","MSI/MSP","System"],
-  ["TeamViewer","15.57","64-bit","EXE","System"], ["Postman","11.12","64-bit","EXE","Logged-in user"], ["Node.js LTS","20.17.0","64-bit","MSI/MSP","System"],
-  ["Greenshot","1.2.10","32-bit","EXE","Logged-in user"], ["KeePass","2.57","32-bit","Zip","Logged-in user"], ["Paint.NET","5.0.13","64-bit","EXE","System"],
-  ["Remove legacy toolbar","1.0","64-bit","Script","System"], ["Endpoint agent update","9.4.2","64-bit","Zip","System"],
-].map(([name, version, arch, type, user], i) => ({ id:"PKG-"+(75-i), name, version, arch, type, user }));
-// Add relation (v8): the modules a record can be related to — picked from the sentence's {module} blank
-const REL_MODULES = ["Hardware Asset","Software Asset","Non-IT Asset","CMDB"];
-// Execute app integration (v8) — dummy integrations per app (the sentence's {integration} blank) and the input-mapping
-// KEYS offered by the "Select key" dropdown (the platform's key list; same for every integration for now).
-const APP_INTEGRATIONS = {
-  "Slack":           ["Send message","Create channel","Invite user to channel"],
-  "Microsoft Teams": ["Post message","Create team","Add member"],
-  "Jira":            ["Create issue","Update issue","Add comment","Transition issue"],
-  "Azure AD":        ["Create user","Disable user","Reset password","Add user to group"],
-  "Okta":            ["Create user","Suspend user","Assign application"],
-  "Zapier":          ["Trigger Zap"],
-};
-const INTEGRATION_KEYS = ["Action","Password","Base DN","UserType","mail","Username","userAccountControl"];
-const DEPLOY_PKG_COLS = [["id","Package ID"],["name","Name"],["version","Version"],["arch","Architecture"],["type","Package type"],["user","User type"]];
 // Targets for the "assign it to …" action — technicians + groups (the slot reads "user/group").
 const ASSIGN_TARGETS = ["Current technician","Requester","On-call technician","Service Desk","Hardware Team","Software Team","Network Ops","Field Support","Security","Database","Apps Team","Tier-2","Tier-3","Default Support Group","Finance IT Support Group","HR IT Support Group","Operations IT Support Group","Sales IT Support Group","Internal IT Support Group","General Support Group","A specific technician…","A specific group…"];
 // sample directory for the assign target picker ("a specific user/group" drill-downs)
@@ -1176,10 +1124,6 @@ const FIELD_GROUP = {
   status:"Priority & status", task_status:"Priority & status", priority:"Priority & status", urgency:"Priority & status", impact:"Priority & status", nature:"Priority & status", known_error:"Priority & status",
   requester:"People & assignment", assignee:"People & assignment", tech_group:"People & assignment", department:"People & assignment", change_implementer:"People & assignment", change_manager:"People & assignment", change_reviewer:"People & assignment", managed_by:"People & assignment", used_by:"People & assignment",
   due_by:"Schedule", start_date:"Schedule", end_date:"Schedule",
-  // Add task (v8) field ids
-  task_desc:"Details", task_type:"Details", task_attach:"Details", task_priority:"Priority & status",
-  task_tech_group:"People & assignment", task_assignee:"People & assignment",
-  task_start:"Schedule", task_end:"Schedule", task_est:"Schedule", task_notify:"Schedule",
   change_risk:"Change & release", change_type:"Change & release", change_reason:"Change & release", target_env:"Change & release", release_risk:"Change & release", release_type:"Change & release", release_reason:"Change & release", business_services:"Change & release",
 };
 const FIELD_GROUP_ORDER = ["Details","Priority & status","People & assignment","Schedule","Change & release","More"];
@@ -1265,30 +1209,6 @@ const ASSET_FIELDS = [RF.asset_name,RF.asset_tag,RF.product,RF.asset_state,RF.ve
 const USER_FIELDS = [RF.user_name,RF.user_email,RF.user_role,RF.department,RF.location,RF.tags];
 const TASK_FIELDS = [RF.subject,RF.description,RF.task_status,RF.priority,RF.assignee,RF.due_by,RF.attachment];
 const ANNOUNCEMENT_FIELDS = [RF.subject,RF.description,RF.start_date,RF.end_date,RF.attachment];
-// ADD TASK (v8) — the task's field rows (same field-row drawer as Update record). Task start date + Subject are the
-// two MANDATORY rows: always first, field locked, not removable (ensureTaskRows). The rest come from "+ Add field"
-// (the task form's own fields). Task-specific ids avoid the request fields' auto values (Priority Matrix / Smart
-// Suggestion) and the Assignee auto-assignment options, which don't apply to a task.
-const ADD_TASK_FIELDS = [
-  { id:"task_start",      label:"Task start date",  type:"taskdate", req:true },
-  { id:"subject",         label:"Subject",          type:"exprtext", req:true },
-  { id:"task_desc",       label:"Description",      type:"textarea" },
-  { id:"task_status",     label:"Status",           type:"enum", values:["Open","In Progress","Purchase","Done"] },
-  { id:"task_priority",   label:"Priority",         type:"enum", values:["P1","P2","P3","P4"] },
-  { id:"task_tech_group", label:"Technician group", type:"enum", values:SAMPLE_GROUPS },
-  { id:"task_type",       label:"Task type",        type:"enum", values:["Implementation","Investigation","Review","Approval"] },
-  { id:"task_assignee",   label:"Assignee",         type:"user" },
-  { id:"task_end",        label:"Task end date",    type:"datetime" },
-  { id:"task_est",        label:"Estimated time (hours)", type:"number" },
-  { id:"task_notify",     label:"Notify before (hours)",  type:"number" },
-  { id:"task_attach",     label:"Attachments",      type:"attach" },
-];
-const TASK_LOCKED_IDS = ["task_start","subject"];
-// keep the two mandatory rows first (adding them empty if missing) — every other row keeps its order after them
-const ensureTaskRows = (fs) => { const cur = fs||[]; const g = (id)=>cur.find(f=>f.field===id) || { field:id, value:null };
-  return [...TASK_LOCKED_IDS.map(id=>({ ...g(id), locked:true })), ...cur.filter(f=>!TASK_LOCKED_IDS.includes(f.field))]; };
-// the field catalog an action's field rows use: Add task → the task fields; Create/Update → the record's module
-const actionFieldsFor = (action, mod) => action==="add_task" ? ADD_TASK_FIELDS : recordFieldsFor(mod);
 // resolve the field catalog for a record type (by module name)
 function recordFieldsFor(mod){
   const m = (mod||"").toLowerCase();
@@ -1376,8 +1296,7 @@ function actionCatalogFor(mid) {
   const chans = channelsFor(mid);
   // "create a new {record}" — any record type is creatable, not just the trigger's module.
   // menuLabel = how it reads in the action picker; label = the in-sentence verb (slot fills the type).
-  // Deployment is excluded here — it has its own Create deployment action (source record + packages drawer, v8).
-  const recordOps = [{ id:"create", label:"create a new", menuLabel:"Create record", arg:MODULE_NAMES.filter(x=>x!=="Deployment"), argPlaceholder:"record", icon:I.plus, details:true }];
+  const recordOps = [{ id:"create", label:"create a new", menuLabel:"Create record", arg:MODULE_NAMES, argPlaceholder:"record", icon:I.plus, details:true }];
   const defs = [
     // Record operations (§4.1)
     ...recordOps,
@@ -1390,10 +1309,9 @@ function actionCatalogFor(mid) {
     { id:"assign", label:"assign it to", arg:ASSIGN_TARGETS, argPlaceholder:"user/group", icon:I.user },
     { id:"set_auto_assignment", label:"set auto assignment using", arg:["Round Robin","Smart Balance"], argPlaceholder:"method", icon:I.user },
     // Cross-module (§4.2)
-    { id:"execute_integration", label:"execute integration", arg:Object.keys(APP_INTEGRATIONS), argPlaceholder:"an app", icon:I.link }, // v8: "for {record}, {integration} is executed in {app}" + input mappings (drawer)
+    { id:"execute_integration", label:"execute integration", arg:["Slack","Microsoft Teams","Jira","Azure AD","Okta","Zapier"], argPlaceholder:"app", icon:I.link },
     { id:"add_relation", label:"add a relation", icon:I.link },
-    { id:"add_task",     label:"add a task", icon:I.task, details:true }, // v8: field-row drawer (locked start date + subject)
-    { id:"create_deployment", label:"create a Deployment", menuLabel:"Create deployment", icon:I.box },
+    { id:"add_task",     label:"add a task", icon:I.task },
     // Communication (§4.3) — one action per channel, recipient is a module-gated arg
     ...chans.map(ch => ({ id:`send_${ch.toLowerCase().replace(/\s+/g,"_")}`, label:`send ${ch} to`, arg:recs, icon:ch==="Email"?I.mail:I.bell })),
     { id:"send_approval_reminder", label:"send an approval-reminder email to", arg:recs, icon:I.mail },
@@ -1412,7 +1330,7 @@ function actionCatalogFor(mid) {
   const has = (...ids) => ids.filter(id=>byId[id]).map(id=>({ id, label:byId[id].menuLabel || byId[id].label, icon:byId[id].icon }));
   const menu = [
     { header:"Assignment" }, ...has("assign","set_auto_assignment"),
-    { header:"Record operations" }, ...has("create","create_deployment","update","archive","get","get_many"),
+    { header:"Record operations" }, ...has("create","update","archive","get","get_many"),
     { header:"Cross-module" }, ...has("execute_integration","add_relation","add_task"),
     { header:"Communication" }, ...has(...chans.map(ch=>`send_${ch.toLowerCase().replace(/\s+/g,"_")}`), "send_approval_reminder"),
     ...((MODULE_ACTIONS[mid]||[]).length ? [{ header:`${label}-specific` }, ...has(...(MODULE_ACTIONS[mid]||[]).map(a=>a.id))] : []),
@@ -1428,7 +1346,7 @@ function actionCatalogFor(mid) {
 // `section` groups the categories in the MAIN menu (super-headers). `sub` (on leaves) sub-categorizes a
 // group's sub-menu (e.g. Update → Manual / Automatic) — only set it where a split actually helps.
 const ACTION_GROUPS = [
-  { id:"create",  label:"Create",            section:"Record management", leaves:[ {a:"create", label:"Create record", kw:"create new add record"}, {a:"create_deployment", label:"Create deployment", kw:"deployment deploy package install uninstall rollout software"} ] },
+  { id:"create",  label:"Create",            section:"Record management", leaves:[ {a:"create", label:"Create record", kw:"create new add record"} ] },
   // `direct` (2026-07-03 fewer-steps): Update adds the manual field-update node INSTANTLY (drawer opens
   // right away); the Automatic variants (Priority Matrix / Smart Suggestion) stay findable via search.
   { id:"update",  label:"Update record",     section:"Record management", direct:{ a:"update", label:"Update record", kw:"update set edit modify change field status priority category subcategory assignee group impact urgency sla value" },
@@ -1467,7 +1385,21 @@ const NOTIF_CHANNELS = [
 // fields stored on node.data. Only actions that genuinely need extra data get one — create/update use
 // the multi field-row drawer instead (node.fields); simple actions stay sentence-only.
 const ACTION_FORMS = {
-  // add_task moved to the FIELD-ROW drawer in v8 (ADD_TASK_FIELDS: locked Task start date + Subject rows, then "+ Add field").
+  // field set mirrors the platform form; ADMIN-CONFIGURABLE — fields here are data, add/remove freely
+  // `sec` groups optional fields into collapsible sections; required (no sec) stay always visible
+  add_task:     { title:"Task details",        sub:"Define the task to add",
+    overview:(d)=>{ const segs=[{t:"Add a task"}]; if(d.subject){segs.push({t:"—"});segs.push({t:d.subject,em:true});} if(d.assignee){segs.push({t:"for"});segs.push({t:d.assignee,em:true});} return segs; },
+    fields:[
+    { k:"subject", label:"Subject", type:"text", ph:"Subject" },
+    { k:"status", label:"Status", type:"select", options:["Open","In Progress","Purchase","Done"], half:true },
+    { k:"priority", label:"Priority", type:"select", options:["P1","P2","P3","P4"], half:true },
+    { k:"tech_group", label:"Technician group", type:"select", options:SAMPLE_GROUPS, opt:true, half:true, sec:"Assignment" },
+    { k:"task_type", label:"Task type", type:"select", options:["Implementation","Investigation","Review","Approval"], opt:true, half:true, sec:"Assignment" },
+    { k:"assignee", label:"Assignee", type:"user", opt:true, sec:"Assignment" },
+    { k:"start", k2:"end", label:"Start & end date", type:"daterange", opt:true, sec:"Schedule" },
+    { k:"est", label:"Estimated time", type:"duration", opt:true, half:true, sec:"Schedule" },
+    { k:"notify", label:"Notify before", type:"duration", opt:true, half:true, sec:"Schedule" },
+    { k:"attach", label:"Attachments", type:"attach", opt:true, sec:"More details" } ] },
   // multi-STAGE approval (platform form): repeatable stage cards (add/remove), each = subject, decision type,
   // groups and approvers. (Title/description/source/name boilerplate removed — source is in the sentence.)
   ask_approval: { title:"Approval details",    sub:"Stages, approvers and decision rules",
@@ -1530,24 +1462,16 @@ const ACTION_FORMS = {
     { k:"groups",   label:"Groups",   type:"multi", options:SAMPLE_GROUPS, opt:true, showIf:(d)=>d.audience==="Specific groups" },
     { k:"start", k2:"end", label:"Active period", type:"daterange", opt:true, sec:"Schedule & visibility" },
     { k:"portal",   label:"Show on self-service portal", type:"segment", options:["Yes","No"], opt:true, sec:"Schedule & visibility" } ] },
-  // add_relation has NO drawer since v8 — it lives on the canvas: "add a relation from {record} to {module}" + Get-style "where …" conditions.
-  // Create deployment (v8) — the SOURCE record is picked in the sentence ("Which record?"), then this drawer:
-  // name (typeable + { } placeholder) → Install/Uninstall tabs → Packages grid (+ Add package) → Configuration settings.
-  create_deployment: { title:"Create deployment", sub:"Packages to install or uninstall, and how to roll them out",
-    overview:(d)=>{ const ct=(d.config_type||"Install"); const n=(d.packages||[]).length;
-      const s=[{t:"Create"}, d.name ? {t:phPretty(d.name),em:true} : {t:"a deployment",dim:true}, {t:"to"}, {t:ct.toLowerCase(),em:true}];
-      s.push(n ? {t:`${n} package${n===1?"":"s"}`,em:true} : {t:"packages",dim:true});
-      if (d.policy){ s.push({t:"using"}); s.push({t:d.policy,em:true}); }
-      if (d.retry) s.push({t:"· retry failed"});
-      return s; },
+  // Add relation — relate the SOURCE record (handled in the sentence's {record} slot) to records found in a
+  // MODULE that match a CONDITION. Module is a radio for now (asset family); more fields appear later.
+  add_relation: { title:"Relation",            sub:"Relate to records in a module that match a condition",
+    overview:(d)=>{ const segs=[{t:"Add"},{t:d.module||"a record",em:true},{t:"relation"}];
+      const cat=conditionFieldsFor(d.module); const cl=(d.condition||[]).filter(c=>c.field);
+      if(cl.length){ segs.push({t:"where"}); cl.forEach((c,i)=>{ if(i>0) segs.push({t:c.or?"or":"and",j:true}); const f=cat.find(x=>x.id===c.field); segs.push({t:f?f.label:"",em:true}); segs.push({t:c.op||"is"}); segs.push({t:c.value||"…",em:true}); }); }
+      return segs; },
     fields:[
-    { k:"name",        label:"Deployment name",  type:"phtext", ph:"e.g. Chrome rollout for the Finance team" },
-    { k:"config_type", label:"Configuration type", type:"tabs", options:["Install","Uninstall"], default:"Install" },
-    { k:"packages",    label:"Packages",         type:"packages" },
-    { k:"_cfg",        label:"Configuration settings", type:"heading", opt:true },
-    { k:"policy",      label:"Deployment policy", type:"select", plain:true, options:["Immediate deployment","Deploy after business hours","Weekend maintenance window","Staged rollout (25% → 100%)","User-approved deployment"] },
-    { k:"notify_to",   label:"Notify to",        type:"people", opt:true, ph:"choose people…" }, // v8: multi-select people (Specific) or a reference (Dynamic), no Expression
-    { k:"retry",       label:"Retry failed configuration", type:"switch", opt:true, sub:"Try again automatically on devices where it failed" } ] },
+    { k:"module",    label:"Module",            type:"radio", options:["Hardware Asset","Software Asset","Non-IT Asset","CMDB"] },
+    { k:"condition", label:"Condition",         type:"condition", opt:true, showIf:(d)=>!!d.module, fieldsFrom:(d)=>conditionFieldsFor(d.module) } ] },
 };
 // Notification forms — PER CHANNEL (the recipient is the sentence's {arg}; these specs are the content).
 // Email/approval-reminder = subject + rich body + Cc/predefined-Cc/Bcc/reply-to/attachments; SMS/WhatsApp/
@@ -1607,85 +1531,6 @@ const formSpecFor = (a) => {
   return null;
 };
 
-// ── REQUIRED-FIELD VALIDATION (v8) — ONE source of truth for "what's still missing" on a drawer-configured node.
-// Drives BOTH the drawer's per-field one-line errors and the canvas card's "N required fields missing" state.
-const isBlankVal = (v) => v==null || v==="" || (Array.isArray(v) && !v.length);
-// a form field is satisfied when it is optional, hidden (showIf), a non-input (heading / switch), or has a value
-const reqFieldOK = (fd, D) => {
-  if (fd.opt || fd.type==="heading" || fd.type==="switch") return true;
-  if (fd.showIf && !fd.showIf(D)) return true;
-  if (fd.type==="tabs") return true;                                   // always has a value (defaults to its first tab)
-  if (fd.type==="daterange") return !isBlankVal(D[fd.k]) && !isBlankVal(D[fd.k2]);
-  return !isBlankVal(D[fd.k]);
-};
-// how many required inputs are still empty. Form nodes: each required field (+ each stage's required fields, or 1
-// when no stage exists yet). Field-row nodes (create / update / add task): each row lacking a field or value (1 when
-// there are no rows). Execute app integration: each mapping row lacking a key or value (1 when there are none).
-const missingRequired = (node) => {
-  if (!node) return 0;
-  if (node.action==="execute_integration") { const m = node.mappings||[]; return m.length ? m.filter(x=>!x.key || isBlankVal(x.value)).length : 1; }
-  const spec = formSpecFor(node.action), d = node.data||{};
-  if (spec) {
-    let n = spec.fields.filter(fd=>!reqFieldOK(fd, d)).length;
-    if (spec.stages) { const st = d.stages||[]; n += st.length ? st.reduce((a,s)=>a+spec.stages.fields.filter(fd=>!reqFieldOK(fd, s)).length, 0) : 1; }
-    return n;
-  }
-  const rows = node.action==="add_task" ? ensureTaskRows(node.fields) : (node.fields||[]);
-  return rows.length ? rows.filter(r=>!r.field || isBlankVal(r.value)).length : 1;
-};
-// the one-line error shown under an empty required field in the drawer
-function FieldError({ children }) {
-  return (
-    <div className="flex items-center gap-1.5 text-[length:var(--fs-11)] leading-tight" style={{color:"var(--red)"}} role="alert">
-      <svg className="shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/><path d="M12 7.5v5.5M12 16.2v.3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
-      <span>{children}</span>
-    </div>
-  );
-}
-// v8 recipients popup: a DEDICATED "Email address" box + Add button at the top (user 2026-10-08 — typing a new
-// address into the old search field wasn't discoverable). Enter or Add adds; a paste of "a@x.com, b@y.com" adds
-// each valid one; invalid leftovers stay in the box with a one-line error. Add is disabled until the text looks
-// like an address. Keys are kept out of the popover's list nav (Enter would otherwise pick the highlighted role).
-const EMAIL_RX = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]{2,}$/;
-function EmailAddBox({ onAdd }) {
-  const [txt, setTxt] = React.useState("");
-  const [err, setErr] = React.useState(false);
-  const ref = React.useRef(null);
-  React.useEffect(()=>{ const id = requestAnimationFrame(()=>{ try { ref.current && ref.current.focus({preventScroll:true}); } catch(_){} }); return ()=>cancelAnimationFrame(id); }, []);
-  const parts = txt.split(/[\s,;]+/).filter(Boolean);
-  const canAdd = parts.some(p=>EMAIL_RX.test(p));
-  const submit = ()=>{
-    if (!parts.length) return;
-    const good = parts.filter(p=>EMAIL_RX.test(p)), bad = parts.filter(p=>!EMAIL_RX.test(p));
-    if (good.length) onAdd(good);
-    setTxt(bad.join(", ")); setErr(bad.length>0);
-    if (ref.current) ref.current.focus();
-  };
-  return (
-    <div className="px-3 pt-2.5">
-      <label htmlFor="rcp-email" className="block mb-1 text-[length:var(--fs-11)] font-medium" style={{color:"var(--muted)"}}>Email address</label>
-      <div className="flex items-center gap-1.5">
-        <input id="rcp-email" ref={ref} type="email" value={txt} placeholder="name@company.com" autoComplete="off"
-          aria-invalid={err || undefined}
-          onChange={e=>{ setTxt(e.target.value); if (err) setErr(false); }}
-          onKeyDown={e=>{
-            if (e.key==="Enter"){ e.preventDefault(); e.stopPropagation(); if (canAdd) submit(); else if (parts.length) setErr(true); return; }
-            if (e.key==="Escape" && txt){ e.preventDefault(); e.stopPropagation(); setTxt(""); setErr(false); return; }
-            if (e.key!=="Escape") e.stopPropagation(); // arrows/Tab belong to the text box, not the popover's list nav
-          }}
-          className="flex-1 min-w-0 h-8 px-2.5 rounded-md outline-none text-[length:var(--fs-12)] transition-colors"
-          style={{background:"var(--bg)", color:"var(--text)", border:`1px solid ${err ? "var(--red)" : "var(--border2)"}`}}
-          onFocus={e=>{ if (!err) e.currentTarget.style.borderColor="var(--accent)"; }}
-          onBlur={e=>{ if (!err) e.currentTarget.style.borderColor="var(--border2)"; }} />
-        <button type="button" disabled={!canAdd} onMouseDown={e=>e.preventDefault()} onClick={submit}
-          className="shrink-0 h-8 px-3 rounded-md text-[length:var(--fs-12)] font-semibold transition-colors"
-          style={canAdd ? {background:"var(--accent)", color:"#fff"} : {background:"var(--border)", color:"var(--faint)", cursor:"not-allowed"}}>Add</button>
-      </div>
-      {err && <div className="mt-1.5"><FieldError>Enter a valid email address</FieldError></div>}
-    </div>
-  );
-}
-
 // right chevron marking an item that opens a FURTHER choice (a sub-panel), so it doesn't read as a direct add.
 const SUB_CHEV = (<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>);
 const ADD_MENU = [
@@ -1714,8 +1559,8 @@ const LOOP_SOURCES = [
 // automatically from adjacent conditions; an explicit group lives only inside branching add-steps)
 const COND_KIND_MENU = [
   { header:"Condition type" },
-  { id:"ifelse", label:"IF / Else", tone:"if", keywords:"condition if else check true false", sub:"One check, two paths: IF runs when it's true, ELSE when it isn't" },
-  { id:"branch", label:"Branching", keywords:"condition branch paths or if", tone:"if", sub:"Branch into separate paths, each with its own check",
+  { id:"inline", label:"Inline condition", tone:"if", sub:"Continue only when a check passes" },
+  { id:"branch", label:"Branching",          tone:"if", sub:"Branch into separate paths, each with its own check",
     rightHint:"Creates separate paths", rightIcon:(
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><rect x="3" y="16" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><rect x="15" y="16" width="6" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.7"/><path d="M12 8v3.5M6 16v-2.5h12V16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
     ) },
@@ -1749,13 +1594,8 @@ const NODE_HELP = {
   },
   condition: {
     title:"Condition", color:"var(--c-if)", bg:"var(--c-if-bg)", graphic:G.condition,
-    body:"Add a check: pick a field, how to compare it, and a value. The steps on this path only run when it's true.",
+    body:"Add a check. The steps below only run when it's true — so you can treat some cases differently.",
     eg:"Like — only when it's urgent, or from a VIP.",
-  },
-  ifelse: {
-    title:"IF / Else", color:"var(--c-if)", bg:"var(--c-if-bg)", graphic:G.condition,
-    body:"One check with two paths. The IF path runs when the condition is true; the ELSE path runs when it isn't. Combine checks with AND / OR groups.",
-    eg:"Like — IF priority is High, page the on-call team; ELSE assign to the Service Desk.",
   },
   action: {
     title:"Action", color:"var(--c-then)", bg:"var(--c-then-bg)", graphic:G.action,
@@ -1818,7 +1658,6 @@ const ACTION_HELP = {
   close_related_problems:AH("Close related Problems","Close every Problem linked to this record.",I.flag),
   add_task:AH("Add a task","Attach a task with its own assignee and schedule.",I.task),
   add_relation:AH("Add a relation","Relate this record to assets/CIs that match a condition.",I.link),
-  create_deployment:AH("Create deployment","Install or uninstall software packages for a record, with a rollout policy.",I.box),
   add_barcode:AH("Add a barcode","Generate and attach a barcode to the asset.",I.field),
   send_notification:AH("Send notification","Adds the step right away — then pick the channel (Email, SMS, WhatsApp, Teams, Google Chat) on the sentence.",I.bell),
   send_email:AH("Send Email","Email with subject, body, Cc and attachments.",I.mail),
@@ -2066,10 +1905,10 @@ const NODE_DOCS = [
     how:"A condition checks a field against a value, like priority is Urgent. Based on the answer, it decides what happens next. You can also combine a few checks with AND or OR. It can be used in two ways.",
     tabs:[
       {
-        key:"inline", label:"IF / Else", graphic:"cond_inline",
-        title:"IF / Else",
-        how:"One node with one condition and two paths. The IF path runs when the condition is true, the ELSE path runs when it is false. The condition can hold several checks joined with AND / OR, grouped. After either path finishes, the workflow carries on below the node.",
-        examples:["IF priority is Urgent, page the on-call team. ELSE assign to the Service Desk.","IF cost is above 500, ask for approval. ELSE approve it automatically."],
+        key:"inline", label:"Inline", graphic:"cond_inline",
+        title:"Inline condition",
+        how:"A single check on the main path. The steps right below it run only when the check is true. If it is false, they are skipped and the workflow carries on. The flow stays one straight line.",
+        examples:["Only page the on-call team when the priority is Urgent.","Add an approval step only when the cost is above 500."],
       },
       {
         key:"branching", label:"Branching", graphic:"cond_branch",
@@ -2390,13 +2229,8 @@ const hasAction = (nodes) => (nodes||[]).some(n=>n.kind==="action");
 // and which has NO Otherwise — as opposed to a CONDITION branch (gate lanes / an Otherwise). Split paths and
 // condition branches share kind:"branch"; this tells them apart so condition-adjacency logic (addConditionAt)
 // doesn't silently merge a new condition INTO a split path (user 2026-07-17).
-// IF / ELSE node (replaces the old inline CHECK IF): modelled as a branch with exactly TWO paths — paths[0] = IF (its
-// condition, AND/OR groups) and paths[1] = ELSE (isElse; no clauses = runs whenever IF is false, clauses = "else if"). It reuses every branch/lane helper but
-// is NEVER extended with Or-if lanes and never absorbs an adjacent condition — that is what Branching is for.
-const isIfElse = (n) => !!(n && n.kind==="branch" && n.ifelse);
 const isSplitBranch = (n) => !!(n && n.kind==="branch" && !n.otherwise && (n.paths||[]).length>0 && (n.paths||[]).every(p => !(p.clauses && p.clauses.length)));
 // recursive — actions live in branch paths / otherwise too (branches have no .children, they have .paths/.otherwise)
-const isCondBranch = (n) => !!(n && n.kind==="branch" && !n.ifelse && !isSplitBranch(n)); // a real multi-path condition BRANCH (not split, not IF/Else)
 const branchKids = (n) => (n.kind==="branch"||n.kind==="merge") ? [...(n.paths||[]).flatMap(p=>p.children||[]), ...((n.success&&n.success.children)||[]), ...((n.otherwise&&n.otherwise.children)||[])] : (n.children||[]);
 const anyAction = (nodes) => (nodes||[]).some(n => n.kind==="action" || anyAction(branchKids(n)));
 // GET PRESETS (user 2026-07-08): some record types must be filtered by a REQUIRED, LOCKED first condition
@@ -3195,23 +3029,6 @@ function AttachedCondition({ value, onChange, open, fields }) {
 /* ---------------------------------------------------------------------------
    Popover — list / grouped-menu / native time/date input
 --------------------------------------------------------------------------- */
-// Execute app integration (v8) — an input-mapping VALUE typed INLINE on the canvas. Canvas rows (Station, defined
-// inside App) remount on every App render, so this keeps a LOCAL draft while typing (no App update per keystroke)
-// and commits on blur — the same pattern as the branch-rename input. onFocus is stopped so the row's focus handler
-// doesn't re-render (and remount) mid-click. The { } button hands the current draft to onPlaceholder, which commits
-// it and appends the picked placeholder to the stored value (the editor itself remounts when the picker opens).
-function MapValueInput({ value, onCommit, canPlaceholder, onPlaceholder }){
-  const [draft, setDraft] = React.useState(value || "");
-  const draftRef = React.useRef(draft); draftRef.current = draft;
-  const wrap = React.useRef(null);
-  return (
-    <div ref={wrap} className="map-val w-full min-w-0" onFocus={(e)=>e.stopPropagation()}
-      onBlur={(e)=>{ if (wrap.current && e.relatedTarget && wrap.current.contains(e.relatedTarget)) return;
-        if ((draftRef.current||"") !== (value||"")) onCommit(draftRef.current); }}>
-      <RichBody single value={draft} onChange={setDraft} placeholder="Value" canPlaceholder={canPlaceholder}
-        onRequestPlaceholder={()=> onPlaceholder(draftRef.current)} />
-    </div>);
-}
 // Footer toggle row for the auto-assignment "Distribute among" picker (2026-07-04). Availability is a
 // small MODIFIER riding along in the pool picker's footer (HubSpot "available users only" / Motadata
 // "logged-in technicians" pattern) — never a co-equal menu option. Local display state on purpose: the
@@ -3235,7 +3052,7 @@ function OnlineOnlyToggle({ initial, onFlip }){
 // module-level cursor tracker — so a popover knows the pointer position the instant it opens, even on a fresh mount.
 let __lastMouse = null;
 if (typeof document !== "undefined" && document.addEventListener) document.addEventListener("mousemove", (e)=>{ __lastMouse = { x:e.clientX, y:e.clientY }; }, true);
-function Popover({ anchor, anchorKey, items, flat, onPick, onActive, onClose, onSoftCancel, title, inputType, noSearch, footer, wide, matchWidth, back, help, solidIcons, selected, onHelp, onViewMore, hideHelp, noHover, itemsAsNodes, initActive, choices, smart, duration, moduleMorph, searchPlaceholder, clearOnPick, settleHover, offsetX, source, onQueryEnter, topSlot, listHeader }) {
+function Popover({ anchor, anchorKey, items, flat, onPick, onActive, onClose, onSoftCancel, title, inputType, noSearch, footer, wide, matchWidth, back, help, solidIcons, selected, onHelp, onViewMore, hideHelp, noHover, itemsAsNodes, initActive, choices, smart, duration, moduleMorph, searchPlaceholder, clearOnPick, settleHover, offsetX, source }) {
   const ref = useRef(null);
   // report Quick-Help to the parent so it renders in the CONTEXT RAIL (not a floating card). Two layers:
   // `base` = the node/menu help (e.g. "Trigger"); `item` = the specific hovered/active option (e.g. "Record
@@ -3336,9 +3153,6 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onActive, onClose, on
       const qq = q.toLowerCase().trim(); const bb = morphKb ? morphKb.rows : ((qq && flat) ? flat : items);
       const list = (morphKb ? bb : (noSearch ? bb : bb.filter(i => popMatch(i, qq))))
         .filter(i => !i.header && !i.disabled && !i.divider && !i.chips);
-      // free-typed value (v8, email recipients): Enter with typed text that matches nothing — or looks like an address —
-      // hands the text to onQueryEnter (adds it) and clears the search; the popover stays open for the next one.
-      if (e.key==="Enter" && onQueryEnter && q.trim() && (!list.length || q.includes("@"))) { e.preventDefault(); e.stopPropagation(); onQueryEnter(q.trim()); setQ(""); setActive(0); return; }
       if (!list.length) return;
       e.preventDefault(); e.stopPropagation(); // keep Enter/Arrows inside the popover — don't let them reach the canvas (which would open "what happens next")
       if (e.key === "Enter") { const ai = Math.min(active, list.length-1); const it = list[ai]; if (it) { if(!onPick(it, ai)) onClose(); else if(clearOnPick){ setQ(""); setActive(0); } } return; }
@@ -3511,12 +3325,11 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onActive, onClose, on
   const smartTabNow = (smart && smart.tab) || "specific";
   // heading is DYNAMIC per tab (user 2026-07-05, image #35): "Dynamic value" on the reference/formula tab,
   // else the picker's own title (e.g. "Wait for…") or the generic "Specific value". Never the bare record name.
-  const smartHeading = smartTabNow==="ref" ? ((smart && smart.refTitle) || "Dynamic value") : ((smart && smart.title) || "Specific value");
+  const smartHeading = smartTabNow==="ref" ? "Dynamic value" : ((smart && smart.title) || "Specific value");
   // FULL-WIDTH segmented tabs with TEXT labels [ Specific | Dynamic ] (each half). Replaces the compact icon toggle.
-  // smart.refOnly → a Dynamic-only popover (no Specific value exists, e.g. the loop's attribute) → no tabs at all.
-  const smartTabs = (smart && !smart.refOnly) ? (
+  const smartTabs = smart ? (
     <div className="flex items-stretch w-full p-0.5 rounded-lg gap-0.5" style={{background:"var(--bg)", border:"1px solid var(--border2)"}}>
-      {[["specific",(smart.tabLabels||[])[0]||"Specific"],["ref",(smart.tabLabels||[])[1]||"Dynamic"]].map(([id,label])=>{ const on = smartTabNow===id;
+      {[["specific","Specific"],["ref","Dynamic"]].map(([id,label])=>{ const on = smartTabNow===id;
         return <button key={id} onClick={()=>{ if(smartTabNow===id) return; id==="ref" ? (smart.onReference && smart.onReference()) : (smart.onSpecific && smart.onSpecific()); }}
           className="flex-1 rounded-md flex items-center justify-center transition-colors text-[length:var(--fs-12)] font-medium py-1.5"
           style={{ ...(on ? {background:"var(--pop-bg)", color:"var(--text)", fontWeight:600, boxShadow:"var(--shadow-sm)"} : {color:"var(--muted)", background:"transparent"}) }}>
@@ -3778,21 +3591,14 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onActive, onClose, on
     {smartSource}
     {sourceCard}
     {smartCrumb}
-    {topSlot}
-    {!noSearch && !listHeader &&
+    {!noSearch &&
       <div className="px-2.5 pt-1 pb-2">
         <SearchBox inputRef={searchRef} autoFocus value={q} placeholder={searchPlaceholder} onChange={e=>{setQ(e.target.value); setActive(0);}} onKeyDown={e=>{ if(e.key==="Backspace" && q==="" && back){ e.preventDefault(); back(); } }} />
       </div>}
-    {/* v8 `listHeader` (email recipients): a plain section header over the list, no search (user 2026-10-08) —
-        the popup keeps ONE input, the email box in `topSlot`. */}
-    {listHeader && (
-      <div className="mx-3 mt-2 flex items-center h-7">
-        <span className="flex-1 min-w-0 truncate text-[length:var(--fs-11)] font-medium" style={{color:"var(--faint)"}}>{listHeader}</span>
-      </div>)}
     {/* dynamic module search (trigger picker) renders SECTION-WISE: moduleMorphFor emits an "Event Trigger ›
         <Module>" header + its 3 event rows per matched module, so multiple modules just add more sections. */}
     <div className="max-h-72 overflow-y-auto overscroll-contain py-1 px-1.5">{/* compact cap everywhere (user 2026-07-03: the 440px node-menu was too tall — "scroll is not that big of a problem"; the partially clipped bottom row doubles as the scroll cue) */}
-      {filtered.length===0 && !(topSlot && !items.length) && <div className="px-3 py-2 text-[length:var(--fs-12)]" style={{color:"var(--faint)"}}>No matches</div>}
+      {filtered.length===0 && <div className="px-3 py-2 text-[length:var(--fs-12)]" style={{color:"var(--faint)"}}>No matches</div>}
       {filtered.map((i,k)=>{
         // horizontal CHIP row (Popular shortcuts): small neutral pills, one compact line — costs ~36px
         // instead of a rows section. Not keyboard-selectable; clicking a chip picks like a normal item.
@@ -4826,7 +4632,6 @@ function App() {
   // is a condition too, so its "from {source}" chip re-scopes the fields (user 2026-07-22). Anything else → trigger.
   const flowCat = (node, path) => {
     if (node && node.kind==="get") return conditionFieldsFor(node.module);
-    if (node && node.kind==="action" && node.action==="add_relation") return conditionFieldsFor(node.relModule); // v8: "where" filters the related module
     if (node && (node.kind==="condition" || node.kind==="branch" || (node.kind==="delay" && node.mode==="event") || (node.kind==="loop" && node.mode==="until"))) {
       const rec = condSubjectRec(path, node);
       return conditionFieldsFor(rec ? rec.module : (node.recMod || triggerModName()));
@@ -4907,9 +4712,7 @@ function App() {
   const [toastHidden, setToastHidden] = useState(false); // user dismissed the bottom intro toast
   const [published, setPublished] = useState(false);
   const [savePanel, setSavePanel] = useState(null); // right-side save/publish drawer: null | "save" | "publish"
-  // the live root (index.html) is a COPY of a numbered build — builds.js maps it (BUILD_ALIASES) so the dropdown names it right
-  const currentBuildRaw = decodeURIComponent((location.pathname.split("/").pop()) || "index.html") || "index.html";
-  const currentBuild = ((typeof window!=="undefined" && window.BUILD_ALIASES) || {})[currentBuildRaw] || currentBuildRaw;
+  const currentBuild = decodeURIComponent((location.pathname.split("/").pop()) || "index.html") || "index.html";
   const idRef = useRef(1);
   const nid = () => idRef.current++;
   const rowRefs = useRef({});
@@ -5115,8 +4918,8 @@ function App() {
         { when:(d,os)=> tourMenuOpen() && (String(os||"").endsWith(":field") || (tourMenuHas("category") && tourMenuHas("priority"))), menu:true, label:"category",
           title:"Pick the field", instr:<>Pick <b style={{color:"var(--c-if)"}}>category</b>.</> },
         // 2) condition-type submenu (Inline / Branching) — detect by the "Inline condition" row.
-        { when:(d,os)=> tourMenuOpen() && tourMenuHas("IF / Else"), menu:true, label:"IF / Else",
-          title:"Condition type", instr:<>Choose <b style={{color:"var(--c-if)"}}>IF / Else</b>.</> },
+        { when:(d,os)=> tourMenuOpen() && tourMenuHas("Inline condition"), menu:true, label:"Inline condition",
+          title:"Condition type", instr:<>Choose <b style={{color:"var(--c-if)"}}>Inline condition</b>.</> },
         // 1) add-step menu (has "Add condition").
         { when:(d,os)=> tourMenuOpen() && tourMenuHas("Add condition"), menu:true, label:"Add condition",
           title:"Add a condition", instr:<>Choose <b style={{color:"var(--c-if)"}}>Add condition</b>.</> },
@@ -5472,8 +5275,8 @@ function App() {
       const nodeNow = nodeAt(flowRef.current, condPath) || node;
       const back = (nodeNow && (nodeNow.kind==="condition" || nodeNow.kind==="delay" || nodeNow.kind==="get"))
         ? backToChangeMenu(condPath, `cond:${cid}:${ci}`, fallbackEl) : undefined;
-      open(fallbackEl, flowMenu(nodeNow || node, condPath),   // v8: the FRESH node (flowRef) — the closure's `node` can predate a just-picked module
-      (i)=>{ const t = flowFD(nodeNow || node,i.id,condPath)?.type || "enum"; updateClause(condPath, ci, {field:i.id,op:defaultOp(t),value:null});
+      open(fallbackEl, flowMenu(node, condPath),
+      (i)=>{ const t = flowFD(node,i.id,condPath)?.type || "enum"; updateClause(condPath, ci, {field:i.id,op:defaultOp(t),value:null});
              requestAnimationFrame(()=>openClauseOpByKey(condPath, cid, ci, i.id, t)); },
       "Which field", {wide:true, help:NODE_HELP.condition, anchorKey:`cond:${cid}:${ci}`, ...(back?{back}:{})});
     });
@@ -5531,32 +5334,6 @@ function App() {
     const newPath = [...path, idx];
     setFlow(withReplaceRemoved(g => treeInsertAt(g, path, idx, node)));
     openCondFieldPicker(newPath, node.id, 0, fallbackEl);
-  };
-  // IF / ELSE — insert the node (empty IF condition + empty ELSE path) and open the IF path's field picker, which
-  // chains field → comparison → value exactly like a branch path (keyboard: ↑↓ + Enter all the way through).
-  const makeIfElse = (ids={}) => ({ id:ids.node||nid(), kind:"branch", ifelse:true,
-    paths:[{ id:ids.lane||nid(), combiner:"and", clauses:[{ field:null, op:"is", value:null }], children:[] },
-           { id:ids.ow||nid(), isElse:true, combiner:"and", clauses:[], children:[] }],
-    otherwise:null });
-  // ELSE "+ add condition": give the ELSE path its first clause and open the field picker (field → comparison → value).
-  const addElseCondition = (branchPath, anchor) => {
-    setFlow(f => treeUpdate(f, branchPath, (()=>{ const n=nodeAt(f,branchPath);
-      return { paths:n.paths.map((p,k)=> k===1 ? { ...p, clauses:[{ field:null, op:"is", value:null }] } : p) }; })()));
-    requestAnimationFrame(()=>{ const n=nodeAt(flowRef.current, branchPath); if (n && n.paths && n.paths[1]) openLaneFirst(branchPath, 1, n.paths[1], "condition", n, anchor); });
-  };
-  const addIfElseAndPick = (path, fallbackEl, index) => {
-    const node = makeIfElse();
-    const idx = index===undefined ? childrenAt(flowRef.current, path).length : index;
-    const branchPath = [...path, idx];
-    setFlow(withReplaceRemoved(g => treeInsertAt(g, path, idx, node)));
-    openLaneFirst(branchPath, 0, node.paths[0], "condition", node, fallbackEl);
-  };
-  const removeIfElse = (path) => {
-    const n = nodeAt(flowRef.current, path) || {};
-    const c = (n.paths||[]).reduce((a,p)=>a+((p.children||[]).length), 0);
-    const go = () => setFlow(f => mergeAdjacentConditions(treeRemove(f, path)));
-    if (c>0) setConfirmDlg({ title:"Remove this IF / Else?", body:`The ${c} step${c===1?"":"s"} inside its IF and ELSE paths will be removed too.`, confirmLabel:"Remove IF / Else", onConfirm:go });
-    else go();
   };
   // (Removed: the explicit "Condition group" add-step option — groups now form automatically from adjacent
   // conditions via the adjacency-DNF model, so a separate "add an OR-group" action is no longer offered.)
@@ -5637,7 +5414,7 @@ function App() {
   //    rendering + tree helpers. There is no nesting (no split inside a split) and no split from a mid-flow node.
   // a fresh default node for a chosen kind (matches makeLane's node shapes) — the split-lane first-node + preview.
   const nodeForKind = (id, kind) => (
-    kind==="condition" ? makeIfElse({ node:id, lane:id+"_if", ow:id+"_else" }) :
+    kind==="condition" ? { id, kind:"condition", clauses:[{ field:null, op:"is", value:null }], combiner:"and" } :
     kind==="get"       ? { id, kind:"get", module:null, qty:null, sort:null, sortBy:null, clauses:[{ field:null, op:"is", value:null }] } :
     kind==="delay"     ? { id, kind:"delay", mode:null, amount:null, unit:"hours", hours:"calendar", bizHours:null, date:null, time:null } :
     kind==="loop"      ? { id, kind:"loop", mode:"forEach", itemLabel:"item", sourceLabel:null, children:[] } :
@@ -5715,8 +5492,8 @@ function App() {
     const below = idx>0 ? sibs[idx-1] : null; // node just ABOVE the insert point → "add step below the branch" case
     // merge into an adjacent CONDITION branch only — a SPLIT PATH is also kind:"branch" but must NOT absorb a
     // new condition (it's not a condition branch), so we fall through to the Inline/Branching chooser instead.
-    if (isCondBranch(above)) { addPathAtAndPick([...path, idx], 0, anchor); return true; }      // above a condition branch → prepend Check-if
-    if (isCondBranch(below)) { addPathAtAndPick([...path, idx-1], null, anchor); return true; } // below a condition branch → append Or-if
+    if (above && above.kind==="branch" && !isSplitBranch(above)) { addPathAtAndPick([...path, idx], 0, anchor); return true; }      // above a condition branch → prepend Check-if
+    if (below && below.kind==="branch" && !isSplitBranch(below)) { addPathAtAndPick([...path, idx-1], null, anchor); return true; } // below a condition branch → append Or-if
     return false;
   };
   // Is the add-step insert point sitting RIGHT AFTER an existing CONDITION BRANCH → a new condition should EXTEND
@@ -5728,7 +5505,7 @@ function App() {
     const sibs = childrenAt(flowRef.current, path);
     const idx = index===undefined ? sibs.length : index;
     const below = idx>0 ? sibs[idx-1] : null;   // node just ABOVE the insert point (i.e. the insert sits AFTER it)
-    if (isCondBranch(below)) return [...path, idx-1];
+    if (below && below.kind==="branch" && !isSplitBranch(below)) return [...path, idx-1];
     return null;
   };
   // the FIRST-STEP chooser (swap-in-place, with back) — shown when adding a branch or a parallel path.
@@ -6246,13 +6023,6 @@ function App() {
         <path d="M9 18V22.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
       </svg>
     );
-    const gxIfElse = (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-        <path d="M12 1.5V4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-        <rect x="7.5" y="3.5" width="9" height="9" rx="1.9" transform="rotate(45 12 8)" fill="currentColor"/>
-        <path d="M12 12.5V15.5M12 15.5H6.5V22M12 15.5H17.5V22" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    );
     const gxBranch = (
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
         <path d="M12 1.5V4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
@@ -6262,16 +6032,16 @@ function App() {
     );
     // per-type help — eyebrow "CONDITION ›" + the type, so you feel you've stepped into Condition
     const COND_HELP = {
-      ifelse: { eyebrow:"Condition", title:"IF / Else", color:"var(--c-if)", bg:"var(--c-if-bg)", graphic:gxIfElse,
-        body:"One check with two paths: IF runs when it's true, ELSE when it isn't. Add AND / OR conditions and groups to the IF." },
+      inline: { eyebrow:"Condition", title:"Inline", color:"var(--c-if)", bg:"var(--c-if-bg)", graphic:gxInline,
+        body:"A single check that gates the steps after it — they run only when it passes. Adjacent conditions stack into an AND/OR group." },
       branch: { eyebrow:"Condition", title:"Branching", color:"var(--c-if)", bg:"var(--c-if-bg)", graphic:gxBranch,
         body:"Branches the flow into separate paths, each with its own condition and steps, plus an Otherwise path when none match." },
     };
     return {
       anchor, back, title:"Add condition", wide:true,
-      items: COND_KIND_MENU.map(it=> it.id ? {...it, help:COND_HELP[it.id], icon: it.id==="ifelse"?gxIfElse:gxBranch} : it),
+      items: COND_KIND_MENU.map(it=> it.id ? {...it, help:COND_HELP[it.id], icon: it.id==="inline"?gxInline:gxBranch} : it),
       help: NODE_HELP.condition, // base = the Condition node; the type (Inline/Branching) shows as "This option"
-      onPick:(i)=>{ if (i.id==="ifelse") addIfElseAndPick(path, anchor, index); else addConditionBranch(path, anchor, index); },
+      onPick:(i)=>{ if (i.id==="inline") addConditionAndPick(path, anchor, index); else addConditionBranch(path, anchor, index); },
     };
   };
   // (delayKindMenuConfig REMOVED 2026-07-03 — "Add wait" now adds the node DIRECTLY and pickWaitKind
@@ -6304,7 +6074,7 @@ function App() {
       ...(avail.has("execute_integration") ? ["Slack","Microsoft Teams","Jira","Azure AD","Okta","Zapier"].map(app=>({ id:"opt:app:"+app, label:app, crumb:"Action › Execute app integration", keywords:"integration app execute", _leaf:{ a:"execute_integration", _arg:app } })) : []),
       // per-module create rows match the MODULE name (matchOnly + free CREATE_VERBS) — so "create"/"cre" shows
       // just the generic "Create record", while "incident" / "create task" / "new problem" surface the module row.
-      ...(avail.has("create") ? MODULE_NAMES.filter(m=>m!=="Deployment").map(m=>({ id:"opt:create:"+m, label:"Create a "+m, crumb:"Action › Create record", matchOnly:moduleSearchStr(m), matchVerbs:CREATE_VERBS, _leaf:{ a:"create", _arg:m } })) : []),
+      ...(avail.has("create") ? MODULE_NAMES.map(m=>({ id:"opt:create:"+m, label:"Create a "+m, crumb:"Action › Create record", matchOnly:moduleSearchStr(m), matchVerbs:CREATE_VERBS, _leaf:{ a:"create", _arg:m } })) : []),
       ]),
     ];
   };
@@ -6608,9 +6378,9 @@ function App() {
           if (i.id==="condition") { // keep the CHECK IF preview while choosing Inline vs Branching — hover swaps inline↔branch
             const kc = condKindMenuConfig(targetPath, el, back, index);
             setPop({ ...kc, settleHover:true, offsetX: PREVIEW_MENU_OFFSET, // slide aside so the Inline/Branching preview stays visible
-              onActive:(ci)=>{ if (ci && ci.id!=="ifelse") previewCondBranch(); else previewKind("condition"); }, // Branching (id "branch") → dimmed branch; Inline → single CHECK IF
+              onActive:(ci)=>{ if (ci && ci.id!=="inline") previewCondBranch(); else previewKind("condition"); }, // Branching (id "branch") → dimmed branch; Inline → single CHECK IF
               onPick:(ci)=>{
-                if (ci.id==="ifelse") { commitDrop(); addIfElseAndPick(targetPath, el, index); return; }
+                if (ci.id==="inline") { commitDrop(); addConditionAndPick(targetPath, el, index); return; }
                 // Branching: commit on the CLEAN flow (via setTimeout, like Split path) so it matches the preview —
                 // absorb an adjacent existing condition (→ Or-if), else a fresh branch. Decided from realKids, NOT the
                 // stale preview flow (which is now the absorb shape).
@@ -6663,8 +6433,8 @@ function App() {
           kitems.push({ header:"Branching" });
           kitems.push({ id:"orif",   label:"Or if",   tone:"if", sub:"add another condition path", help:it.help });
           kitems.push({ id:"orelse", label:"Or else", tone:"if", sub: hasOtherwise ? "already added" : "runs when nothing above matched", disabled: hasOtherwise });
-        } else if (it.id==="ifelse") {
-          kitems.push({ ...it, disabled:true, hint:"You’re next to a branch — add another branch path instead of an IF / Else" });
+        } else if (it.id==="inline") {
+          kitems.push({ ...it, disabled:true, hint:"You’re next to a branch — add another branch path instead of an inline check" });
         } else kitems.push(it);
       });
       setPop({ ...kc, items:kitems, flat:undefined, onPick:(ci)=>{
@@ -6699,7 +6469,7 @@ function App() {
     // Appending right after an existing condition branch → gate the menu (Condition/Split only) so a new condition
     // EXTENDS that branch as the next lane, instead of a preview ghost + a second branch. (user 2026-07-21)
     const lastKid = realKids.length ? realKids[realKids.length-1] : null;
-    if (isCondBranch(lastKid)) {
+    if (lastKid && lastKid.kind==="branch" && !isSplitBranch(lastKid)) {
       openBranchAdjacentAddMenu(targetPath, [...targetPath, realKids.length-1], anchor, opts, undefined); return;
     }
     const ghostId = nid();
@@ -6723,7 +6493,6 @@ function App() {
     const seg0 = path[path.length-1];
     if (seg0 && typeof seg0==="object" && seg0.path!==undefined) {
       const bnode0 = nodeAt(flowRef.current, path.slice(0,-1));
-      if (isIfElse(bnode0)) { openAddMenuWithPreview(path, anchor, { noBranching:true, setBranchMenu:true }); return; }
       const lane0 = bnode0 && bnode0.paths && bnode0.paths[seg0.path];
       const gated0 = !!(lane0 && lane0.clauses && lane0.clauses.length);
       if (!gated0) { openAddMenuWithPreview(path, anchor, { noBranching:true, setBranchMenu:true }); return; }
@@ -6904,7 +6673,7 @@ function App() {
     // chosen source and (when >1 record is in scope) is CLICKABLE to switch sources; Specific/Expression from `chrome`.
     const sm = (rec, steps) => ({ tab:"ref", crumb: crumb(rec, steps),
       source: rec.label.replace(/^the\s+/i,""), onSource: scope.length>1 ? recStep : null,
-      onSpecific: chrome && chrome.onSpecific, onExpression: chrome && chrome.onExpression, exprDisabled: chrome && chrome.exprDisabled, refOnly: chrome && chrome.refOnly, tabLabels: chrome && chrome.tabLabels, refTitle: chrome && chrome.refTitle });
+      onSpecific: chrome && chrome.onSpecific, onExpression: chrome && chrome.onExpression, exprDisabled: chrome && chrome.exprDisabled });
     // ONE drill level. `fields` = rows shown, `steps` = the path picked so far, `goBack` = the level above.
     // Object fields (enum/user/multi) drill deeper (chevron + sub-field count tag); leaf fields commit the path.
     const drillStep = (rec, fields, steps, goBack) => { setOpenSlot(slotKey);
@@ -6919,7 +6688,7 @@ function App() {
     const recStep = () => { setOpenSlot(slotKey);
       open(el, scope.map(r=>({id:r.id, label:r.label.replace(/^the\s+/i,""), sub:recSub(r)})),
         (i)=>{ const rec=scope.find(x=>x.id===i.id); drillStep(rec, recordFieldsFor(rec.module)||[], [], undefined); return true; },
-        "Reference which record", {...anc, noSearch:true, smart: { tab:"ref", crumb:"", onSpecific: chrome && chrome.onSpecific, onExpression: chrome && chrome.onExpression, exprDisabled: chrome && chrome.exprDisabled, refOnly: chrome && chrome.refOnly, tabLabels: chrome && chrome.tabLabels, refTitle: chrome && chrome.refTitle }, ...opts}); };
+        "Reference which record", {...anc, noSearch:true, smart: { tab:"ref", crumb:"", onSpecific: chrome && chrome.onSpecific, onExpression: chrome && chrome.onExpression, exprDisabled: chrome && chrome.exprDisabled }, ...opts}); };
     // Auto-pick the FIRST in-scope source and go straight to its fields; the "From" header lets you switch source.
     drillStep(scope[0], recordFieldsFor(scope[0].module)||[], [], undefined);
   };
@@ -6927,7 +6696,7 @@ function App() {
   //    popover over the real Motadata catalog (PLACEHOLDER_CATALOG). Pick a field → onPick(label) inserts
   //    the chip at the caret. DISTINCT from the record→field drill (openSmartRef) that conditions /
   //    references / non-send forms keep using (user-confirmed scope 2026-07-02).
-  const openPhPicker = (slotKey, el, onPick, anchorKey) => { // anchorKey (v8): anchor by data-anchor when `el` may be remounted
+  const openPhPicker = (slotKey, el, onPick) => {
     setOpenSlot(slotKey);
     const items = PLACEHOLDER_CATALOG.flatMap(([g, fs]) => [{header:g}, ...fs.map(f=>({id:g+"::"+f, label:f}))]);
     // MULTI-INSERT: each pick inserts a fresh chip and RETURNS TRUTHY so the popover STAYS OPEN (user 2026-07-15:
@@ -6940,7 +6709,7 @@ function App() {
           className="shrink-0 rounded-md px-2.5 py-1 text-[length:var(--fs-12)] font-semibold transition-colors hover:brightness-110"
           style={{ background:"var(--accent)", color:"#fff" }}>Done</button>
       </div>);
-    open(el, items, (i)=>{ onPick(i.label, true); return true; }, "Insert placeholder", {wide:true, clearOnPick:true, footer:doneFooter, ...(anchorKey ? {anchorKey} : {})});
+    open(el, items, (i)=>{ onPick(i.label, true); return true; }, "Insert placeholder", {wide:true, clearOnPick:true, footer:doneFooter});
   };
   // EXPRESSION → opens the right-rail Expression Builder (not an inline input). exprEdit holds the
   // commit + the record scope; exprStr is the working expression STRING. Done commits {expr:<string>}.
@@ -7082,17 +6851,6 @@ function App() {
     const set = (i)=> commit(i.id);
     const sel = (typeof curVal==="string") ? curVal : undefined;
     const t = fd.type;
-    // PEOPLE (v8, Create deployment "Notify to"): Specific = a WIDE multi-select of people (pick several, Done);
-    // Dynamic = the reference drill. NO Expression — neither the card nor the drill's footer offers it.
-    if (t==="people") {
-      const noExpr = { onSpecific: reopen };
-      const sm = recordsInScope(dpath).length
-        ? { tab:"specific", slotKey, onSpecific: reopen, onReference: ()=> openSmartRef(dpath, slotKey, el, null, (ref)=>commit({ref}), noExpr, { matchWidth:true }) }
-        : null;
-      const cur = Array.isArray(curVal) ? curVal : (typeof curVal==="string" && curVal ? [curVal] : []);
-      return open(el, [], (i)=>{ const arr = Array.isArray(i.id) ? i.id : (i.id==null ? [] : [i.id]); commit(arr.length ? arr : null); }, fd.label,
-        { matchWidth:true, wide:true, ...(sm ? {smart:sm} : {}), inputType:"multi", choices:SAMPLE_USERS.map(u=>u.name), selected:cur });
-    }
     if (t==="user") {
       const users = SAMPLE_USERS.map(u=>({id:u.name, label:u.name, sub:u.email, avatar:initials(u.name)}));
       if (fd.id!=="assignee") return open(el, users, set, fd.label, {...o, selected:sel, wide:true});
@@ -7142,20 +6900,6 @@ function App() {
       return open(el, items2, set, fd.label, {...o, selected:sel});
     }
     if (t==="number")   return open(el, [], set, fd.label, {...o, inputType:"number"});
-    // Add task start date (v8): the Specific tab lists the presets + Custom (date & time picker); Dynamic and
-    // Expression come from the shared smart chrome (`o`) like every other field value.
-    if (t==="taskdate") {
-      const isCustom = typeof curVal==="string" && /^\d{4}-\d{2}-\d{2}T/.test(curVal);
-      const items = [
-        { id:"Current Date",      label:"Current Date",      sub:"the day the workflow runs" },
-        { id:"Current Date Time", label:"Current Date Time", sub:"the moment the workflow runs" },
-        { id:"__custom",          label:"Custom",            sub: isCustom ? valueDisplay(curVal, true) : "pick a date and time", rightIcon:TGT_CHEV },
-      ];
-      return open(el, items, (i)=>{
-        if (i.id==="__custom") { open(el, [], set, "Custom date & time", {...o, inputType:"datetime-local", back: reopen}); return true; } // true = keep the popover (now the picker) open
-        set(i);
-      }, fd.label, {...o, noSearch:true, selected: isCustom ? "__custom" : sel});
-    }
     if (t==="date")     return open(el, [], set, fd.label, {...o, inputType:"date"});
     if (t==="datetime") return open(el, [], set, fd.label, {...o, inputType:"datetime-local"});
     return open(el, [], set, fd.label, {...o, inputType:"text"}); // text / textarea
@@ -7336,7 +7080,7 @@ function App() {
     if (paths.length===1 && !n.otherwise) {
       const only = paths[0];
       const gated = !!(only.clauses && only.clauses.length), hasSteps = !!(only.children && only.children.length);
-      if (!gated) {
+      if (!(gated && hasSteps)) {
         const lead = gated ? [{ id:nid(), kind:"condition", clauses:only.clauses, combiner:only.combiner }] : [];
         return treeSetLevel(f, parent, [...siblings.slice(0,idx), ...lead, ...(only.children||[]), ...siblings.slice(idx+1)]);
       }
@@ -7380,7 +7124,7 @@ function App() {
     if (seg.path===undefined) return nodes; // only paths, not the otherwise lane
     const branchPath = removedPath.slice(0, si);
     const bnode = nodeAt(nodes, branchPath);
-    if (!bnode || bnode.kind!=="branch" || bnode.ifelse) return nodes;
+    if (!bnode || bnode.kind!=="branch") return nodes;
     const pi = seg.path; const lane = (bnode.paths||[])[pi];
     if (!lane) return nodes;
     const empty = !(lane.clauses && lane.clauses.length) && !(lane.children && lane.children.length);
@@ -7391,7 +7135,7 @@ function App() {
     if (paths.length===1 && !bnode.otherwise) { // collapse a BARE condition → CHECK IF, clauses-less → its steps; but a condition lane WITH steps stays a branch (user 2026-07-20)
       const only = paths[0];
       const gated = !!(only.clauses && only.clauses.length), hasSteps = !!(only.children && only.children.length);
-      if (!gated) {
+      if (!(gated && hasSteps)) {
         const lead = gated ? [{ id:nid(), kind:"condition", clauses:only.clauses, combiner:only.combiner }] : [];
         return treeSetLevel(nodes, parent, [...siblings.slice(0,idx), ...lead, ...(only.children||[]), ...siblings.slice(idx+1)]);
       }
@@ -7410,7 +7154,7 @@ function App() {
     if ((n.paths||[]).length===1) { // collapse a BARE condition → inline (clauses-less → its steps); a condition lane WITH steps stays a branch (user 2026-07-20)
       const only = n.paths[0];
       const gated = !!(only.clauses && only.clauses.length), hasSteps = !!(only.children && only.children.length);
-      if (!gated) {
+      if (!(gated && hasSteps)) {
         const lead = gated ? [{ id:nid(), kind:"condition", clauses:only.clauses, combiner:only.combiner }] : [];
         return treeSetLevel(f, parent, [...siblings.slice(0,idx), ...lead, ...(only.children||[]), ...siblings.slice(idx+1)]);
       }
@@ -7620,14 +7364,13 @@ function App() {
     const argNodeId = (nodeAt(flowRef.current, path) || nodeAt(flow, path))?.id;
     const backArg = argNodeId ? backToActionMenu(path, argNodeId) : undefined; // arg pickers back → the Action menu (→ back → Change this step)
     if (actionId==="assign") { setPop(assignTargetConfig(path, el, anchorKey, backArg)); return; }
-    if (actionId==="execute_integration") { pickIntegApp(path, el, anchorKey); return; } // v8: app comes AFTER the integration
     // once the arg is set, AUTO-OPEN the form the FIRST time (if this action has a form & isn't set up yet).
     // Read the node from flowRef (LIVE) — the node was created after this picker's closure was captured.
     const commitArg = (val)=>{
         const node = nodeAt(flowRef.current, path); const patch = { arg:val };
         // auto-assignment: first method pick on a pool-less node → default the pool and chain the pool picker
         if (node && actionId==="set_auto_assignment" && !node.pool){ patch.pool = "all"; requestAnimationFrame(()=>openPoolPicker(path, null, `apool:${node.id}`)); }
-        if (node && ((a && a.details) || formSpecFor(node.action) || node.action==="add_relation") && !node.formAutoOpened && !node.confirmed){ patch.formAutoOpened = true; requestAnimationFrame(()=>openFormFlow(path, node.id, node.action)); }
+        if (node && ((a && a.details) || formSpecFor(node.action)) && !node.formAutoOpened && !node.confirmed){ patch.formAutoOpened = true; requestAnimationFrame(()=>openFormFlow(path, node.id, node.action)); }
         update(path, patch);
       };
     // SEND channels (email/sms/…): NO recipient dropdown step — go STRAIGHT to the drawer (user
@@ -7640,7 +7383,7 @@ function App() {
       requestAnimationFrame(()=>openFormFlow(path, node.id, actionId));
       return;
     }
-    open(el, a.arg.map(v=>({id:v,label:v})), (i)=>commitArg(i.id), actionId==="execute_integration" ? "Which app?" : a.label, {...(anchorKey?{anchorKey}:{}), selected:(nodeAt(flowRef.current,path)||nodeAt(flow,path))?.arg, ...(backArg?{back:backArg}:{})}); // flowRef: fresh nodes' ✓ (deferred chains)
+    open(el, a.arg.map(v=>({id:v,label:v})), (i)=>commitArg(i.id), a.label, {...(anchorKey?{anchorKey}:{}), selected:(nodeAt(flowRef.current,path)||nodeAt(flow,path))?.arg, ...(backArg?{back:backArg}:{})}); // flowRef: fresh nodes' ✓ (deferred chains)
   };
   const openArgByKey = (path, actionId, key) => openArg(path, actionId, null, key);
   // "Update it how?" — the on-canvas method picker for the direct-added Update node (2026-07-03, mirrors
@@ -7752,9 +7495,8 @@ function App() {
     // Update record → opens the fields drawer DIRECTLY (no "how?" step; auto methods are field values now — user 2026-07-04). Falls through to the form logic below.
     if (leaf.a === "set_auto_assignment" && leaf._arg) { requestAnimationFrame(()=>openPoolPicker(path, null, `apool:${nodeId}`)); return; } // method preset (level-3 search) → the pool picks on the canvas
     const adef = actionCatAll.byId[leaf.a];
-    if (leaf.a==="execute_integration") { requestAnimationFrame(()=>startIntegrationFlow(path, nodeId)); return; } // v8: record → integration → app
     if (adef && adef.arg && !leaf._arg) requestAnimationFrame(()=>openArgByKey(path, leaf.a, `aarg:${nodeId}`));
-    else if ((adef && adef.details) || formSpecFor(leaf.a) || leaf.a==="add_relation") requestAnimationFrame(()=>openFormFlow(path, nodeId, leaf.a)); // no arg + form → source pick (if record-acting) then form
+    else if ((adef && adef.details) || formSpecFor(leaf.a)) requestAnimationFrame(()=>openFormFlow(path, nodeId, leaf.a)); // no arg + form → source pick (if record-acting) then form
   };
   const leafAvail = (lf, avail) => avail ? avail.has(lf.a) : !!actionCatAll.byId[lf.a]; // available given the modules in scope
   // tooltip text for an unavailable item: which modules it IS available for
@@ -7824,9 +7566,8 @@ function App() {
     // Update record → opens the fields drawer DIRECTLY (no "how?" step — auto methods are field values now, user 2026-07-04). Falls through to the form logic below.
     if (leaf.a === "set_auto_assignment" && leaf._arg) { requestAnimationFrame(()=>openPoolPicker(newPath, null, `apool:${node.id}`)); return; } // method preset (level-3 search) → the pool picks on the canvas
     const adef = actionCatAll.byId[leaf.a];
-    if (leaf.a==="execute_integration") { requestAnimationFrame(()=>startIntegrationFlow(newPath, node.id)); return; } // v8: record → integration → app
     if (adef && adef.arg && !leaf._arg) requestAnimationFrame(()=>openArgByKey(newPath, leaf.a, `aarg:${node.id}`));
-    else if ((adef && adef.details) || formSpecFor(leaf.a) || leaf.a==="add_relation") requestAnimationFrame(()=>openFormFlow(newPath, node.id, leaf.a)); // no arg + form → source pick (if record-acting) then form
+    else if ((adef && adef.details) || formSpecFor(leaf.a)) requestAnimationFrame(()=>openFormFlow(newPath, node.id, leaf.a)); // no arg + form → source pick (if record-acting) then form
   };
   const openAddActionMenu = (parentPath, anchor, back, index) => {
     setOpenSlot(null);
@@ -7884,9 +7625,6 @@ function App() {
       return ""; // unknown object shape — never render a raw object
     }
     if (typeof val==="string") { // a typed literal, possibly a textarea rich string ({{ref}} tokens / <b> tags)
-      // a picked date-time (datetime-local "2026-10-12T10:30") → "12 Oct 2026, 10:30" — never word-clamped (v8)
-      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(val)) { const dt = new Date(val);
-        if (!isNaN(dt)) return dt.toLocaleString("en-GB", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" }); }
       const full = /\{\{|<\/?[biu]>/.test(val) ? phPretty(val) : val; // → readable, not raw markup (user 2026-07-24)
       return expand ? full : clampWords(full, 3); // COMPACT text-based value → first 3 words + "…" (user 2026-07-24)
     }
@@ -7924,15 +7662,7 @@ function App() {
     if (id==="update" && node.assignUI) return showRec ? { verb:"assign", tpl:" {record} to {assignval}" } : { verb:"assign", tpl:" it to {assignval}" };
     if (id==="update")  return { verb:"update", tpl:" {record}" };
     if (id==="close")   return { verb:"close",  tpl:" {record}" };
-    if (id==="add_relation") return { verb:"add", tpl:" a relation from {record} to {relmod}" }; // v8: module is a sentence blank (no drawer)
-    if (id==="add_task") return { verb:"add", tpl:" a task to {record}" };
-    // v8: passive, so the blanks read left → right in FILL order (record → integration → app); {verb} = the action slot
-    if (id==="execute_integration") return { verb:"executed", tpl:"for {record}{comma}{integ} is {verb} in {arg}" };
-    // Create deployment (v8): the SOURCE record is a conscious pick (like add_relation) and the sentence reads
-    // the drawer's config back — "create a Deployment to install 3 packages for the Incident".
-    if (id==="create_deployment") { const d = node.data || {}; const n = (d.packages||[]).length;
-      const verb2 = (d.config_type||"Install").toLowerCase();
-      return { verb:"create", tpl:` a Deployment to ${verb2} ${n ? n+" package"+(n===1?"":"s") : "packages"} for {record}` }; }
+    if (id==="add_relation") return { verb:"add", tpl:" a relation from {record}" };
     if (id==="priority_matrix")    return showRec ? { verb:"update", tpl:" {record} priority as per Priority Matrix" } : { verb:"set", tpl:" the priority as per Priority Matrix" };
     if (id==="smart_suggestion")   return showRec ? { verb:"update", tpl:" {record} field by Smart Suggestion" }   : { verb:"set", tpl:" the suggested field by Smart Suggestion" };
     if (id==="set_auto_assignment")return showRec ? { verb:"set",    tpl:" auto assignment on {record} using {arg} among {pool}" } : { verb:"set", tpl:" auto assignment using {arg} among {pool}" };
@@ -7965,26 +7695,15 @@ function App() {
     const avEl = <Slot tone="action" value={typeof avVal==="string" ? avVal : valueDisplay(avVal, openSlot===`aval:${node.id}`)} smartKind={smartKindOf(avVal)} placeholder="user/group" open={openSlot===`aval:${node.id}`} dataAnchor={`aval:${node.id}`}
       onClick={(e)=>openAssignValueEditor(path, node, e.currentTarget)}   // click the value → ITS own dropdown (‹ back → the 5-option menu); never the Update-style mixed list
       onClear={smartKindOf(avVal)?()=>{ const n=nodeAt(flowRef.current,path); update(path,{fields:(n.fields||[]).map((x,ix)=>ix===0?{...x,value:null}:x)}); }:undefined} />;
-    // relmod slot (add_relation, v8): the module the record is related to — click opens the module popup
-    const relEl = <Slot tone="action" value={node.relModule} placeholder="a module" open={openSlot===`${k}:relmod`} dataAnchor={`rmod:${node.id}`} onClick={(e)=>pickRelModule(path, e.currentTarget)} />;
-    // integ slot (execute_integration, v8): which integration of the chosen app — click opens that app's list
-    const integEl = <Slot tone="action" value={node.integration} placeholder="an integration" open={openSlot===`${k}:integ`} dataAnchor={`integ:${node.id}`} onClick={(e)=>pickIntegration(path, e.currentTarget)} />;
-    const parts = sent.tpl.split(/(\{record\}|\{arg\}|\{channel\}|\{pool\}|\{assignval\}|\{relmod\}|\{integ\}|\{verb\}|\{comma\})/).filter(p=>p!=="");
-    // the action (verb) slot LEADS the sentence, unless the template places it with {verb} (passive wording)
-    const verbEl = <Slot tone="action" value={sent.verb} open={openSlot===`${k}:action`} dataAnchor={`act:${node.id}`} innerRef={(el)=>{ if(el) actionSlotRefs.current[node.id]=el; }} onClick={(e)=>pickAction(path,e)} />;
-    const verbInline = sent.tpl.includes("{verb}");
+    const parts = sent.tpl.split(/(\{record\}|\{arg\}|\{channel\}|\{pool\}|\{assignval\})/).filter(p=>p!=="");
     return (
       <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
-        {!verbInline && verbEl}
+        <Slot tone="action" value={sent.verb} open={openSlot===`${k}:action`} dataAnchor={`act:${node.id}`} innerRef={(el)=>{ if(el) actionSlotRefs.current[node.id]=el; }} onClick={(e)=>pickAction(path,e)} />
         {parts.map((p,pi)=> p==="{record}" ? <React.Fragment key={pi}>{recEl}</React.Fragment>
-          : p==="{verb}" ? <React.Fragment key={pi}>{verbEl}</React.Fragment>
-          : p==="{comma}" ? <span key={pi} style={{ marginLeft:"-0.375rem", color:"var(--ink-mid)" }}>,</span>
           : p==="{arg}" ? <React.Fragment key={pi}>{argEl}</React.Fragment>
           : p==="{channel}" ? <React.Fragment key={pi}>{chanEl}</React.Fragment>
           : p==="{pool}" ? <React.Fragment key={pi}>{poolEl}</React.Fragment>
           : p==="{assignval}" ? <React.Fragment key={pi}>{avEl}</React.Fragment>
-          : p==="{relmod}" ? <React.Fragment key={pi}>{relEl}</React.Fragment>
-          : p==="{integ}" ? <React.Fragment key={pi}>{integEl}</React.Fragment>
           : <Word key={pi}>{p.trim()}</Word>)}
       </span>
     );
@@ -7993,107 +7712,24 @@ function App() {
   // After an action is added/configured, route into its FORM. Record-acting actions (update/send/etc.) first show
   // a SOURCE picker — which record it acts on — ALWAYS, even with one source, so the choice is conscious; then the
   // form opens. Non-record forms (create / http / plugin) open the form directly.
-  // Add relation (v8) — the {module} blank's popup. The condition is MANDATORY: picking a module seeds ONE empty
-  // "where a field" condition and opens its field picker. Changing the module resets the conditions to that single
-  // empty one (their fields belong to the old module's catalog). el = the slot, or null → anchored by key.
-  const pickRelModule = (path, el) => {
-    const n0 = nodeAt(flowRef.current, path) || {};
-    setOpenSlot(`${pathKey(path)}:relmod`);
-    open(el, REL_MODULES.map(m=>({ id:m, label:m })), (i)=>{
-      const cur = nodeAt(flowRef.current, path) || {};
-      const reset = !(cur.clauses||[]).length || (cur.relModule && cur.relModule!==i.id);
-      update(path, { relModule:i.id, ...(reset ? { clauses:[{ field:null, op:"is", value:null }], cardMode:undefined } : {}) });
-      // open the field picker only once the new module is committed — else it lists the previous (trigger's) fields
-      if (reset) { let tries = 0; const go = ()=>{ const n = nodeAt(flowRef.current, path);
-        if (n && n.relModule===i.id) openCondFieldPicker(path, cur.id, 0, null); else if (++tries < 20) setTimeout(go, 25); }; setTimeout(go, 0); }
-    }, "Relate to which module", { noSearch:true, selected:n0.relModule, ...(el ? {} : { anchorKey:`rmod:${n0.id}` }) });
-  };
-  // Execute app integration (v8) — the sentence reads left → right in fill order:
-  //   "for {record}, {integration} is executed in {app}"
-  // The {integration} blank lists EVERY integration (sub = the apps offering it); the {app} blank then lists only
-  // the apps that offer the picked integration — ONE app → prefilled, no popup. Once both are set the INPUT MAPPING
-  // opens in the right-side drawer. A DIFFERENT integration resets the mappings (they belong to the old one).
-  const appsForIntegration = (integ) => Object.keys(APP_INTEGRATIONS).filter(a=>(APP_INTEGRATIONS[a]||[]).includes(integ));
-  const openIntegDrawer = (path) => requestAnimationFrame(()=>{ const n=nodeAt(flowRef.current, path); if (n && n.integration && n.arg) setDrawer(n.id); });
-  const pickIntegration = (path, el) => {
-    const n0 = nodeAt(flowRef.current, path) || {};
-    // a search preset ("Slack" typed in the action search) chose the app first → offer only that app's integrations
-    const preset = n0.arg && !n0.integration ? n0.arg : null;
-    const names = preset ? (APP_INTEGRATIONS[preset]||[]) : [...new Set(Object.values(APP_INTEGRATIONS).flat())];
-    setOpenSlot(`${pathKey(path)}:integ`);
-    open(el, names.map(x=>({ id:x, label:x, sub: appsForIntegration(x).join(", ") })), (i)=>{
-      const cur = nodeAt(flowRef.current, path) || {};
-      const apps = appsForIntegration(i.id);
-      const changed = cur.integration!==i.id;
-      const arg = cur.arg && apps.includes(cur.arg) ? cur.arg : (apps.length===1 ? apps[0] : null);
-      update(path, { integration:i.id, arg, ...(changed ? { mappings:[{ key:null, value:"" }], confirmed:false } : {}) });
-      if (!arg) requestAnimationFrame(()=>pickIntegApp(path, null));
-      else if (changed || !cur.confirmed) openIntegDrawer(path);
-    }, "Which integration?", { selected:n0.integration, ...(el ? {} : { anchorKey:`integ:${n0.id}` }) });
-  };
-  // the {app} blank — only the apps offering the chosen integration (no integration yet → pick that first)
-  const pickIntegApp = (path, el, anchorKey) => {
-    const n0 = nodeAt(flowRef.current, path) || {};
-    if (!n0.integration) { pickIntegration(path, el); return; }
-    setOpenSlot(`${pathKey(path)}:arg`);
-    open(el, appsForIntegration(n0.integration).map(a=>({ id:a, label:a })), (i)=>{
-      const cur = nodeAt(flowRef.current, path) || {};
-      update(path, { arg:i.id });
-      if (!cur.confirmed) openIntegDrawer(path);
-    }, "Which app?", { noSearch:true, selected:n0.arg, ...(el ? {} : { anchorKey: anchorKey || `aarg:${n0.id}` }) });
-  };
-  // The SOURCE-record step of an add flow ("Which record?"), shared by every record-acting action. With ONLY ONE
-  // record in scope there is nothing to choose → it is PREFILLED (no popup) and the flow moves straight on; the
-  // sentence's record slot still shows it. `extra()` = more fields to set alongside the record.
-  const pickSourceRecord = (path, nodeId, then, extra) => {
-    const scope = recordsInScope(path);
-    const commit = (recId) => { update(path, { record:recId, ...(extra ? extra() : {}) }); then(); };
-    if (!scope.length) { if (extra) update(path, extra()); then(); return; }
-    if (scope.length===1) { commit(scope[0].id); return; }
-    setOpenSlot(`${pathKey(path)}:record`);
-    open(null, scope.map(r=>({id:r.id, label:r.label})), (i)=>commit(i.id),
-      "Which record?", { anchorKey:`act:${nodeId}`, noSearch:true, selected: nodeAt(flow,path)?.record, back: backToActionMenu(path, nodeId) });
-  };
-  // the add flow (v8, left → right as the sentence reads): "Which record?" → integration → app (→ input-mapping drawer)
-  const startIntegrationFlow = (path, nodeId) =>
-    pickSourceRecord(path, nodeId, () => requestAnimationFrame(()=>pickIntegration(path, null)));
   const openFormFlow = (path, nodeId, actionId) => {
     const def = actionCatAll.byId[actionId]; const spec = formSpecFor(actionId);
-    // Add relation (v8): no drawer — "Which record?" then the {module} popup, both on the canvas sentence.
-    // Conditions are optional and added from the row's "+ add condition" (Get-style "where …").
-    if (actionId==="add_relation") {
-      pickSourceRecord(path, nodeId, () => requestAnimationFrame(()=>pickRelModule(path, null)));
-      return;
-    }
     if (!((def && def.details) || spec)) return;                       // no form → nothing to open
     // SEND channels + UPDATE skip the "Which record?" step (2026-07-03 fewer-steps flow): the record
     // defaults to the latest in scope and stays editable as the sentence's record slot — the drawer opens
     // directly. (Other record-acting forms, e.g. add_relation, keep the conscious source pick.)
     if (String(actionId||"").startsWith("send_") || actionId==="update") { setDrawer(nodeId); return; }
     const scope = recordsInScope(path);
-    // Add task (v8): seed the two mandatory rows (Task start date + Subject) the moment the drawer opens
-    const seed = () => actionId==="add_task" ? { fields: ensureTaskRows((nodeAt(flowRef.current, path)||{}).fields) } : {};
     if (recordActionSentence({action:actionId}, def, true) && scope.length) {
-      pickSourceRecord(path, nodeId, () => requestAnimationFrame(()=>setDrawer(nodeId)), seed);
+      setOpenSlot(`${pathKey(path)}:record`);
+      open(null, scope.map(r=>({id:r.id, label:r.label})),
+        (i)=>{ update(path, { record:i.id }); requestAnimationFrame(()=>setDrawer(nodeId)); },
+        "Which record?", { anchorKey:`act:${nodeId}`, noSearch:true, selected: nodeAt(flow,path)?.record, back: backToActionMenu(path, nodeId) });
     } else {
-      if (actionId==="add_task") update(path, seed());
       setDrawer(nodeId);
     }
   };
 
-  // Create deployment (v8): the "Add packages" listing REPLACES the drawer body (‹ back to the form). {sel:[ids], q, page} or null.
-  const [pkgPick, setPkgPick] = useState(null);
-  useEffect(()=>{ setPkgPick(null); }, [drawer]); // switching / closing the drawer always lands back on the form
-  // REQUIRED-FIELD ERRORS (v8): when a node's drawer CLOSES (×, Esc, clicking its card, switching to another node)
-  // with required fields still empty, flag it `showErrs` → its canvas card turns into the error state and, when
-  // reopened, the drawer shows each field's one-line error. Hopping to the Expression rail is NOT a close (it returns).
-  const prevDrawerRef = useRef(null);
-  useEffect(()=>{
-    const prev = prevDrawerRef.current; prevDrawerRef.current = drawer;
-    if (!prev || prev===drawer || exprEdit) return;
-    const p = treeFindPath(flowRef.current, prev); const n = p && nodeAt(flowRef.current, p);
-    if (n && !n.showErrs && missingRequired(n) > 0) update(p, { showErrs:true });
-  }, [drawer]);
   const isComplete = hasTrigger && hasAction(flow);
   /* context-rail summary helpers */
   const fillTrigger = (t) => triggerView(t).tpl.replace(/\{(\w+)\}/g, (_,k)=> (t.vals && t.vals[k]) ? t.vals[k] : "…");
@@ -8120,13 +7756,10 @@ function App() {
       } else if (n.kind==="condition") {
         out.push({ type:"cond", depth, text: condText(n, full) });
       } else if (n.kind==="branch") {
-        if (n.ifelse) { (n.paths||[]).forEach((p,pi)=>{ const g = (p.clauses||[]).some(c=>c.field||c.mode==="expr");
-            out.push({ type:"cond", depth, text: pi===0 ? condText(p, full) : (g ? "else if "+condText(p, full) : "else") });
-            summaryLines(p.children, depth+1, full).forEach(x=>out.push(x)); }); return; }
         (n.paths||[]).forEach((p,pi)=>{ const g = (p.clauses||[]).some(c=>c.field||c.mode==="expr"); // clauses-less lanes (action/get/wait-first) have no "if" line; an expr clause counts as a gate too
           if (g) out.push({ type:"cond", depth, text: (pi===0?"":"or path: ") + condText(p, full) });
           summaryLines(p.children, depth + (g?1:0), full).forEach(x=>out.push(x)); });
-        if (n.otherwise) { out.push({ type:"cond", depth, text: n.ifelse ? "not (else)" : "otherwise" });
+        if (n.otherwise) { out.push({ type:"cond", depth, text:"otherwise" });
           summaryLines(n.otherwise.children, depth+1, full).forEach(x=>out.push(x)); }
       }
     });
@@ -8169,7 +7802,7 @@ function App() {
     const scope = focusScope();
     const anchor = rowRefs.current[focusKey];
     if (kind==="action") openAddActionMenu(scope, anchor, null); // pick the action first; create the row on pick
-    else addIfElseAndPick(scope, anchor);
+    else addConditionAndPick(scope, anchor);
   };
   const removeFocused = () => {
     const nav = navList(); const i = nav.findIndex(n=>n.key===focusKey);
@@ -8260,22 +7893,25 @@ function App() {
   const RAIL_DASH  = { width:0, borderLeft:`${RAIL_W}px dashed var(--border2)` };
   // o: rightDashed → left solid + right dashed (condition branch); bothDashed → both dashed (End placeholder)
   // `o.col` overrides the line colour (used by the MERGE loop line, drawn in the merge accent so it reads as one path).
-  const vLines = (x, pos, o={}) => { const cs = o.col ? { background:o.col, borderColor:o.col } : {}; return (
-    <div className="absolute" style={{ left:`${x+1.2}px`, ...pos, ...(o.bothDashed ? RAIL_DASH : RAIL_SOLID), ...cs }}/>
-  ); }; // ONE line (was a double rail) — centred on the 9px marker column, same x as vSingle
+  const vLines = (x, pos, o={}) => { const cs = o.col ? { background:o.col, borderColor:o.col } : {}; return (<>
+    <div className="absolute" style={{ left:`${x}px`, ...pos, ...(o.bothDashed ? RAIL_DASH : RAIL_SOLID), ...cs }}/>
+    <div className="absolute" style={{ left:`${x+RAIL_OFF}px`, ...pos, ...((o.rightDashed||o.bothDashed) ? RAIL_DASH : RAIL_SOLID), ...cs }}/>
+  </>); };
   const vSingle = (x, pos, o={}) => <div className="absolute" style={{ left:`${x}px`, ...pos, width:`${RAIL_W}px`, background:(o.col||"var(--border2)") }}/>;
   // family-tree elbow (spine → lane): double = two parallel curves; single (condition) = only the RIGHT line curves off.
   const elbowLines = (xL, h, w, o={}) => {
     const c = o.col || "var(--border2)";
     const one = (x, hh, ww, r) => <div className="absolute" style={{ left:`${x}px`, top:0, width:`${ww}px`, height:`${hh}px`, borderLeft:`${RAIL_W}px solid ${c}`, borderBottom:`${RAIL_W}px solid ${c}`, borderBottomLeftRadius:`${r}px` }}/>;
-    return one(xL+1.2, h, w-1.2, 14); // single rounded L (spine → lane)
+    if (o.single) return one(xL+RAIL_OFF, h, w-RAIL_OFF, 12);
+    return (<>{one(xL, h, w, 12)}{one(xL+RAIL_OFF, h-RAIL_OFF, w-RAIL_OFF, Math.max(2, 12-RAIL_OFF))}</>);
   };
   // CONVERGE — the mirror of elbowLines for a LOOP CLOSE: a lane on the RIGHT comes DOWN and curves LEFT back onto the
   // spine (borderRight + borderBottom + rounded bottom-right). Used at the bottom of a merge to bring the paths together.
   const convergeLines = (xL, h, w, o={}) => {
     const c = o.col || "var(--border2)";
     const one = (x, hh, ww, r) => <div className="absolute" style={{ left:`${x}px`, top:0, width:`${ww}px`, height:`${hh}px`, borderRight:`${RAIL_W}px solid ${c}`, borderBottom:`${RAIL_W}px solid ${c}`, borderBottomRightRadius:`${r}px` }}/>;
-    return one(xL+1.2, h, w-1.2, 14); // single rounded L (lane → spine)
+    if (o.single) return one(xL, h, w-RAIL_OFF, 12);
+    return (<>{one(xL, h, w, 12)}{one(xL+RAIL_OFF, h-RAIL_OFF, w-RAIL_OFF, Math.max(2, 12-RAIL_OFF))}</>);
   };
   const Station = ({ marker, isFirst, isLast, head, headColor, headBg, hoverBg, onRemove, removeLabel, onInsert, onCopy, onHead, onAddCond, addLabel="new condition", addAccent="var(--c-if)", addActive=false, addHoverOnly=false, addAlwaysShow=false, addDisabled=false, addDisabledTip=null, wideContent, dnd, onFocus, onClick, focused, help, innerRef, dense, gapBottom, okBorder, editing, bgLeft="16px", bgRight="16px", padLeft="34px", padRight="28px", padY, markerY, headerBg, doubleRail, dashRail, noRail, dim, dimBg, children }) => {
     const [xHover, setXHover] = useState(false);
@@ -8507,8 +8143,7 @@ function App() {
   // remove one clause from an inline condition / a branch path; keep the new first clause as a group start
   const removeClause = (path, ci) => { setPop(null); setOpenSlot(null); setFlow(f => { const n=nodeAt(f,path);
     if(ci===0 && n && n.kind==="get" && getPreset(n.module) && ((n.clauses||[])[0]||{}).field===getPreset(n.module).field) return f; // the required preset clause (service catalog / asset id) is not removable
-    const cls=(n&&n.clauses)||[]; if(cls.length<=1 && n && n.action==="add_relation") return f; // v8: Add relation's last condition is mandatory — never removes the node
-    if(cls.length<=1) return mergeAdjacentConditions(pruneEmptyLanes(treeRemove(f, path), path)); const next=cls.filter((_,k)=>k!==ci); next[0]={...next[0]}; delete next[0].conn; delete next[0].or; const patch={ clauses: next }; if(next.length<=1) patch.cardMode=undefined; return treeUpdate(f, path, patch); }); }; // clearing the LAST clause removes the node — and must prune empty branch/split-path lanes too (mirror `remove`), else a one-node split path leaves an empty-lane remnant
+    const cls=(n&&n.clauses)||[]; if(cls.length<=1) return mergeAdjacentConditions(pruneEmptyLanes(treeRemove(f, path), path)); const next=cls.filter((_,k)=>k!==ci); next[0]={...next[0]}; delete next[0].conn; delete next[0].or; const patch={ clauses: next }; if(next.length<=1) patch.cardMode=undefined; return treeUpdate(f, path, patch); }); }; // clearing the LAST clause removes the node — and must prune empty branch/split-path lanes too (mirror `remove`), else a one-node split path leaves an empty-lane remnant
   // duplicate a single clause-line directly below itself (a copy "per card", like a trigger row's copy)
   const copyClause = (path, ci) => { setPop(null); setOpenSlot(null); setFlow(f => { const n=nodeAt(f,path); const cls=(n&&n.clauses)||[]; const c=cls[ci]; if(!c) return f; const dup={...c, conn:c.conn||"and"}; const next=[...cls.slice(0,ci+1), dup, ...cls.slice(ci+1)]; return treeUpdate(f, path, { clauses: next }); }); };
   const removePathClause = (path, pi, ci) => setFlow(f => { const n=nodeAt(f,path); const paths=n.paths.map((p,k)=>{ if(k!==pi) return p; const next=(p.clauses||[]).filter((_,j)=>j!==ci); if(next.length){ next[0]={...next[0]}; delete next[0].or; } return {...p, clauses:next}; }); return treeUpdate(f, path, { paths }); });
@@ -8794,9 +8429,7 @@ function App() {
           <button onClick={(e)=>{ e.stopPropagation(); copyClause(path, ci); }} data-tip="Duplicate condition" className="rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] text-[var(--faint)] hover:text-[var(--text)]" style={{padding:"5px"}}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15V5a2 2 0 012-2h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
           </button>
-          {/* Add relation (v8): its ONE remaining condition is mandatory → no remove (extra conditions stay removable) */}
-          {!(node.action==="add_relation" && clauses.length<=1) &&
-          <DeleteBtn onClick={(e)=>{ e.stopPropagation(); removeClause(path, ci); }} title={clauses.length>1?"Remove condition":"Clear condition"} />}
+          <DeleteBtn onClick={(e)=>{ e.stopPropagation(); removeClause(path, ci); }} title={clauses.length>1?"Remove condition":"Clear condition"} />
           </>}
         </span>
       </div>
@@ -8861,11 +8494,11 @@ function App() {
           style={{ left:"-15px", top:`${HEAD/2}px`, transform:"translateY(-50%)", touchAction:"none" }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
         </span>}
-        {!(ci===0 && !wide) && <span className="shrink-0 flex items-center" style={{width: node.ifelse ? (pi===0 ? "30px" : "60px") : "72px", height:`${HEAD}px`, justifyContent:(flushLeft||isBoundary)?"flex-start":"flex-end"}}>
+        {!(ci===0 && !wide) && <span className="shrink-0 flex items-center" style={{width:"72px", height:`${HEAD}px`, justifyContent:(flushLeft||isBoundary)?"flex-start":"flex-end"}}>
           {ci===0
             ? <span className="relative group/help inline-flex items-center">
-                <Badge color="var(--c-if)" bg="var(--c-if-bg)" className="cursor-help whitespace-nowrap">{node.ifelse ? (pi===0 ? "If" : "Else if") : (pi===0?"Check if":"Or if")}</Badge>
-                <div className="absolute z-30 left-0 top-full mt-2 w-72 p-3.5 rounded-xl opacity-0 pointer-events-none group-hover/help:opacity-100 transition-opacity" style={{background:"var(--pop-bg)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-sm)"}}><HelpCard help={node.ifelse ? NODE_HELP.ifelse : NODE_HELP.branch} /></div>
+                <Badge color="var(--c-if)" bg="var(--c-if-bg)" className="cursor-help">{pi===0?"Check if":"Or if"}</Badge>
+                <div className="absolute z-30 left-0 top-full mt-2 w-72 p-3.5 rounded-xl opacity-0 pointer-events-none group-hover/help:opacity-100 transition-opacity" style={{background:"var(--pop-bg)", border:"1px solid var(--border2)", boxShadow:"var(--shadow-sm)"}}><HelpCard help={NODE_HELP.branch} /></div>
               </span>
             : (isBoundary ? connBadge(ci) : null)}
         </span>}
@@ -8878,7 +8511,7 @@ function App() {
         {/* right cluster — "+ new condition │ copy ×" — IDENTICAL to the standalone CHECK IF node */}
         <span className={"shrink-0 flex items-center gap-1 transition-opacity " + (lineActive ? "opacity-100" : "opacity-0 group-hover/cl:opacity-100")} style={{height:`${HEAD}px`}}>
           {!noInlineAdd && <>
-            <button onClick={(e)=>{ e.stopPropagation(); setOpenSlot(`${k}:p${pi}:c${ci}:add`); if (node.ifelse) { openNewCondition(e.currentTarget, clauses, null, (c2)=>addPathClauseAndPick(path,node,pi,c2,ci)); return; } openCondBranchMenu(e.currentTarget, (c2)=>addPathClauseAndPick(path,node,pi,c2,ci), { onOrIf:(a)=>addPathAndPick(path,a,"condition"), onOrElse:()=>addOtherwise(path), hasOtherwise: !!(node && node.otherwise) }); }} title={node.ifelse ? "Add condition (And / Or)" : "Add condition or branch"} className={"inline-flex items-center gap-1 text-[length:var(--fs-12)] font-medium whitespace-nowrap transition-colors " + (openSlot===`${k}:p${pi}:c${ci}:add` ? "text-[var(--c-if)]" : "text-[var(--muted)] hover:text-[var(--c-if)]")} style={{padding:"2px 5px"}}>
+            <button onClick={(e)=>{ e.stopPropagation(); setOpenSlot(`${k}:p${pi}:c${ci}:add`); openCondBranchMenu(e.currentTarget, (c2)=>addPathClauseAndPick(path,node,pi,c2,ci), { onOrIf:(a)=>addPathAndPick(path,a,"condition"), onOrElse:()=>addOtherwise(path), hasOtherwise: !!(node && node.otherwise) }); }} title="Add condition or branch" className={"inline-flex items-center gap-1 text-[length:var(--fs-12)] font-medium whitespace-nowrap transition-colors " + (openSlot===`${k}:p${pi}:c${ci}:add` ? "text-[var(--c-if)]" : "text-[var(--muted)] hover:text-[var(--c-if)]")} style={{padding:"2px 5px"}}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
               new condition
             </button>
@@ -8887,7 +8520,7 @@ function App() {
           <button onClick={(e)=>{ e.stopPropagation(); setFlow(f=>{ const n=nodeAt(f,path); const cl=(n.paths[pi].clauses)||[]; const dup={...cl[ci]}; const paths=n.paths.map((p,kk)=>kk===pi?{...p, clauses:[...cl.slice(0,ci+1), dup, ...cl.slice(ci+1)]}:p); return treeUpdate(f,path,{paths}); }); }} data-tip="Duplicate condition" className="rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)] text-[var(--faint)] hover:text-[var(--text)]" style={{padding:"5px"}}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15V5a2 2 0 012-2h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
           </button>
-          {!(node.ifelse && pi===0 && clauses.length<=1) && <DeleteBtn onClick={(e)=>{ e.stopPropagation(); clauses.length>1 ? removePathClause(path, pi, ci) : (node.ifelse ? setFlow(f=>{ const n=nodeAt(f,path); return treeUpdate(f, path, { paths:n.paths.map((p,k)=> k===pi ? { ...p, clauses:[] } : p) }); }) : removePath(path, pi)); }} title={clauses.length>1?"Remove condition":(node.ifelse?"Remove ELSE condition":"Remove this path")} />}
+          <DeleteBtn onClick={(e)=>{ e.stopPropagation(); clauses.length>1 ? removePathClause(path, pi, ci) : removePath(path, pi); }} title={clauses.length>1?"Remove condition":"Remove this path"} />
         </span>
       </div>
       );
@@ -9004,7 +8637,7 @@ function App() {
         // node-level "good to go": has a form/card, every required field filled, AND confirmed via Done
         const _spec = formSpecFor(node.action), _data = node.data||{}, _rows = node.fields||[];
         const _stagesOK = !_spec || !_spec.stages || ((_data.stages||[]).length>0 && (_data.stages||[]).every(st=>_spec.stages.fields.filter(f3=>!f3.opt).every(f3=>st[f3.k])));
-        const _complete = missingRequired(node)===0; // v8: the shared required-field check (drawer errors + card state)
+        const _complete = _spec ? (_spec.fields.filter(fd=>!fd.opt && (!fd.showIf || fd.showIf(_data))).every(fd=>_data[fd.k]) && _stagesOK) : (_rows.length>0 && _rows.every(rw=>rw.field && rw.value));
         const _hasCard = ((def && def.details) || _spec) && !(def && def.arg && !node.arg);
         const nodeGood = !!(_hasCard && _complete && node.confirmed);
         return (
@@ -9060,10 +8693,6 @@ function App() {
                     {def && def.arg && <> <Slot tone="action" value={node.arg} placeholder={def.argPlaceholder || "…"} open={openSlot===`${k}:arg`} dataAnchor={`aarg:${node.id}`} innerRef={(el)=>{ if(el) argSlotRefs.current[k]=el; }} onClick={(e)=>pickArg(path,node,e)} /></>}
                   </>);
             })()}
-            {/* ADD RELATION conditions (v8) — the SAME Get-style "where …" clause cards (AND/OR groups, "+ new condition" on
-                each, the ghost "a field" row) once a first condition exists. Before that, the row's "+ add condition" adds it. */}
-            {node.action==="add_relation" && node.relModule && (node.clauses||[]).length>0 && (
-              <div className="w-full mt-2">{groupedClauses(path, node, {word:"where", outdentConn:true})}</div>)}
             {/* detail card — actions that carry extra data get an attached card (click → side drawer):
                 create/update use field rows (node.fields); task/approval/http/plugin/notifications use a
                 form spec (node.data). Shown only once the sentence's own slot is filled. */}
@@ -9088,33 +8717,24 @@ function App() {
               }
               // send_* are EXEMPT from the arg gate: their recipient is set INSIDE the drawer now, so the
               // card must show immediately — it IS the way into the form (user 2026-07-03).
-              // execute_integration (v8): its INPUT MAPPING lives in the drawer → the same card, once integration + app are set
-              const isInteg = node.action==="execute_integration";
-              if (isInteg && !(node.integration && node.arg)) return null;
-              if (!((def && def.details) || spec || isInteg) || (def && def.arg && !node.arg && !String(node.action||"").startsWith("send_"))) return null;
+              if (!((def && def.details) || spec) || (def && def.arg && !node.arg && !String(node.action||"").startsWith("send_"))) return null;
               const data = node.data || {}, rows = node.fields || [], nf = rows.length;
-              const maps = isInteg ? (node.mappings||[]) : [], nm = maps.filter(m=>m.key).length;
               const filled = spec ? spec.fields.filter(fd=>data[fd.k]).length : nf;
               const title = spec ? spec.title : (node.action==="create" ? (node.arg||"Record")+" details" : "Fields to update");
               // state: complete = every required form field filled (incl. every stage) / every row filled
               const stagesOK = !spec || !spec.stages || ((data.stages||[]).length>0 && (data.stages||[]).every(st=>spec.stages.fields.filter(f3=>!f3.opt).every(f3=>st[f3.k])));
-              // complete = no required input left empty (shared with the drawer, see missingRequired); after the drawer was
-              // closed with gaps (node.showErrs) the card switches to the ERROR state: "N required fields missing".
-              const nMissing = missingRequired(node);
-              const complete = nMissing===0;
-              const showErr = !!node.showErrs && nMissing>0;
-              const countLine = isInteg ? (nm ? `${nm} mapping${nm>1?"s":""} set` : "No mappings yet")
-                                    : spec ? ((filled ? `${filled} of ${spec.fields.length} filled` : "Not configured") + (spec.stages ? ` · ${(data.stages||[]).length} stage${(data.stages||[]).length===1?"":"s"}` : ""))
+              const complete = spec ? (spec.fields.filter(fd=>!fd.opt && (!fd.showIf || fd.showIf(data))).every(fd=>data[fd.k]) && stagesOK)
+                                    : (nf>0 && rows.every(rw=>rw.field && rw.value));
+              const countLine = spec ? ((filled ? `${filled} of ${spec.fields.length} filled` : "Not configured") + (spec.stages ? ` · ${(data.stages||[]).length} stage${(data.stages||[]).length===1?"":"s"}` : ""))
                                     : (nf ? `${nf} field${nf>1?"s":""} set` : "No fields yet");
               // a plain-text summary (same sentence as the form's overview) for the card subtitle — truncated + tooltip
               // field CHANGES ("Field → Value"): the compact card line (first 2 + "+N more") comes from these, and the
               // hover tooltip lists EVERY field as a bullet — no "+N more" (user 2026-07-23: all fields visible, bulleted).
               const cardRows = (()=>{
-                if (isInteg) return maps.filter(m=>m.key).map(m=>({ c: m.key+" → "+(m.value ? valueDisplay(m.value) : "…"), f: m.key+" → "+(m.value ? valueDisplay(m.value, true) : "…") }));
                 if (spec) return null;
                 const sc = recordsInScope(path);
                 const modName = node.action==="create" ? node.arg : (()=>{ const r=sc.find(x=>x.id===node.record)||sc[sc.length-1]; return r?r.label.replace(/^the\s+/i,""):(triggers[0]&&triggers[0].vals&&triggers[0].vals.module); })();
-                const recF = actionFieldsFor(node.action, modName);
+                const recF = recordFieldsFor(modName);
                 // c = compact (text-based values capped to 3 words for the visible line); f = full (the hover tooltip)
                 return rows.filter(fv=>fv.field).map(fv=>{ const fd=recF.find(x=>x.id===fv.field); const label=(fd?fd.label:"field");
                   return { c: label+" → "+(valueDisplay(fv.value)||"…"), f: label+" → "+(valueDisplay(fv.value, true)||"…") }; }); // valueDisplay: {ref}/{expr}/{auto} rendered readably
@@ -9127,7 +8747,7 @@ function App() {
               // full hover tooltip: every field-change as a bullet (update/create), or the whole overview (spec forms).
               const cardTip = spec ? cardSummary : (cardChangesFull && cardChangesFull.length ? cardChangesFull.map(c=>"• "+c).join("\n") : null);
               // when not configured: ONE line, just the prompt (no subtext)
-              const prompt = isInteg ? "Set up input mapping" : spec ? "Choose options" : "Choose fields";
+              const prompt = spec ? "Choose options" : "Choose fields";
               // "Good to go" only once the user has confirmed the form via Done (and it is still complete)
               const good = complete && node.confirmed;
               const cardEditing = drawer===node.id; // this card's form is open → highlight it, lift above the dim
@@ -9136,20 +8756,16 @@ function App() {
                   onMouseEnter={(e)=>{ if(!cardEditing){ e.currentTarget.style.background="var(--pop-hover)"; e.currentTarget.style.boxShadow="var(--shadow-sm)"; } }}
                   onMouseLeave={(e)=>{ if(!cardEditing){ e.currentTarget.style.background="var(--panel)"; e.currentTarget.style.boxShadow="none"; } }}
                   className="mt-2.5 relative flex items-center gap-3 rounded-xl border px-3 py-2.5 cursor-pointer transition-all max-w-[420px]"
-                  style={{ borderColor: cardEditing?"var(--text)":(good?"var(--rdy-bd)":showErr?"color-mix(in srgb, var(--red) 70%, transparent)":"var(--border2)"), borderWidth: cardEditing?"1.5px":"1px", background:"var(--panel)", ...(cardEditing?{zIndex:40, boxShadow:"var(--shadow-pop)"}:{}) }}>
-                  {/* left icon: a CHECK once configured (the tick lives HERE, not next to "Edit"); a red WARNING once closed with
-                      required fields missing; the GEAR while not set up (accent = action). */}
-                  <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{background: good?"var(--rdy-bg)":showErr?"color-mix(in srgb, var(--red) 14%, transparent)":"var(--panel2)", color: good?"var(--rdy-fg)":showErr?"var(--red)":"var(--muted)"}}>
+                  style={{ borderColor: cardEditing?"var(--text)":(good?"var(--rdy-bd)":"var(--border2)"), borderWidth: cardEditing?"1.5px":"1px", background:"var(--panel)", ...(cardEditing?{zIndex:40, boxShadow:"var(--shadow-pop)"}:{}) }}>
+                  {/* left icon: a CHECK once configured (the tick lives HERE, not next to "Edit"); the GEAR while not set up (accent = action). */}
+                  <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{background: good?"var(--rdy-bg)":"var(--panel2)", color: good?"var(--rdy-fg)":"var(--muted)"}}>
                     {good
                       ? <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-11" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      : showErr
-                      ? <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 3.5l9.5 16.5h-19L12 3.5z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M12 9.5v4.5M12 17v.3" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round"/></svg>
                       : <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.7"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1M18.7 18.7l-2.1-2.1M7.4 7.4L5.3 5.3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>}
                   </span>
                   {/* ONE readable line — configured shows the field-change summary, not-configured shows the prompt (no title/subtitle split, so it reads linearly) */}
                   <span className="flex-1 min-w-0">
-                    <span className="block text-[length:var(--fs-13)] leading-tight truncate" style={{color: showErr && !good ? "var(--red)" : "var(--text)"}} title={good ? (cardTip || subtitle) : undefined}>
-                      {good ? subtitle : showErr ? `${nMissing} required field${nMissing===1?"":"s"} missing` : prompt}</span>
+                    <span className="block text-[length:var(--fs-13)] leading-tight truncate" style={{color:"var(--text)"}} title={good ? (cardTip || subtitle) : undefined}>{good ? subtitle : prompt}</span>
                   </span>
                   {/* RIGHT = an ACTION: while this form is OPEN → "Close ×"; else "Set up ›" (not configured) → "✓ Edit" (done). */}
                   {cardEditing ? (
@@ -9328,19 +8944,12 @@ function App() {
         const sk = (s)=>`${k}:${s}`;
         const slotOpen = (key, items, onPick, title, o={}) => (e)=>{ setOpenSlot(sk(key)); open(e.currentTarget, items, onPick, title, o); };
         const typeWord = mode==="until" ? "repeat until" : mode==="times" ? "repeat" : "for each";
-        // v8: "for each item" is the ONLY loop type now → a locked, prefilled (disabled-look) value, not a dropdown.
-        // Legacy "repeat until" / "repeat N times" loops keep the clickable type slot so they can be switched back.
-        const typeSlot = mode==="forEach" ? (
-          <span title="Loops always run for each item in a list" aria-disabled="true"
-            className="inline-flex items-center self-center rounded-md px-1.5 font-medium select-none"
-            style={{ background:"var(--panel2)", border:"1px solid var(--border2)", color:"var(--muted)", cursor:"not-allowed", lineHeight:1.6 }}>
-            for each item
-          </span>
-        ) : (
+        const typeSlot = (
           <Slot value={typeWord} open={openSlot===sk("type")} onClick={slotOpen("type", [
             {id:"forEach", label:"for each item in a list"},
-            // v8: "repeat until a condition" / "repeat a set number of times" removed from the picker (existing loops still render)
-          ],(x)=>update(path, x.id==="until" ? { mode:x.id, clauses:(node.clauses&&node.clauses.length)?node.clauses:[{ field:null, op:"is", value:null }] } : { mode:x.id }), "Loop type", {noSearch:true, selected:mode})} />
+            {id:"until",   label:"repeat until a condition"},
+            {id:"times",   label:"repeat a set number of times"},
+          ], (x)=>update(path, x.id==="until" ? { mode:x.id, clauses:(node.clauses&&node.clauses.length)?node.clauses:[{ field:null, op:"is", value:null }] } : { mode:x.id }), "Loop type", {noSearch:true, selected:mode})} />
         );
         // "repeat until" flows its FIRST condition INLINE right after the type word (like CHECK IF's lead), filling the
         // row to the node width and WRAPPING the overflow down (opts.headOnly). Any EXTRA and/or conditions do NOT go in
@@ -9352,38 +8961,19 @@ function App() {
           <span className="self-center inline-flex flex-wrap items-baseline gap-x-1.5" style={{ minHeight:`${HEAD}px` }}>
             {typeSlot}
             {mode==="forEach" && (()=>{
-              // v8: "for each item in {source | attribute} {value}" — an explicit pick (replaces auto-deriving the Get above).
-              //  · source    → a 2nd blank: a record from the previous steps (recordsInScope: trigger + any Get/Create above)
-              //  · attribute → a DYNAMIC value only (the reference drill) — there are no specific values to type here
-              const kind = node.listKind || null;
-              const scope = recordsInScope(path);
-              const vKey = sk("lval"), vAnchor = `lval:${node.id}`;
-              const pickSource = (el)=>{ setOpenSlot(vKey);
-                open(el, scope.map(r=>({ id:r.id, label:r.label })), (x)=>update(path, { listSource:x.id }), "Which record?",
-                  { noSearch:true, selected:node.listSource, ...(el ? {} : { anchorKey:vAnchor }) }); };
-              const pickAttr = (el)=>{ const commit = (v)=>update(path, { listVal:v });
-                openSmartRef(path, vKey, el, el ? null : vAnchor, (ref)=>commit({ref}),
-                  { refOnly:true, onExpression: ()=>openExprBuilder(commit, node.listVal, "Attribute", scope, vKey) }); };
-              const pickKind = (e)=>{ setOpenSlot(sk("lkind"));
-                open(e.currentTarget, [
-                  { id:"source",    label:"Source",    sub:"the records from a previous step" },
-                  { id:"attribute", label:"Attribute", sub:"a field's value from a previous step" },
-                ], (x)=>{ const fresh = x.id!==kind;
-                  // only ONE record in scope → the source is prefilled, no "Which record?" popup
-                  const auto = x.id==="source" && scope.length===1 ? { listSource:scope[0].id } : {};
-                  update(path, { listKind:x.id, ...(fresh ? { listSource:null, listVal:null } : {}), ...auto });
-                  if (auto.listSource) return;
-                  requestAnimationFrame(()=> x.id==="source" ? pickSource(null) : pickAttr(null)); },   // chain straight into the 2nd blank
-                  "Loop over", { noSearch:true, selected:kind }); };
-              const srcLabel = node.listSource ? ((scope.find(r=>r.id===node.listSource)||{}).label || null) : null;
-              const valDisp = kind==="source" ? srcLabel : (node.listVal!=null ? valueDisplay(node.listVal, openSlot===vKey) : null);
-              return (<>
-                <Word>in</Word>
-                <Slot value={kind} placeholder="source or attribute" open={openSlot===sk("lkind")} onClick={pickKind} />
-                {kind && <Slot value={valDisp} smartKind={kind==="attribute" ? smartKindOf(node.listVal) : undefined}
-                  placeholder={kind==="source" ? "a record" : "a value"} open={openSlot===vKey} dataAnchor={vAnchor}
-                  onClick={(e)=> kind==="source" ? pickSource(e.currentTarget) : pickAttr(e.currentTarget)} />}
-              </>);
+              // for-each loops the records fetched by the Get DIRECTLY ABOVE — the record auto-derives from it, so
+              // there is no manual "in [list]" source. (LOOP_SOURCES kept in code for a possible future manual source.)
+              const prevNode = i>0 ? nodes[i-1] : null;
+              const getAbove = (prevNode && prevNode.kind==="get") ? prevNode : null;
+              const rec = getAbove && getAbove.module ? getAbove.module.toLowerCase() : null;
+              const warn = (txt) => (
+                <span className="inline-flex items-baseline gap-1 text-[length:var(--fs-135)]" style={{ color:"var(--amber)" }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ alignSelf:"center" }}><path d="M10.3 4l-7 12A2 2 0 0 0 5 19h14a2 2 0 0 0 1.7-3l-7-12a2 2 0 0 0-3.4 0z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M12 9.5v4M12 16.5h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                  {txt}
+                </span>);
+              if (rec) return <span className="font-medium" style={{ color:"var(--text)", textDecoration:"underline dotted", textDecorationColor:"var(--border2)", textUnderlineOffset:"4px" }}>{rec}</span>;
+              if (getAbove) return warn(<span>finish the <b style={{fontWeight:600}}>Get</b> above — pick what it fetches</span>);
+              return warn(<span>add a <b style={{fontWeight:600}}>Get</b> step right above to loop its records</span>);
             })()}
             {mode==="times" && <>
               <Slot value={node.countLabel!=null?String(node.countLabel):null} placeholder="3" open={openSlot===sk("count")} onClick={slotOpen("count", [], (x)=>update(path,{countLabel:x.id}), "How many times?", {inputType:"number"})} />
@@ -9613,53 +9203,6 @@ function App() {
           </div>
         );
         return <React.Fragment key={node.id}>{mergeBody}</React.Fragment>;
-      }
-
-      // ── IF / ELSE ───────────────────────────────────────────────────────
-      // A node row ("IF / ELSE" badge) on the current path, then two fixed lanes peeling off it: IF (its condition
-      // with AND/OR groups, then its steps) and ELSE (runs when the condition isn't met). The flow continues below.
-      if (isIfElse(node)) {
-        const ifLane = (node.paths||[])[0] || { id:node.id+"_if", clauses:[], children:[] };
-        const elLane = (node.paths||[])[1] || { id:node.id+"_else", isElse:true, clauses:[], children:[] };
-        const ifPath = [...path, {path:0}], elPath = [...path, {path:1}];
-        const ifBody = ifLane.children||[], elBody = elLane.children||[];
-        const elHasCond = false; // ELSE is always the plain catch-all — no conditions of its own
-        const terminal = !!opts.last && i===nodes.length-1;
-        const ifelseBody = (<>
-          {/* IF — the node's own row: the condition (AND/OR groups) sits right on the elbow, no separate header */}
-          <div className="relative" data-lane={node.id+"#0"} style={{ marginLeft:"100px", paddingBottom:`${BRANCH_LANE_GAP/2}px` }}>
-            {vLines(-93, { top:0, bottom:0 })}
-            {elbowLines(-93, MC, 102, { single:true })}
-            <Station marker={MARK.cond} isFirst wideContent hoverBg="transparent" padY={0} markerY={PAD + HEAD/2} gapBottom={ifBody.length?0:GAP}
-              dnd={dnd(node, path)} innerRef={(el)=>{ setRowRef(k, el); setRowRef(pathKey(ifPath), el); }} focused={focusKey===k} onFocus={()=>setFocusKey(k)}
-              onRemove={()=>removeIfElse(path)} removeLabel="Remove IF / Else">
-              {pathClauses(path, node, 0, true, false)}
-            </Station>
-            {renderFlow(ifBody, ifPath, { dbl:false })}
-            <BranchAdd path={ifPath} branchId={ifLane.id} empty={!ifBody.length} dbl={false} />
-          </div>
-          {/* ELSE — a plain catch-all, or (once a condition is added) an "Else if" with its own AND/OR groups */}
-          <div className="relative" data-lane={node.id+"#1"} style={{ marginLeft:"100px" }}>
-            {vLines(-93, { top:0, bottom: terminal ? `calc(100% - ${MC}px)` : 0 })}
-            {elbowLines(-93, MC, 102, { single:true })}
-            {elHasCond
-              ? <Station marker={MARK.cond} isFirst wideContent hoverBg="transparent" padY={0} markerY={PAD + HEAD/2} gapBottom={elBody.length?0:GAP}
-                  innerRef={(el)=>setRowRef(pathKey(elPath), el)} focused={focusKey===pathKey(elPath)} onFocus={()=>setFocusKey(pathKey(elPath))}>
-                  {pathClauses(path, node, 1, true, false)}
-                </Station>
-              : <Station marker={MARK.cond} isFirst head="Else" headColor="var(--c-if)" headBg="var(--c-if-bg)" wideContent hoverBg="transparent" gapBottom={elBody.length?0:GAP}
-                  innerRef={(el)=>setRowRef(pathKey(elPath), el)} focused={focusKey===pathKey(elPath)} onFocus={()=>setFocusKey(pathKey(elPath))}
->
-                  <span className="text-[length:var(--fs-15)]" style={{ color:"var(--muted)" }}>when the IF condition isn’t met</span>
-                </Station>}
-            {renderFlow(elBody, elPath, { dbl:false })}
-            <BranchAdd path={elPath} branchId={elLane.id} empty={!elBody.length} dbl={false} />
-          </div>
-          {!terminal && <div className="relative" style={{ marginLeft:"100px", height:`${GAP}px` }}>{vLines(-93, { top:0, bottom:0 })}</div>}
-        </>);
-        return (dim || node._dimPreview)
-          ? <div key={node.id} style={{ opacity:0.5 }}>{ifelseBody}</div>
-          : <React.Fragment key={node.id}>{ifelseBody}</React.Fragment>;
       }
 
       // ── BRANCH (explicit fork) ──────────────────────────────────────────
@@ -10235,154 +9778,12 @@ function App() {
             const dpath = treeFindPath(flow, drawer);
             const dnode = dpath ? nodeAt(flow, dpath) : null;
             if (!dnode) return null;
-            const dfields = dnode.action==="add_task" ? ensureTaskRows(dnode.fields) : (dnode.fields || []); // Add task: the 2 locked rows always lead (v8)
+            const dfields = dnode.fields || [];
             // which record this action acts on → its module decides which system fields show
             const dScope = recordsInScope(dpath);
             const dModName = dnode.action==="create" ? dnode.arg
               : (()=>{ const r = dScope.find(x=>x.id===dnode.record) || dScope[dScope.length-1]; return r ? r.label.replace(/^the\s+/i,"") : (triggers[0] && triggers[0].vals && triggers[0].vals.module); })();
-            const recFields = actionFieldsFor(dnode.action, dModName);
-            // ── ADD PACKAGES listing (v8, Create deployment) — takes over this sidebar while open: search, a
-            // select-all-on-page row, checkbox rows (name + ID · architecture · type · version), pagination, Cancel / Add.
-            // Pre-checked with the packages already added; Add replaces the form's package list with the selection.
-            if (pkgPick && dnode.action==="create_deployment") {
-              const pd = dnode.data || {}; const PER = 10;
-              const q = (pkgPick.q||"").trim().toLowerCase();
-              const list = q ? DEPLOY_PACKAGES.filter(p=>[p.id,p.name,p.arch,p.type,p.version].join(" ").toLowerCase().includes(q)) : DEPLOY_PACKAGES;
-              const pages = Math.max(1, Math.ceil(list.length/PER)); const page = Math.min(pkgPick.page||0, pages-1);
-              const shown = list.slice(page*PER, page*PER+PER); const sel = pkgPick.sel||[];
-              const allOn = shown.length>0 && shown.every(p=>sel.includes(p.id));
-              const toggle = (id)=> setPkgPick(s=>({ ...s, sel: s.sel.includes(id) ? s.sel.filter(x=>x!==id) : [...s.sel, id] }));
-              const toggleAll = ()=> setPkgPick(s=>({ ...s, sel: allOn ? s.sel.filter(x=>!shown.some(p=>p.id===x)) : [...new Set([...s.sel, ...shown.map(p=>p.id)])] }));
-              const apply = ()=>{ const cur = pd.packages||[]; const keep = cur.filter(r=>sel.includes(r.id));
-                const next = [...keep, ...DEPLOY_PACKAGES.filter(p=>sel.includes(p.id) && !keep.some(r=>r.id===p.id))];
-                update(dpath, { data:{ ...pd, packages: next.length ? next : null } }); setPkgPick(null); };
-              const box = (on)=> (<span className="shrink-0 w-4 h-4 rounded flex items-center justify-center transition-colors"
-                style={{ background: on?"var(--accent)":"transparent", border:"1.5px solid "+(on?"var(--accent)":"var(--border2)") }}>
-                {on && <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-11" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>}</span>);
-              const pgBtn = (label, to, dis, on, key)=> (<button key={key||label} type="button" disabled={dis} onClick={()=>setPkgPick(s=>({...s, page:to}))}
-                className="min-w-[26px] h-[26px] px-1.5 rounded-md text-[length:var(--fs-12)] font-medium transition-colors hover:bg-[var(--pop-hover)]"
-                style={ on ? {background:"color-mix(in srgb, var(--accent) 16%, transparent)", color:"var(--accent2)"} : {color:"var(--muted)"} }>{label}</button>);
-              return (
-                <div className="h-full w-full flex flex-col" style={{background:"var(--panel)"}}>
-                  <div className="px-4 h-16 shrink-0 flex items-center gap-2.5 border-b" style={{borderColor:"var(--border)"}}>
-                    <button type="button" onClick={()=>setPkgPick(null)} data-tip-below="Back to Create deployment" className="shrink-0 w-7 h-7 -ml-1 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    </button>
-                    <div className="min-w-0">
-                      <div className="text-[length:var(--fs-145)] font-semibold truncate" style={{color:"var(--text)"}}>Add packages</div>
-                      <div className="text-[length:var(--fs-115)] truncate" style={{color:"var(--muted)"}}>Pick the packages to {(pd.config_type||"Install").toLowerCase()}</div>
-                    </div>
-                    <CloseBtn onClick={()=>setDrawer(null)} kbd="Esc" className="ml-auto" />
-                  </div>
-                  <div className="px-4 pt-3.5 pb-2 shrink-0 flex flex-col gap-2.5">
-                    <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{background:"var(--panel2)", border:"1px solid var(--border2)"}}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8"/><path d="M16 16l4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-                      <input autoFocus value={pkgPick.q||""} onChange={(e)=>setPkgPick(s=>({...s, q:e.target.value, page:0}))} placeholder="Search by name, ID or type…"
-                        className="flex-1 min-w-0 bg-transparent outline-none text-[length:var(--fs-13)]" style={{color:"var(--text)"}} />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <button type="button" onClick={toggleAll} disabled={!shown.length} className="inline-flex items-center gap-2 text-[length:var(--fs-12)] font-medium" style={{color:"var(--muted)"}}>
-                        {box(allOn)} Select all on this page
-                      </button>
-                      <span className="text-[length:var(--fs-12)]" style={{color: sel.length?"var(--accent2)":"var(--faint)"}}>{sel.length} selected</span>
-                    </div>
-                  </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto thin-scroll px-2">
-                    {shown.length ? shown.map(p=>{ const on = sel.includes(p.id);
-                      return (<button key={p.id} type="button" onClick={()=>toggle(p.id)}
-                        className="w-full flex items-center gap-3 px-2 py-2.5 rounded-lg text-left transition-colors hover:bg-[var(--pop-hover)]"
-                        style={ on ? {background:"color-mix(in srgb, var(--accent) 8%, transparent)"} : undefined }>
-                        {box(on)}
-                        <span className="flex-1 min-w-0 flex flex-col gap-0.5">
-                          <span className="text-[length:var(--fs-13)] font-medium truncate" style={{color:"var(--text)"}}>{p.name}</span>
-                          <span className="text-[length:var(--fs-11)] truncate" style={{color:"var(--faint)"}}><span className="font-mono">{p.id}</span> · {p.arch} · v{p.version}</span>
-                        </span>
-                        <span className="shrink-0 px-2 py-0.5 rounded-md text-[length:var(--fs-11)] font-medium" style={{background:"var(--panel2)", color:"var(--muted)"}}>{p.type}</span>
-                      </button>); })
-                    : <div className="px-3 py-8 text-center text-[length:var(--fs-13)]" style={{color:"var(--faint)"}}>No packages match “{pkgPick.q}”.</div>}
-                  </div>
-                  <div className="px-4 py-2 shrink-0 flex items-center justify-between border-t" style={{borderColor:"var(--border)"}}>
-                    <span className="text-[length:var(--fs-11)]" style={{color:"var(--faint)"}}>{list.length ? `Showing ${page*PER+1}–${Math.min(list.length, page*PER+PER)} of ${list.length}` : "No results"}</span>
-                    <span className="flex items-center gap-0.5">
-                      {pgBtn("‹", page-1, page===0, false, "prev")}
-                      {Array.from({length:pages},(_,pi)=>pgBtn(String(pi+1), pi, false, pi===page, "p"+pi))}
-                      {pgBtn("›", page+1, page>=pages-1, false, "next")}
-                    </span>
-                  </div>
-                  <div className="px-4 py-3.5 border-t shrink-0 flex items-center gap-2" style={{borderColor:"var(--border)"}}>
-                    <button type="button" onClick={()=>setPkgPick(null)} className="ml-auto px-4 py-2 rounded-lg text-[length:var(--fs-13)] font-medium transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)", border:"1px solid var(--border2)"}}>Cancel</button>
-                    <button type="button" onClick={apply} disabled={!sel.length} className="px-4 py-2 rounded-lg text-[length:var(--fs-13)] font-semibold transition-colors hover:brightness-110" style={{background:"var(--accent)", color:"#fff"}}>
-                      {sel.length ? `Add ${sel.length} package${sel.length===1?"":"s"}` : "Add"}
-                    </button>
-                  </div>
-                </div>
-              );
-            }
-            // ── EXECUTE APP INTEGRATION — INPUT MAPPING drawer (v8). Opens once the sentence's integration + app are set
-            // (moved off the canvas). One row per key → value: key = searchable "Select key" dropdown (keys used by other
-            // rows are hidden); value = typeable with the { } Insert-placeholder button; × deletes; "+ Add mapping" below.
-            // Done confirms → the canvas card reads the mappings back ("Username → {{Requester Email}} · …").
-            if (dnode.action==="execute_integration") {
-              const dk = pathKey(dpath);
-              const maps = dnode.mappings || [];
-              const setMaps = (fn)=> setFlow(f=>{ const n=nodeAt(f,dpath); return treeUpdate(f, dpath, { mappings: fn(n.mappings||[]) }); });
-              const pickKey = (mi, el)=>{ setOpenSlot(`${dk}:map${mi}:key`); const used = maps.map((m,j)=>j!==mi && m.key).filter(Boolean);
-                open(el, INTEGRATION_KEYS.filter(x=>!used.includes(x)).map(x=>({id:x, label:x})),
-                  (i)=> setMaps(ms=>ms.map((m,j)=>j===mi?{...m, key:i.id}:m)), "Select key", { selected:maps[mi]?.key, searchPlaceholder:"Search" }); };
-              const iSegs = [{t:"For"},{t:recordLabel(dScope, dnode.record)||"the record",em:true},{t:","},{t:dnode.integration||"an integration",em:!!dnode.integration,dim:!dnode.integration},{t:"is executed in"},{t:dnode.arg||"an app",em:!!dnode.arg,dim:!dnode.arg}];
-              return (
-                <div className="h-full w-full flex flex-col" style={{background:"var(--panel)"}}>
-                  <div className="px-4 h-16 shrink-0 flex items-center gap-2.5 border-b" style={{borderColor:"var(--border)"}}>
-                    <div className="min-w-0">
-                      <div className="text-[length:var(--fs-145)] font-semibold truncate" style={{color:"var(--text)"}}>Input mapping</div>
-                      <div className="text-[length:var(--fs-115)] truncate" style={{color:"var(--muted)"}}>Map each input key of the integration to a value</div>
-                    </div>
-                    <CloseBtn onClick={()=>setDrawer(null)} kbd="Esc" className="ml-auto" />
-                  </div>
-                  <div className="px-4 pt-3.5 pb-4 shrink-0 border-b" style={{borderColor:"var(--border)"}}>
-                    <div className="text-[length:var(--fs-10)] uppercase tracking-[0.13em] mb-1.5" style={{color:"var(--faint)"}}>Summary</div>
-                    <div className="rounded-lg px-3.5 py-3" style={{ background:"var(--panel2)" }}>
-                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[length:var(--fs-145)] leading-relaxed">
-                        {iSegs.map((s,i)=> <span key={i} style={{ color: s.em?"var(--text)":(s.dim?"var(--faint)":"var(--muted)"), fontWeight:s.em?600:400, ...(s.t===","?{marginLeft:"-0.5rem"}:{}) }}>{s.t}</span>)}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-2.5">
-                    {maps.map((m,mi)=>{ const keyOpen = openSlot===`${dk}:map${mi}:key`;
-                      return (
-                      <div key={mi} className="flex flex-col gap-1.5">
-                      <div className="flex items-center gap-2">
-                        <button type="button" data-anchor={`mapk:${dnode.id}:${mi}`} onClick={(e)=>pickKey(mi, e.currentTarget)}
-                          className="shrink-0 w-[136px] h-[38px] rounded-lg pl-3 pr-2.5 flex items-center gap-2 text-left text-[length:var(--fs-13)] transition-colors hover:bg-[var(--pop-hover)]"
-                          style={{ background:"var(--panel2)", border:"1px solid "+(keyOpen?"var(--accent2)":"var(--border2)"), color: m.key?"var(--text)":"var(--faint)" }}>
-                          <span className="flex-1 min-w-0 truncate">{m.key || "Select key"}</span>
-                          <svg className="shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        </button>
-                        <svg className="shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        <div data-anchor={`mapv:${dnode.id}:${mi}`} title={typeof m.value==="string" && m.value ? phPretty(m.value) : undefined} className="flex-1 min-w-0 h-[38px] overflow-hidden rounded-lg px-3 flex items-center text-[length:var(--fs-13)]" style={{background:"var(--panel2)", border:"1px solid var(--border2)"}}><div className="w-full min-w-0">
-                          <MapValueInput value={typeof m.value==="string"?m.value:""} canPlaceholder={dScope.length>0}
-                            onCommit={(v)=> setMaps(ms=>ms.map((x,j)=>j===mi?{...x, value:v}:x))}
-                            onPlaceholder={(d)=>{ setMaps(ms=>ms.map((x,j)=>j===mi?{...x, value:d}:x));   // keep what was typed, then append each pick
-                              openPhPicker(`${dk}:map${mi}:val`, null, (label)=> setMaps(ms=>ms.map((x,j)=>j===mi?{...x, value:(x.value||"")+"{{"+label+"}}"}:x)), `mapv:${dnode.id}:${mi}`); }} /></div>
-                        </div>
-                        <DeleteBtn onClick={(e)=>{ e.stopPropagation(); setMaps(ms=>ms.filter((_,j)=>j!==mi)); }} title="Delete mapping" />
-                      </div>
-                      {/* required-field error (v8): a mapping needs both a key and a value */}
-                      {dnode.showErrs && (!m.key && isBlankVal(m.value) ? <FieldError>Key and value are required</FieldError>
-                        : !m.key ? <FieldError>Key is required</FieldError>
-                        : isBlankVal(m.value) ? <FieldError>Value is required</FieldError> : null)}
-                      </div>); })}
-                    {dnode.showErrs && !maps.length && <FieldError>Add at least one mapping</FieldError>}
-                    <button type="button" onClick={()=>setMaps(ms=>[...ms, { key:null, value:"" }])} className="w-full rounded-xl border px-3 py-2.5 text-[length:var(--fs-13)] font-medium flex items-center justify-center gap-1.5 transition-colors hover:brightness-110" style={{border:"1px solid var(--accent2)", color:"var(--accent2)", background:"color-mix(in srgb, var(--accent) 8%, transparent)"}}>
-                      + Add mapping
-                    </button>
-                  </div>
-                  <div className="px-4 py-3.5 border-t shrink-0 flex" style={{borderColor:"var(--border)"}}>
-                    <button onClick={()=>{ if (missingRequired(nodeAt(flowRef.current, dpath)) > 0) { update(dpath, {showErrs:true}); return; } update(dpath, {confirmed:true}); setDrawer(null); }} className="ml-auto px-4 py-2 rounded-lg text-[length:var(--fs-13)] font-semibold transition-colors hover:brightness-110" style={{background:"var(--accent)", color:"#fff"}}>Done</button>
-                  </div>
-                </div>
-              );
-            }
+            const recFields = recordFieldsFor(dModName);
             const setF = (i, patch) => update(dpath, { fields: dfields.map((x,ix)=>ix===i?{...x,...patch}:x) });
             // [S1] wrap ANY field-value input with smart-value support: a Reference/Expression toggle, and a
             // smart badge once a {ref}/{expr} is set. `vertical` top-aligns the toggle (for textarea).
@@ -10411,7 +9812,7 @@ function App() {
             const applyFieldPick = (rowIdx, fid) => {
               // EVERY field (incl. category / technician group) is added with NO value → the user picks it; Smart
               // Suggestion is offered as the TOP option in the value dropdown, NOT auto-defaulted (user 2026-07-22).
-              const n = nodeAt(flowRef.current, dpath) || dnode; const cur = n.action==="add_task" ? ensureTaskRows(n.fields) : (n.fields||[]);
+              const n = nodeAt(flowRef.current, dpath) || dnode; const cur = n.fields||[];
               const idx = rowIdx===null ? cur.length : rowIdx;
               const next = rowIdx===null ? [...cur, {field:fid, value:null}] : cur.map((x,ix)=>ix===rowIdx?{field:fid, value:null}:x);
               update(dpath, { fields: next }); // keep the node's action (create OR update) — do NOT force "update" (would flip a Create node)
@@ -10424,7 +9825,7 @@ function App() {
               setTimeout(openV, 30);
             };
             const openFieldPicker = (el, rowIdx) => {
-              const usedIds = dfields.map((f,ix)=> (f.field && (rowIdx===null || ix!==rowIdx)) ? f.field : null).filter(Boolean);
+              const usedIds = (dnode.fields||[]).map((f,ix)=> (f.field && (rowIdx===null || ix!==rowIdx)) ? f.field : null).filter(Boolean);
               open(el, fieldPickerItems(usedIds), (i)=>{ if(i._sugg) applyFieldPick(rowIdx, i._sugg); else if(i._fid) applyFieldPick(rowIdx, i._fid); },
                 rowIdx===null ? "Add a field" : "Change field", { wide:true });
             };
@@ -10443,8 +9844,8 @@ function App() {
             const selSty = { backgroundColor:"var(--panel2)", border:"1px solid var(--border2)", color:"var(--text)",
               backgroundImage:`url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238a8a93' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>")`,
               backgroundRepeat:"no-repeat", backgroundPosition:"right 12px center" };
-            const title = dspec ? dspec.title : (dnode.action==="create" ? `Create ${dnode.arg||"record"}` : dnode.action==="update" ? "Update record" : dnode.action==="add_task" ? "Task details" : "Details");
-            const sub   = dspec ? dspec.sub   : dnode.action==="add_task" ? "Start date and subject are required — add any other task field below" : (dnode.action==="update" ? "Choose the fields to change and their new values" : "Fill the fields for this action");
+            const title = dspec ? dspec.title : (dnode.action==="create" ? `Create ${dnode.arg||"record"}` : dnode.action==="update" ? "Update record" : "Details");
+            const sub   = dspec ? dspec.sub   : (dnode.action==="update" ? "Choose the fields to change and their new values" : "Fill the fields for this action");
             // notifications (email/SMS/WhatsApp/Teams/Google Chat/announcement/reminder) drop the Summary section
             // entirely — the compose body already reads as the message (user 2026-07-15). Other actions keep it.
             const isNotify = String(dnode.action||"").startsWith("send_");
@@ -10462,14 +9863,12 @@ function App() {
               ? (dspec.overview ? dspec.overview(ddata) : null) // computed for every form, but the Summary SECTION is hidden for notifications (isNotify) below — the compose body already reads as the message
 
               : (()=>{ const isC = dnode.action==="create";
-                  const segs = dnode.action==="add_task"   // v8: "Add a task to the Incident with Task start date as … · Subject as …"
-                    ? [{t:"Add a task to the"},{t:(dModName||"record"),em:true},{t:"with"}]
-                    : [{t:isC?"Create a":"Update the"},{t:(isC?(dnode.arg||"record"):(dModName||"record")),em:true},{t:isC?"with":"— set"}];
+                  const segs=[{t:isC?"Create a":"Update the"},{t:(isC?(dnode.arg||"record"):(dModName||"record")),em:true},{t:isC?"with":"— set"}];
                   const rows2 = dfields.length ? dfields : [{}];
                   rows2.forEach((fv,i)=>{ if(i>0) segs.push({t:"·"});
                     const fd = fv.field && recFields.find(x=>x.id===fv.field); const val = valueDisplay(fv.value); const valFull = valueDisplay(fv.value, true); // [S1] {ref}/{expr}/array/literal; text-based → 3-word cap, full on hover
                     segs.push(fd ? {t:fd.label,em:true} : {t:"field",dim:true});
-                    segs.push({t: dnode.action==="add_task" ? "as" : "to"});
+                    segs.push({t:"to"});
                     segs.push(val ? {t:val, em:true, full:(valFull && valFull!==val)?valFull:undefined} : {t:"a value",dim:true}); });
                   return segs; })();
             return (
@@ -10569,63 +9968,6 @@ function App() {
                       const toEditKey = "cmp:"+dnode.id+":toedit"; const toEdit = !!openSecs[toEditKey];
                       const setToEdit = (v)=> setOpenSecs(s2=>({...s2, [toEditKey]:v}));
                       const commitTo = (v)=>{ update(dpath, {arg:v}); setToEdit(false); };
-                      // ── RECIPIENTS (v8): To / Cc / Bcc are chip lists. Clicking the field opens ONE popup with the
-                      // Specific | Dynamic tabs: Specific = the suggestions (roles for To, predefined groups for Cc/Bcc) +
-                      // "type any address — Enter to add"; Dynamic = the reference drill (any in-scope record's attribute →
-                      // stored as {ref}). The popup stays open after each pick (Done / Esc closes). To lives in data.to
-                      // (migrated from the old single node.arg); node.arg mirrors "first +N" for the canvas sentence.
-                      const rKey = (v)=> typeof v==="string" ? v : "ref:"+valueDisplay(v, true);
-                      const rLabel = (v)=> typeof v==="string" ? v : valueDisplay(v, true);
-                      const rList = (n, field)=>{ const d2 = n.data||{};
-                        if (field==="to") return Array.isArray(d2.to) ? d2.to : (n.arg ? [n.arg] : []);
-                        if (field==="cc") return [...(Array.isArray(d2.predef_cc)?d2.predef_cc:[]), ...(Array.isArray(d2.cc)?d2.cc:[])];
-                        return Array.isArray(d2.bcc) ? d2.bcc : []; };
-                      const rWrite = (field, fn)=> setFlow(f=>{ const n = nodeAt(f, dpath); if (!n) return f; const d2 = n.data||{};
-                        const next = fn(rList(n, field));
-                        if (field==="to") return treeUpdate(f, dpath, { arg: next.length ? rLabel(next[0]) + (next.length>1 ? ` +${next.length-1}` : "") : null, data:{ ...d2, to: next.length ? next : null } });
-                        if (field==="cc") { const pre = next.filter(v=>typeof v==="string" && preOpts.includes(v)), typed = next.filter(v=>!(typeof v==="string" && preOpts.includes(v)));
-                          return treeUpdate(f, dpath, { data:{ ...d2, predef_cc: pre.length ? pre : null, cc: typed.length ? typed : null } }); }
-                        return treeUpdate(f, dpath, { data:{ ...d2, bcc: next.length ? next : null } }); });
-                      const rAdd = (field, v)=> rWrite(field, (l)=> l.some(x=>rKey(x)===rKey(v)) ? l : [...l, v]);
-                      const rRemove = (field, v)=> rWrite(field, (l)=> l.filter(x=>rKey(x)!==rKey(v)));
-                      const openRecipients = (field)=>{
-                        const ak = `rcp:${dnode.id}:${field}`;
-                        const n = nodeAt(flowRef.current, dpath) || dnode; const have = rList(n, field).map(rKey);
-                        const sugs = (field==="to" ? roleSugs : ccSugs).filter(s=>!have.includes(s.label));
-                        const reopen = ()=> requestAnimationFrame(()=>openRecipients(field));   // rebuild so a picked suggestion drops out of the list
-                        const title = field==="to" ? "To" : field==="cc" ? "Cc" : "Bcc";
-                        const footer = (
-                          <div className="flex items-center justify-end gap-2 px-1">
-                            <button type="button" onMouseDown={(e)=>{ e.preventDefault(); close(); }}
-                              className="shrink-0 rounded-md px-2.5 py-1 text-[length:var(--fs-12)] font-semibold transition-colors hover:brightness-110" style={{ background:"var(--accent)", color:"#fff" }}>Done</button>
-                          </div>);
-                        // v8 (user 2026-10-08): tabs read "People | From a field" (not Specific | Dynamic); a dedicated
-                        // Email address box + Add sits on top; the roles list is headed by the record it's about, with
-                        // a quiet 🔍 in that header instead of a second boxed search.
-                        const listHdr = field==="to" ? `Roles on this ${(sRec && sRec.module) || "record"}` : "Predefined recipients";
-                        const chromeTabs = { tabLabels:["People","From a field"], refTitle:"Add "+title+" recipients" };
-                        setOpenSlot(ak);
-                        open(null, sugs.map(s=>({ id:s.label, label:s.label, sub:s.sub, icon:s.icon })),
-                          (i)=>{ rAdd(field, i.id); reopen(); return true; }, title,
-                          { anchorKey:ak, wide:true, clearOnPick:true, footer, initActive:-1,
-                            listHeader: sugs.length ? listHdr : undefined, noSearch:true,
-                            topSlot: <EmailAddBox onAdd={(list)=>{ list.forEach(v=>rAdd(field, v)); reopen(); }} />,
-                            ...(recordsInScope(dpath).length ? { smart:{ tab:"specific", slotKey:ak, title:"Add "+title+" recipients", ...chromeTabs, onSpecific: ()=>openRecipients(field),
-                              onReference: ()=> openSmartRef(dpath, ak, null, ak, (ref)=>{ rAdd(field, {ref}); reopen(); }, { onSpecific: ()=>openRecipients(field), ...chromeTabs }, { wide:true }) } } : {}) });
-                      };
-                      // one recipient row: label · chips (× on hover) · a click-anywhere "add" target that opens the popup
-                      const rRow = (field, label, extra) => { const list = rList(dnode, field); const ak = `rcp:${dnode.id}:${field}`;
-                        return (
-                          <div className="px-5 py-2 flex items-center gap-3 border-b" style={{borderColor:"var(--border2)"}}>
-                            <span className="shrink-0 w-7 text-[length:var(--fs-125)]" style={{color:"var(--muted)"}}>{label}</span>
-                            <div className="flex-1 min-w-0 flex flex-wrap items-center gap-1.5">
-                              {list.map(v=> chip(rLabel(v), typeof v!=="string" || preOpts.includes(v), ()=>rRemove(field, v)))}
-                              <button type="button" data-anchor={ak} onClick={()=>openRecipients(field)}
-                                className="flex-1 min-w-[90px] text-left text-[length:var(--fs-125)] py-0.5 rounded transition-colors"
-                                style={{color: openSlot===ak ? "var(--accent2)" : "var(--faint)"}}>{list.length ? "+ add" : "add an email or pick…"}</button>
-                            </div>
-                            {extra}
-                          </div>); };
                       // formatting toolbar — UI ONLY for now (user-mandated: visual parity with the real product's
                       // editor; only Insert placeholder is functional). Icons match the reference set 1:1.
                       const sw = {stroke:"currentColor", strokeWidth:1.8, strokeLinecap:"round", strokeLinejoin:"round"};
@@ -10678,13 +10020,45 @@ function App() {
                       return (
                         <div className="-mx-5 -my-5 flex flex-col">
                           {/* To row — recipient CHIP (hover ×) + quiet "Cc Bcc" links right, hairline below */}
-                          {/* To / Cc / Bcc (v8) — chip lists; click the field → the Specific | Dynamic recipients popup */}
-                          {rRow("to", "To", <span className="ml-auto shrink-0 flex items-center gap-2.5">
+                          <div className="px-5 py-2 flex items-center gap-3 border-b" style={{borderColor:"var(--border2)"}}>
+                            <span className="shrink-0 text-[length:var(--fs-125)]" style={{color:"var(--muted)"}}>To</span>
+                            {dnode.arg && !toEdit
+                              ? <span className="group/to inline-flex items-center gap-0.5 max-w-[200px] text-[length:var(--fs-125)] pl-2.5 pr-1 py-0.5 rounded-full transition-colors hover:bg-[var(--pop-hover)]" style={{background:"var(--panel)", border:"1px solid var(--border2)", color:"var(--text)"}}>
+                                  {/* click the chip → edit mode (combo input: suggestions or type over); × removes */}
+                                  <button onClick={()=>setToEdit(true)} data-tip="Change recipient" className="min-w-0 truncate text-left">{dnode.arg}</button>
+                                  <button onClick={()=>update(dpath, {arg:null})} data-tip="Remove recipient" className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover/to:opacity-100 transition-opacity hover:text-[var(--red)]" style={{color:"var(--faint)"}}>
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"/></svg></button>
+                                </span>
+                              : <SuggestInput autoFocus={toEdit} suggestions={roleSugs} onPick={commitTo} onType={commitTo}
+                                  onCancel={()=>setToEdit(false)} placeholder="type an email or pick a suggestion…" />}
+                            <span className="ml-auto shrink-0 flex items-center gap-2.5">
                               {(has("cc")||has("predef_cc")) && !revealCc && addLink("Cc", ()=>show("cc"))}
                               {has("bcc") && !reveal("bcc") && addLink("Bcc", ()=>show("bcc"))}
-                            </span>)}
-                          {(has("cc")||has("predef_cc")) && revealCc && rRow("cc", "Cc")}
-                          {has("bcc") && reveal("bcc") && rRow("bcc", "Bcc")}
+                            </span>
+                          </div>
+                          {(has("cc")||has("predef_cc")) && revealCc && (
+                            <div className="px-5 py-2 flex items-baseline gap-3 border-b" style={{borderColor:"var(--border2)"}}>
+                              <span className="shrink-0 text-[length:var(--fs-125)]" style={{color:"var(--muted)"}}>Cc</span>
+                              <div className="flex-1 min-w-0 flex flex-wrap items-center gap-1.5">
+                                {ccPre.map(t=>chip(t, true, ()=>{ const n=ccPre.filter(x=>x!==t); setD("predef_cc", n.length?n:null); }))}
+                                {ccTyped.map(t=>chip(t, false, ()=>{ const n=ccTyped.filter(x=>x!==t); setD("cc", n.length?n:null); }))}
+                                {has("cc") && <SuggestInput suggestions={ccSugs}
+                                  onPick={(v2)=>{ if(!ccPre.includes(v2)) setD("predef_cc",[...ccPre,v2]); }}
+                                  onType={(v2)=>{ if(!ccTyped.includes(v2) && !ccPre.includes(v2)) setD("cc",[...ccTyped,v2]); }}
+                                  placeholder={ccTyped.length||ccPre.length?"":"add an email or pick…"} />}
+                              </div>
+                            </div>)}
+                          {has("bcc") && reveal("bcc") && (
+                            <div className="px-5 py-2 flex items-baseline gap-3 border-b" style={{borderColor:"var(--border2)"}}>
+                              <span className="shrink-0 text-[length:var(--fs-125)]" style={{color:"var(--muted)"}}>Bcc</span>
+                              <div className="flex-1 min-w-0 flex flex-wrap items-center gap-1.5">
+                                {bccArr.map(t=>chip(t, false, ()=>{ const n=bccArr.filter(x=>x!==t); setD("bcc", n.length?n:null); }))}
+                                <SuggestInput suggestions={ccSugs}
+                                  onPick={(v2)=>{ if(!bccArr.includes(v2)) setD("bcc",[...bccArr,v2]); }}
+                                  onType={(v2)=>{ if(!bccArr.includes(v2)) setD("bcc",[...bccArr,v2]); }}
+                                  placeholder={bccArr.length?"":"add an email or pick…"} />
+                              </div>
+                            </div>)}
                           {/* Subject row — BRIGHT always-visible label (matches To/Cc), editor beside it,
                               always-visible purple { }, hairline below */}
                           <div className="px-5 py-2.5 flex items-center gap-3 border-b" style={{borderColor:"var(--border2)"}}>
@@ -10694,14 +10068,11 @@ function App() {
                                 canPlaceholder={canRef} onRequestPlaceholder={reqPh("subject")} />
                             </div>
                           </div>
-                          {/* v8: error sits BELOW the subject hairline, not inside the row */}
-                          {dnode.showErrs && !reqFieldOK(fdOf("subject"), ddata) && <div className="px-5 pt-1.5"><FieldError>Subject is required</FieldError></div>}
                           {/* Body — the big open writing area */}
                           <div className="px-5 pt-3 pb-2">
                             <RichBody frameless noFooter api={bodyApi} expandTitle="Email body" value={mig(ddata.body)} onChange={(v2)=>setD("body",v2)}
                               placeholder={fdOf("body").ph||"Write the email…"} minRows={12}
                               canPlaceholder={canRef} onRequestPlaceholder={reqPh("body")} />
-                            {dnode.showErrs && !reqFieldOK(fdOf("body"), ddata) && <div className="mt-1.5"><FieldError>Body is required</FieldError></div>}
                           </div>
                           {/* expanded formatting bar — appears ABOVE the main row when the ▾ is toggled (Gmail) */}
                           {more && (
@@ -10740,7 +10111,7 @@ function App() {
                       const fk = `dspec:${dnode.id}:${fd.k}`;
                       let ctrl;
                       if (fd.type==="select")
-                        ctrl = (refOK && !fd.plain) ? fieldCtrl(dpath, fd, v, set, fk, fd.ph||"Select…")
+                        ctrl = refOK ? fieldCtrl(dpath, fd, v, set, fk, fd.ph||"Select…")
                           : <Dropdown search={(fd.options||[]).length>8} placeholder={fd.ph||"Select…"} value={v} options={(fd.options||[]).map(o=>({id:o,label:o}))} onChange={set} />;
                       else if (fd.type==="user")
                         ctrl = refOK ? fieldCtrl(dpath, fd, v, set, fk, "choose a person…")
@@ -10756,72 +10127,6 @@ function App() {
                           onRequestPlaceholder={(el, applyRef)=> (dspec && dspec.phCatalog)
                             ? openPhPicker(fk, el, applyRef)                                                  // send channels → real Motadata catalog
                             : openSmartRef(dpath, fk, el, null, (refObj)=>applyRef(refPathLabels(refObj).join(" › ")), {})} />;  // announcement/HTTP keep the record drill
-                      }
-                      // ── Create deployment (v8) field types ──────────────────────────────────────────────
-                      else if (fd.type==="heading")   // section title (e.g. "Configuration settings") with a hairline above
-                        return (<div key={fd.k} className="col-span-2 pt-4 mt-1 border-t" style={{borderColor:"var(--border)"}}>
-                          <div className="text-[length:var(--fs-section)] font-semibold" style={{color:"var(--text)"}}>{fd.label}</div>
-                        </div>);
-                      else if (fd.type==="phtext")    // typeable one-line input + the always-visible { } placeholder button on the right (same editor as the email Subject)
-                        ctrl = (<div className="rounded-lg px-3 py-2" style={inSty}>
-                          <RichBody single value={typeof v==="string"?v:""} onChange={set} placeholder={fd.ph||"enter a value…"}
-                            canPlaceholder={refOK && recordsInScope(dpath).length>0}
-                            onRequestPlaceholder={(el, applyRef)=> openPhPicker(fk, el, applyRef)} />  {/* the email's grouped "Insert placeholder" catalog (search · groups · multi-insert · Done) */}
-                        </div>);
-                      else if (fd.type==="tabs") {     // Install / Uninstall — underline tabs; defaults to the first option
-                        const cur = v || fd.default || (fd.options||[])[0];
-                        ctrl = (<div className="flex gap-5 border-b" style={{borderColor:"var(--border2)"}} role="tablist">
-                          {(fd.options||[]).map(o=>{ const on = cur===o;
-                            return <button key={o} type="button" role="tab" aria-selected={on} onClick={()=>set(o)}
-                              className="-mb-px pb-2 pt-0.5 text-[length:var(--fs-13)] font-medium transition-colors"
-                              style={{ color: on?"var(--text)":"var(--muted)", borderBottom:`2px solid ${on?"var(--accent)":"transparent"}` }}>{o}</button>; })}
-                        </div>);
-                      }
-                      else if (fd.type==="switch") {   // on/off — same visual as the pool picker's "Only online members" switch
-                        const on = !!D[fd.k];
-                        return (<div key={fd.k} className="col-span-2">
-                          <button type="button" role="switch" aria-checked={on} onClick={()=>SET(fd.k, on?null:true)}
-                            className="w-full flex items-center justify-between gap-3 rounded-lg border px-3.5 py-2.5 text-left transition-colors hover:bg-[var(--pop-hover)]" style={{borderColor:"var(--border2)"}}>
-                            <span className="flex flex-col">
-                              <span className="text-[length:var(--fs-13)] font-medium" style={{color:"var(--text)"}}>{fd.label}</span>
-                              {fd.sub && <span className="text-[length:var(--fs-11)]" style={{color:"var(--faint)"}}>{fd.sub}</span>}
-                            </span>
-                            <span className="w-9 h-5 rounded-full relative transition-colors shrink-0" style={{background: on?"var(--accent)":"var(--border2)"}}>
-                              <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all" style={{left: on?"18px":"2px"}}></span>
-                            </span>
-                          </button>
-                        </div>);
-                      }
-                      else if (fd.type==="packages") { // the package grid: title + "Add packages" CTA, then a sideways-scrolling table (one row per package)
-                        const rows = Array.isArray(D[fd.k]) ? D[fd.k] : [];
-                        // opens the "Add packages" listing IN this sidebar (pkgPick) — pre-checked with what's already added
-                        const addPkg = ()=> setPkgPick({ sel: rows.map(r=>r.id), q:"", page:0 });
-                        return (<div key={fd.k} className="col-span-2 flex flex-col gap-2 min-w-0">
-                          <div className="flex items-center justify-between">
-                            <label className="text-[length:var(--fs-11)] font-semibold uppercase tracking-[0.08em]" style={{color:"var(--faint)"}}>{fd.label}<span className="ml-0.5" style={{color:"var(--red)"}}>*</span></label>
-                            <button type="button" onClick={addPkg} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[length:var(--fs-12)] font-medium transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--accent2)"}}>
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                              Add packages
-                            </button>
-                          </div>
-                          <div className="rounded-xl border overflow-x-auto thin-scroll" style={{borderColor:"var(--border2)"}}>
-                            <table className="w-full text-left text-[length:var(--fs-12)]" style={{minWidth:"620px", borderCollapse:"collapse"}}>
-                              <thead><tr style={{background:"var(--panel2)"}}>
-                                {DEPLOY_PKG_COLS.map(([ck,cl])=><th key={ck} className="px-2.5 py-2 font-semibold whitespace-nowrap" style={{color:"var(--muted)"}}>{cl}</th>)}
-                                <th className="px-3 py-2 font-semibold text-right" style={{color:"var(--muted)"}}>Action</th>
-                              </tr></thead>
-                              <tbody>
-                                {rows.length ? rows.map(r=>(
-                                  <tr key={r.id} className="border-t" style={{borderColor:"var(--border2)"}}>
-                                    {DEPLOY_PKG_COLS.map(([ck])=><td key={ck} className={"px-2.5 py-2 "+(ck==="name"?"":"whitespace-nowrap")+(ck==="id"?" font-mono":"")} style={{color: ck==="name"?"var(--text)":"var(--ink-mid)"}}>{r[ck]}</td>)}
-                                    <td className="px-3 py-1.5 text-right"><DeleteBtn onClick={()=>{ const n=rows.filter(x=>x.id!==r.id); SET(fd.k, n.length?n:null); }} title="Remove package" /></td>
-                                  </tr>))
-                                : <tr><td colSpan={DEPLOY_PKG_COLS.length+1} className="px-3 py-5" style={{color:"var(--faint)"}}>No packages yet — use <b style={{color:"var(--accent2)", fontWeight:500}}>Add packages</b> to pick what to {(D.config_type||"Install").toLowerCase()}.</td></tr>}
-                              </tbody>
-                            </table>
-                          </div>
-                          {dnode.showErrs && !reqFieldOK(fd, D) && <FieldError>Add at least one package</FieldError>}
-                        </div>);
                       }
                       else if (fd.type==="segment")
                         ctrl = (<div className="flex flex-wrap gap-1 rounded-lg p-1" style={{background:"var(--panel2)", border:"1px solid var(--border2)"}}>
@@ -10885,7 +10190,6 @@ function App() {
                         <div key={fd.k} className={(fd.half?"col-span-1":"col-span-2")+" flex flex-col gap-1.5 min-w-0"}>
                           {fd.type!=="daterange" && <label className="text-[length:var(--fs-11)] font-semibold uppercase tracking-[0.08em]" style={{color:"var(--faint)"}}>{fd.label}{!fd.opt && <span className="ml-0.5" style={{color:"var(--red)"}}>*</span>}</label>}
                           {ctrl}
-                          {dnode.showErrs && !reqFieldOK(fd, D) && <FieldError>{fd.label} is required</FieldError>}
                         </div>
                       );
                     };
@@ -10912,7 +10216,6 @@ function App() {
                       {/* repeatable STAGES — accordion cards with add/remove (e.g. multi-stage approval) */}
                       {dspec.stages && (<>
                         <span className="mt-1 text-[length:var(--fs-11)] font-semibold uppercase tracking-[0.08em]" style={{color:"var(--faint)"}}>{dspec.stages.label}<span className="ml-0.5" style={{color:"var(--red)"}}>*</span></span>
-                        {dnode.showErrs && !dstages.length && <FieldError>Add at least one stage</FieldError>}
                         {dstages.map((st,i2)=>{
                           const skey = "stage:"+i2, sOpen = !!openSecs[skey];
                           return (
@@ -10922,8 +10225,6 @@ function App() {
                                 <svg className={"transition-transform "+(sOpen?"rotate-90":"")} width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                                 <span className="text-[length:var(--fs-125)] font-semibold" style={{color:"var(--text)"}}>Stage {i2+1}</span>
                                 <span className="text-[length:var(--fs-11)]" style={{color:"var(--faint)"}}>{st.dtype||"—"}</span>
-                                {dnode.showErrs && !sOpen && dspec.stages.fields.some(f3=>!reqFieldOK(f3, st)) &&
-                                  <span className="text-[length:var(--fs-11)] font-medium" style={{color:"var(--red)"}}>· required fields missing</span>}
                                 <button onClick={(e)=>{ e.stopPropagation(); rmStage(i2); }} className="ml-auto text-[length:var(--fs-11)] font-medium hover:brightness-125" style={{color:"var(--red)"}}>remove</button>
                               </div>
                               {sOpen && <div className="px-3 pb-3.5 pt-2.5">{grid(dspec.stages.fields, st, (kk,val)=>setStage(i2,kk,val))}</div>}
@@ -10939,22 +10240,16 @@ function App() {
                       return (
                         <div key={i} className={"flex flex-col gap-3" + (i<dfields.length-1 ? " pb-6 border-b" : "")} style={i<dfields.length-1 ? {borderColor:"var(--border)"} : undefined}>
                           <div className="flex items-center justify-between">
-                            <span className="text-[length:var(--fs-10)] font-semibold uppercase tracking-[0.1em]" style={{color:"var(--faint)"}}>Field {i+1}{fv.locked && <span className="ml-0.5" style={{color:"var(--red)"}}>*</span>}</span>
-                            {fv.locked
-                              ? <span className="text-[length:var(--fs-11)]" style={{color:"var(--faint)"}}>required</span>   // Add task's mandatory rows (v8) can't be removed
-                              : <button onClick={()=>rmF(i)} className="text-[length:var(--fs-11)] font-medium hover:brightness-125" style={{color:"var(--red)"}}>remove</button>}
+                            <span className="text-[length:var(--fs-10)] font-semibold uppercase tracking-[0.1em]" style={{color:"var(--faint)"}}>Field {i+1}</span>
+                            <button onClick={()=>rmF(i)} className="text-[length:var(--fs-11)] font-medium hover:brightness-125" style={{color:"var(--red)"}}>remove</button>
                           </div>
-                          {/* field control = the SAME categorized picker (Suggested + All), for CHANGING this row's field.
-                              A LOCKED row (Add task start date / subject, v8) shows its field fixed — no picker, a lock instead of the chevron. */}
-                          <button type="button" onClick={fv.locked ? undefined : (e)=>openFieldPicker(e.currentTarget, i)} aria-disabled={fv.locked || undefined}
-                            data-tip={fv.locked ? "This field is required for a task" : undefined}
-                            className={"w-full rounded-lg pl-3 pr-2.5 py-2.5 text-[length:var(--fs-135)] flex items-center gap-2 text-left transition-colors " + (fv.locked ? "" : "hover:bg-[var(--pop-hover)]")}
+                          {/* field control = the SAME categorized picker (Suggested + All), for CHANGING this row's field */}
+                          <button type="button" onClick={(e)=>openFieldPicker(e.currentTarget, i)}
+                            className="w-full rounded-lg pl-3 pr-2.5 py-2.5 text-[length:var(--fs-135)] flex items-center gap-2 text-left transition-colors hover:bg-[var(--pop-hover)]"
                             /* field NAME is muted (lighter) so it reads as secondary to the value below it (user 2026-09-04) */
-                            style={{ background:"var(--panel2)", border:"1px solid var(--border2)", color: fv.field?"var(--muted)":"var(--faint)", ...(fv.locked ? {opacity:1} : {}) }}>
+                            style={{ background:"var(--panel2)", border:"1px solid var(--border2)", color: fv.field?"var(--muted)":"var(--faint)" }}>
                             <span className="flex-1 min-w-0 truncate">{fv.field ? ("Field - " + ((recFields.find(f=>f.id===fv.field)||{}).label || fv.field)) : "choose a field…"}</span>
-                            {fv.locked
-                              ? <svg className="shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M8 11V8a4 4 0 018 0v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-                              : <svg className="shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                            <svg className="shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                           </button>
                           {fd && (<>{(
                             fd.multi  // predefined multi-select dropdown
@@ -10982,19 +10277,11 @@ function App() {
                             ? fieldCtrl(dpath, fd, fv.value, (val)=>setF(i,{value:val}), `dval:${dnode.id}:${i}`, "choose a value…")
                             : fd.type==="text"
                             ? textFieldCtrl(dpath, fd, fv.value, (val)=>setF(i,{value:val}), `dval:${dnode.id}:${i}`, "enter text…")
-                            : fd.type==="exprtext"  // Add task subject (v8): the Specific | Dynamic popup (typed text · reference · expression) — no fx button
-                            ? fieldCtrl(dpath, fd, fv.value, (val)=>setF(i,{value:val}), `dval:${dnode.id}:${i}`, "enter the task subject…")
-                            : fd.type==="taskdate"  // Add task start date (v8): Current Date / Current Date Time / Custom, + Dynamic / Expression
-                            ? fieldCtrl(dpath, fd, fv.value, (val)=>setF(i,{value:val}), `dval:${dnode.id}:${i}`, "choose a start date…")
                             : fieldCtrl(dpath, fd, fv.value, (val)=>setF(i,{value:val}), `dval:${dnode.id}:${i}`, "value"))}
                           </>)}
-                          {/* required-field error (v8): a row needs both a field and its value */}
-                          {dnode.showErrs && (!fv.field ? <FieldError>Choose a field</FieldError>
-                            : isBlankVal(fv.value) ? <FieldError>{(fd && fd.label) || "This field"} is required</FieldError> : null)}
                         </div>
                       );
                     })}
-                    {dnode.showErrs && !dfields.length && <FieldError>Add at least one field</FieldError>}
                     {/* + Add field — opens the categorized field picker (Suggested + All grouped). Full-width,
                         PURPLE outline + tinted bg (user 2026-07-04). */}
                     <button onClick={(e)=>openFieldPicker(e.currentTarget, null)} className="w-full rounded-xl border px-3 py-2.5 text-[length:var(--fs-13)] font-medium flex items-center justify-center gap-1.5 transition-colors hover:brightness-110" style={{border:"1px solid var(--accent2)", color:"var(--accent2)", background:"color-mix(in srgb, var(--accent) 8%, transparent)"}}>
@@ -11004,7 +10291,7 @@ function App() {
                   </>)}
                 </div>
                 <div className="px-4 py-3.5 border-t shrink-0 flex" style={{borderColor:"var(--border)"}}>
-                  <button onClick={()=>{ if (missingRequired(nodeAt(flowRef.current, dpath)) > 0) { update(dpath, {showErrs:true}); return; } update(dpath, {confirmed:true}); setDrawer(null); }} className="ml-auto px-4 py-2 rounded-lg text-[length:var(--fs-13)] font-semibold transition-colors hover:brightness-110" style={{background:"var(--accent)", color:"#fff"}}>Done</button>
+                  <button onClick={()=>{ update(dpath, {confirmed:true}); setDrawer(null); }} className="ml-auto px-4 py-2 rounded-lg text-[length:var(--fs-13)] font-semibold transition-colors hover:brightness-110" style={{background:"var(--accent)", color:"#fff"}}>Done</button>
                 </div>
               </div>
             );
@@ -11140,7 +10427,7 @@ function App() {
 
       </div>
 
-      {pop && <Popover key={openInsertKey || pop.anchorKey || undefined} anchor={pop.anchor} anchorKey={pop.anchorKey} items={pop.items} flat={pop.flat} title={pop.title} inputType={pop.inputType} noSearch={pop.noSearch} footer={pop.footer} wide={pop.wide} matchWidth={pop.matchWidth} back={pop.back} help={pop.help} solidIcons={pop.solidIcons} selected={pop.selected} itemsAsNodes={pop.itemsAsNodes} initActive={pop.initActive} choices={pop.choices} smart={pop.smart} duration={pop.duration} moduleMorph={pop.moduleMorph} searchPlaceholder={pop.searchPlaceholder} clearOnPick={pop.clearOnPick} onQueryEnter={pop.onQueryEnter} topSlot={pop.topSlot} listHeader={pop.listHeader} settleHover={pop.settleHover} offsetX={pop.offsetX} source={pop.source} onHelp={setRailHelp} onViewMore={(id)=>{ close(); setRefSel(id); setRefOpen(true); }} hideHelp={tourActive} noHover={tourActive} onPick={pop.onPick} onActive={pop.onActive} onClose={close} onSoftCancel={()=>{ dropPreviewGhost(); if (replaceRef.current) replaceRef.current = null; setSplitPreviewKey(null); }}/>}
+      {pop && <Popover key={openInsertKey || pop.anchorKey || undefined} anchor={pop.anchor} anchorKey={pop.anchorKey} items={pop.items} flat={pop.flat} title={pop.title} inputType={pop.inputType} noSearch={pop.noSearch} footer={pop.footer} wide={pop.wide} matchWidth={pop.matchWidth} back={pop.back} help={pop.help} solidIcons={pop.solidIcons} selected={pop.selected} itemsAsNodes={pop.itemsAsNodes} initActive={pop.initActive} choices={pop.choices} smart={pop.smart} duration={pop.duration} moduleMorph={pop.moduleMorph} searchPlaceholder={pop.searchPlaceholder} clearOnPick={pop.clearOnPick} settleHover={pop.settleHover} offsetX={pop.offsetX} source={pop.source} onHelp={setRailHelp} onViewMore={(id)=>{ close(); setRefSel(id); setRefOpen(true); }} hideHelp={tourActive} noHover={tourActive} onPick={pop.onPick} onActive={pop.onActive} onClose={close} onSoftCancel={()=>{ dropPreviewGhost(); if (replaceRef.current) replaceRef.current = null; setSplitPreviewKey(null); }}/>}
 
       {/* Use-case full description popup */}
       {ucPopup && isUsecase && USECASE_META[activeModule] && (
