@@ -1133,6 +1133,7 @@ const APP_INTEGRATIONS = {
   "Zapier":          ["Trigger Zap"],
 };
 const INTEGRATION_KEYS = ["Action","Password","Base DN","UserType","mail","Username","userAccountControl"];
+const PKG_SHOWN = 5; // Create deployment sidebar: package boxes shown up front; the rest fold into "+N more"
 const DEPLOY_PKG_COLS = [["id","Package ID"],["name","Name"],["version","Version"],["arch","Architecture"],["type","Package type"],["user","User type"]];
 // Targets for the "assign it to …" action — technicians + groups (the slot reads "user/group").
 const ASSIGN_TARGETS = ["Current technician","Requester","On-call technician","Service Desk","Hardware Team","Software Team","Network Ops","Field Support","Security","Database","Apps Team","Tier-2","Tier-3","Default Support Group","Finance IT Support Group","HR IT Support Group","Operations IT Support Group","Sales IT Support Group","Internal IT Support Group","General Support Group","A specific technician…","A specific group…"];
@@ -1647,7 +1648,8 @@ function FieldError({ children }) {
 // each valid one; invalid leftovers stay in the box with a one-line error. Add is disabled until the text looks
 // like an address. Keys are kept out of the popover's list nav (Enter would otherwise pick the highlighted role).
 const EMAIL_RX = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]{2,}$/;
-function EmailAddBox({ onAdd }) {
+const RCP_KB = { on:false }; // recipients popup: true once Tab moved the user into the role list (keyboard mode)
+function EmailAddBox({ onAdd, onTabOut, onFocusBox }) {
   const [txt, setTxt] = React.useState("");
   const [err, setErr] = React.useState(false);
   const ref = React.useRef(null);
@@ -1671,11 +1673,13 @@ function EmailAddBox({ onAdd }) {
           onKeyDown={e=>{
             if (e.key==="Enter"){ e.preventDefault(); e.stopPropagation(); if (canAdd) submit(); else if (parts.length) setErr(true); return; }
             if (e.key==="Escape" && txt){ e.preventDefault(); e.stopPropagation(); setTxt(""); setErr(false); return; }
+            // Tab → leave the box and highlight the FIRST role (Enter then adds it; ↑↓ move)
+            if (e.key==="Tab" && !e.shiftKey && onTabOut){ e.preventDefault(); e.stopPropagation(); e.currentTarget.blur(); onTabOut(); return; }
             if (e.key!=="Escape") e.stopPropagation(); // arrows/Tab belong to the text box, not the popover's list nav
           }}
           className="flex-1 min-w-0 h-8 px-2.5 rounded-md outline-none text-[length:var(--fs-12)] transition-colors"
           style={{background:"var(--bg)", color:"var(--text)", border:`1px solid ${err ? "var(--red)" : "var(--border2)"}`}}
-          onFocus={e=>{ if (!err) e.currentTarget.style.borderColor="var(--accent)"; }}
+          onFocus={e=>{ if (onFocusBox) onFocusBox(); if (!err) e.currentTarget.style.borderColor="var(--accent)"; }}
           onBlur={e=>{ if (!err) e.currentTarget.style.borderColor="var(--border2)"; }} />
         <button type="button" disabled={!canAdd} onMouseDown={e=>e.preventDefault()} onClick={submit}
           className="shrink-0 h-8 px-3 rounded-md text-[length:var(--fs-12)] font-semibold transition-colors"
@@ -2512,7 +2516,9 @@ function Kbd({ children }) {
 // Tooltip — wraps a SINGLE real-DOM child; attaches hover/focus handlers + a MERGED ref via cloneElement
 // and renders the bubble through a PORTAL (position:fixed, no wrapper DOM → flex layouts stay byte-identical).
 // `label` falsy AND no `kbd` → the child renders untouched (safe for conditional tips).
-function Tooltip({ label, kbd, side = "top", children }) {
+// `wrap` → multi-line bubble (max 360px, keeps line breaks) for long values; `truncOnly` → only show when the
+// trigger (or a descendant) is actually cut off by an ellipsis — the "full text on hover" tip for truncated card lines.
+function Tooltip({ label, kbd, side = "top", wrap, truncOnly, children }) {
   const child = React.Children.only(children);
   const enabled = !!(label || kbd);
   const [rect, setRect] = React.useState(null);   // trigger rect while shown; null = hidden
@@ -2545,7 +2551,8 @@ function Tooltip({ label, kbd, side = "top", children }) {
     if (typeof r === "function") r(node);
     else if (r && typeof r === "object" && r !== null) r.current = node;
   };
-  const show = () => { if (TT_MUTE.on) return; const el = trigRef.current; if (el) { setXY(null); setRect(el.getBoundingClientRect()); } };
+  const isCut = (el) => [el, ...el.querySelectorAll("*")].some(n => n.scrollWidth > n.clientWidth + 1);
+  const show = () => { if (TT_MUTE.on) return; const el = trigRef.current; if (el) { if (truncOnly && !isCut(el)) return; setXY(null); setRect(el.getBoundingClientRect()); } };
   const hide = () => { setRect(null); setXY(null); };
   const cloned = React.cloneElement(child, {
     ref: setRef,
@@ -2561,10 +2568,11 @@ function Tooltip({ label, kbd, side = "top", children }) {
     {cloned}
     {rect && ReactDOM.createPortal(
       <div ref={bubbleRef} role="tooltip"
-        className="fixed flex items-center gap-2 whitespace-nowrap pointer-events-none"
+        className={"fixed flex items-center gap-2 pointer-events-none" + (wrap ? "" : " whitespace-nowrap")}
         style={{ left: xy ? xy.left : -9999, top: xy ? xy.top : -9999, opacity: xy ? 1 : 0,
           background:"var(--pop-bg)", color:"var(--text)", border:"1px solid var(--border2)",
-          fontSize:"var(--fs-caption)", fontWeight:500, lineHeight:1, padding:"5px 9px",
+          fontSize:"var(--fs-caption)", fontWeight:500, lineHeight: wrap ? 1.45 : 1, padding: wrap ? "7px 10px" : "5px 9px",
+          ...(wrap ? { maxWidth:360, whiteSpace:"pre-line", overflowWrap:"anywhere" } : {}),
           borderRadius:"8px", boxShadow:"var(--shadow-pop)", zIndex:9999 }}>
         {label && <span>{label}</span>}
         {kbd && (Array.isArray(kbd) ? kbd.map((k,i)=><Kbd key={i}>{k}</Kbd>) : <Kbd>{kbd}</Kbd>)}
@@ -3778,7 +3786,7 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onActive, onClose, on
     {smartSource}
     {sourceCard}
     {smartCrumb}
-    {topSlot}
+    {typeof topSlot==="function" ? topSlot({ focusList: ()=>{ setHovItem(null); setActive(0); } }) : topSlot}
     {!noSearch && !listHeader &&
       <div className="px-2.5 pt-1 pb-2">
         <SearchBox inputRef={searchRef} autoFocus value={q} placeholder={searchPlaceholder} onChange={e=>{setQ(e.target.value); setActive(0);}} onKeyDown={e=>{ if(e.key==="Backspace" && q==="" && back){ e.preventDefault(); back(); } }} />
@@ -7939,6 +7947,8 @@ function App() {
     if (id==="send_notification") return { verb:"send", tpl:" a {channel}" }; // placeholder — reads "Send a notification…" until the channel slot is picked
     if (id && id.startsWith("send_")) {
       // the channel is a SLOT now (node-first flow) — clicking it reopens the channel picker
+      // EMAIL: no "to {arg}" — the recipients live on the card's "To:" line (user 2026-10-08), one place only
+      if (id==="send_email") return showRec ? { verb:"send", tpl:" {channel} about {record}" } : { verb:"send", tpl:" {channel}" };
       return showRec ? { verb:"send", tpl:" {channel} about {record} to {arg}" } : { verb:"send", tpl:" {channel} to {arg}" };
     }
     return null;
@@ -9124,6 +9134,13 @@ function App() {
               const cardSummary = spec ? (spec.overview ? spec.overview(data).map(s=>s.t).join(" ") : null)
                 : (cardChanges && cardChanges.length ? (cardChanges.slice(0,2).join("  ·  ") + (cardChanges.length>2 ? `  ·  +${cardChanges.length-2} more` : "")) : "");
               const subtitle = cardSummary || countLine;
+              // SEND EMAIL (user 2026-10-08): the card reads the whole configuration on TWO lines — "To: …" then
+              // "Subject: …" — as soon as either is set (not the bare "Choose options"). Missing parts read "…".
+              const emailLines = node.action==="send_email" ? (()=>{
+                const to = Array.isArray(data.to) ? data.to : (node.arg ? [node.arg] : []);
+                const toTxt = to.map(v=> typeof v==="string" ? v : valueDisplay(v, true)).join(", ");
+                const subj = typeof data.subject==="string" ? phPretty(data.subject).trim() : "";
+                return (toTxt || subj) ? { to: toTxt || "…", subject: subj || "…" } : null; })() : null;
               // full hover tooltip: every field-change as a bullet (update/create), or the whole overview (spec forms).
               const cardTip = spec ? cardSummary : (cardChangesFull && cardChangesFull.length ? cardChangesFull.map(c=>"• "+c).join("\n") : null);
               // when not configured: ONE line, just the prompt (no subtext)
@@ -9148,8 +9165,20 @@ function App() {
                   </span>
                   {/* ONE readable line — configured shows the field-change summary, not-configured shows the prompt (no title/subtitle split, so it reads linearly) */}
                   <span className="flex-1 min-w-0">
-                    <span className="block text-[length:var(--fs-13)] leading-tight truncate" style={{color: showErr && !good ? "var(--red)" : "var(--text)"}} title={good ? (cardTip || subtitle) : undefined}>
-                      {good ? subtitle : showErr ? `${nMissing} required field${nMissing===1?"":"s"} missing` : prompt}</span>
+                    {emailLines && !(showErr && !good) ? (<>
+                      {/* full value on hover when a line is cut off (user 2026-10-08) — themed, wrapping tooltip */}
+                      <Tooltip wrap truncOnly label={"To: "+emailLines.to}>
+                        <span className="block text-[length:var(--fs-13)] leading-tight truncate" style={{color:"var(--text)"}}>
+                          <span style={{color:"var(--muted)"}}>To: </span>{emailLines.to}</span></Tooltip>
+                      <Tooltip wrap truncOnly label={"Subject: "+emailLines.subject}>
+                        <span className="block mt-1 text-[length:var(--fs-13)] leading-tight truncate" style={{color:"var(--text)"}}>
+                          <span style={{color:"var(--muted)"}}>Subject: </span>{emailLines.subject}</span></Tooltip>
+                    </>) : (
+                    /* configured summary: the full text on hover — always when the tip carries MORE than the line ("+N more"
+                       field lists), otherwise only when the line is truncated */
+                    <Tooltip wrap truncOnly={!(cardTip && cardTip!==subtitle)} label={good ? (cardTip || subtitle) : null}>
+                    <span className="block text-[length:var(--fs-13)] leading-tight truncate" style={{color: showErr && !good ? "var(--red)" : "var(--text)"}}>
+                      {good ? subtitle : showErr ? `${nMissing} required field${nMissing===1?"":"s"} missing` : prompt}</span></Tooltip>)}
                   </span>
                   {/* RIGHT = an ACTION: while this form is OPEN → "Close ×"; else "Set up ›" (not configured) → "✓ Edit" (done). */}
                   {cardEditing ? (
@@ -10594,22 +10623,17 @@ function App() {
                         const sugs = (field==="to" ? roleSugs : ccSugs).filter(s=>!have.includes(s.label));
                         const reopen = ()=> requestAnimationFrame(()=>openRecipients(field));   // rebuild so a picked suggestion drops out of the list
                         const title = field==="to" ? "To" : field==="cc" ? "Cc" : "Bcc";
-                        const footer = (
-                          <div className="flex items-center justify-end gap-2 px-1">
-                            <button type="button" onMouseDown={(e)=>{ e.preventDefault(); close(); }}
-                              className="shrink-0 rounded-md px-2.5 py-1 text-[length:var(--fs-12)] font-semibold transition-colors hover:brightness-110" style={{ background:"var(--accent)", color:"#fff" }}>Done</button>
-                          </div>);
-                        // v8 (user 2026-10-08): tabs read "People | From a field" (not Specific | Dynamic); a dedicated
-                        // Email address box + Add sits on top; the roles list is headed by the record it's about, with
-                        // a quiet 🔍 in that header instead of a second boxed search.
+                        // v8 (user 2026-10-08): Specific | Dynamic tabs; a dedicated Email address box + Add on top (Tab
+                        // from it highlights the first role, Enter adds it); the roles list is headed by the record it is
+                        // about. No Done button: picks apply instantly, Esc / click-away closes.
                         const listHdr = field==="to" ? `Roles on this ${(sRec && sRec.module) || "record"}` : "Predefined recipients";
-                        const chromeTabs = { tabLabels:["People","From a field"], refTitle:"Add "+title+" recipients" };
+                        const chromeTabs = { refTitle:"Add "+title+" recipients" };
                         setOpenSlot(ak);
                         open(null, sugs.map(s=>({ id:s.label, label:s.label, sub:s.sub, icon:s.icon })),
                           (i)=>{ rAdd(field, i.id); reopen(); return true; }, title,
-                          { anchorKey:ak, wide:true, clearOnPick:true, footer, initActive:-1,
+                          { anchorKey:ak, wide:true, clearOnPick:true, initActive: RCP_KB.on ? 0 : -1, /* keep the keyboard highlight after an Enter-pick */
                             listHeader: sugs.length ? listHdr : undefined, noSearch:true,
-                            topSlot: <EmailAddBox onAdd={(list)=>{ list.forEach(v=>rAdd(field, v)); reopen(); }} />,
+                            topSlot: (api)=> <EmailAddBox onFocusBox={()=>{ RCP_KB.on=false; }} onTabOut={()=>{ RCP_KB.on=true; api.focusList(); }} onAdd={(list)=>{ list.forEach(v=>rAdd(field, v)); reopen(); }} />,
                             ...(recordsInScope(dpath).length ? { smart:{ tab:"specific", slotKey:ak, title:"Add "+title+" recipients", ...chromeTabs, onSpecific: ()=>openRecipients(field),
                               onReference: ()=> openSmartRef(dpath, ak, null, ak, (ref)=>{ rAdd(field, {ref}); reopen(); }, { onSpecific: ()=>openRecipients(field), ...chromeTabs }, { wide:true }) } } : {}) });
                       };
@@ -10620,7 +10644,7 @@ function App() {
                             <span className="shrink-0 w-7 text-[length:var(--fs-125)]" style={{color:"var(--muted)"}}>{label}</span>
                             <div className="flex-1 min-w-0 flex flex-wrap items-center gap-1.5">
                               {list.map(v=> chip(rLabel(v), typeof v!=="string" || preOpts.includes(v), ()=>rRemove(field, v)))}
-                              <button type="button" data-anchor={ak} onClick={()=>openRecipients(field)}
+                              <button type="button" data-anchor={ak} onClick={()=>{ RCP_KB.on=false; openRecipients(field); }}
                                 className="flex-1 min-w-[90px] text-left text-[length:var(--fs-125)] py-0.5 rounded transition-colors"
                                 style={{color: openSlot===ak ? "var(--accent2)" : "var(--faint)"}}>{list.length ? "+ add" : "add an email or pick…"}</button>
                             </div>
@@ -10768,13 +10792,13 @@ function App() {
                             canPlaceholder={refOK && recordsInScope(dpath).length>0}
                             onRequestPlaceholder={(el, applyRef)=> openPhPicker(fk, el, applyRef)} />  {/* the email's grouped "Insert placeholder" catalog (search · groups · multi-insert · Done) */}
                         </div>);
-                      else if (fd.type==="tabs") {     // Install / Uninstall — underline tabs; defaults to the first option
+                      else if (fd.type==="tabs") {     // Install / Uninstall — the top bar's Simple/Node view switch style, no icons (user 2026-10-08); defaults to the first option
                         const cur = v || fd.default || (fd.options||[])[0];
-                        ctrl = (<div className="flex gap-5 border-b" style={{borderColor:"var(--border2)"}} role="tablist">
+                        ctrl = (<div className="inline-flex items-center gap-0.5 rounded-lg p-0.5 self-start" style={{ background:"var(--panel2)", border:"1px solid var(--border2)" }} role="tablist">
                           {(fd.options||[]).map(o=>{ const on = cur===o;
                             return <button key={o} type="button" role="tab" aria-selected={on} onClick={()=>set(o)}
-                              className="-mb-px pb-2 pt-0.5 text-[length:var(--fs-13)] font-medium transition-colors"
-                              style={{ color: on?"var(--text)":"var(--muted)", borderBottom:`2px solid ${on?"var(--accent)":"transparent"}` }}>{o}</button>; })}
+                              className="inline-flex items-center px-2.5 py-1 rounded-md text-[length:var(--fs-12)] font-medium transition-colors"
+                              style={ on ? { background:"color-mix(in srgb, var(--accent) 22%, transparent)", color:"var(--vs-text)" } : { background:"transparent", color:"var(--muted)" } }>{o}</button>; })}
                         </div>);
                       }
                       else if (fd.type==="switch") {   // on/off — same visual as the pool picker's "Only online members" switch
@@ -10804,22 +10828,37 @@ function App() {
                               Add packages
                             </button>
                           </div>
-                          <div className="rounded-xl border overflow-x-auto thin-scroll" style={{borderColor:"var(--border2)"}}>
-                            <table className="w-full text-left text-[length:var(--fs-12)]" style={{minWidth:"620px", borderCollapse:"collapse"}}>
-                              <thead><tr style={{background:"var(--panel2)"}}>
-                                {DEPLOY_PKG_COLS.map(([ck,cl])=><th key={ck} className="px-2.5 py-2 font-semibold whitespace-nowrap" style={{color:"var(--muted)"}}>{cl}</th>)}
-                                <th className="px-3 py-2 font-semibold text-right" style={{color:"var(--muted)"}}>Action</th>
-                              </tr></thead>
-                              <tbody>
-                                {rows.length ? rows.map(r=>(
-                                  <tr key={r.id} className="border-t" style={{borderColor:"var(--border2)"}}>
-                                    {DEPLOY_PKG_COLS.map(([ck])=><td key={ck} className={"px-2.5 py-2 "+(ck==="name"?"":"whitespace-nowrap")+(ck==="id"?" font-mono":"")} style={{color: ck==="name"?"var(--text)":"var(--ink-mid)"}}>{r[ck]}</td>)}
-                                    <td className="px-3 py-1.5 text-right"><DeleteBtn onClick={()=>{ const n=rows.filter(x=>x.id!==r.id); SET(fd.k, n.length?n:null); }} title="Remove package" /></td>
-                                  </tr>))
-                                : <tr><td colSpan={DEPLOY_PKG_COLS.length+1} className="px-3 py-5" style={{color:"var(--faint)"}}>No packages yet — use <b style={{color:"var(--accent2)", fontWeight:500}}>Add packages</b> to pick what to {(D.config_type||"Install").toLowerCase()}.</td></tr>}
-                              </tbody>
-                            </table>
-                          </div>
+                          {/* v8 (user 2026-10-08): added packages read as BOXES (name + version · type, × on hover), max 5 up
+                              front; the rest fold into a "+N more" box that opens a searchable popover of the full list
+                              (lists can run to dozens) with "Manage packages ›" → the Add packages listing. */}
+                          {rows.length ? (
+                            <div className="flex flex-wrap gap-2">
+                              {rows.slice(0, PKG_SHOWN).map(r=>(
+                                <Tooltip key={r.id} wrap label={`${r.name} ${r.version}\n${r.arch} · ${r.type} · ${r.user}`}><div className="group/pkg relative flex flex-col gap-1 min-w-0 max-w-[180px] rounded-lg border pl-2.5 pr-7 py-1.5" style={{borderColor:"var(--border2)", background:"var(--panel2)"}}>
+                                  <span className="text-[length:var(--fs-12)] font-medium leading-tight truncate" style={{color:"var(--text)"}}>{r.name}</span>
+                                  <span className="text-[length:var(--fs-11)] leading-tight truncate" style={{color:"var(--faint)"}}>{r.version} · {r.type}</span>
+                                  <button type="button" aria-label={"Remove "+r.name} title="Remove package"
+                                    onClick={()=>{ const n=rows.filter(x=>x.id!==r.id); SET(fd.k, n.length?n:null); }}
+                                    className="absolute top-1 right-1 w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover/pkg:opacity-100 focus:opacity-100 transition-opacity hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}>
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>
+                                  </button>
+                                </div></Tooltip>))}
+                              {rows.length > PKG_SHOWN && (
+                                <button type="button" data-anchor={"pkgmore:"+dnode.id}
+                                  onClick={(e)=>{ const el = e.currentTarget;
+                                    open(el, rows.map(r=>({ id:r.id, label:r.name, sub:`${r.version} · ${r.type} · ${r.arch}` })), ()=>true, `All packages (${rows.length})`,
+                                      { wide:true, initActive:-1, searchPlaceholder:"Search packages…",
+                                        footer: <button type="button" onMouseDown={(ev)=>{ ev.preventDefault(); close(); addPkg(); }}
+                                          className="w-full flex items-center justify-between rounded-md px-2 py-1.5 text-[length:var(--fs-12)] font-medium transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--accent2)"}}>
+                                          Manage packages
+                                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                        </button> }); }}
+                                  className="flex items-center justify-center rounded-lg border px-3 py-1.5 text-[length:var(--fs-12)] font-semibold transition-colors hover:bg-[var(--pop-hover)]"
+                                  style={{borderColor:"var(--border2)", color:"var(--accent2)"}}>+{rows.length - PKG_SHOWN} more</button>)}
+                            </div>
+                          ) : (
+                            <div className="rounded-lg border border-dashed px-3 py-4 text-[length:var(--fs-12)]" style={{borderColor:"var(--border2)", color:"var(--faint)"}}>No packages yet — use <b style={{color:"var(--accent2)", fontWeight:500}}>Add packages</b> to pick what to {(D.config_type||"Install").toLowerCase()}.</div>
+                          )}
                           {dnode.showErrs && !reqFieldOK(fd, D) && <FieldError>Add at least one package</FieldError>}
                         </div>);
                       }
