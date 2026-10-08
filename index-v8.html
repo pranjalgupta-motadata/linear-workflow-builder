@@ -1607,6 +1607,85 @@ const formSpecFor = (a) => {
   return null;
 };
 
+// ── REQUIRED-FIELD VALIDATION (v8) — ONE source of truth for "what's still missing" on a drawer-configured node.
+// Drives BOTH the drawer's per-field one-line errors and the canvas card's "N required fields missing" state.
+const isBlankVal = (v) => v==null || v==="" || (Array.isArray(v) && !v.length);
+// a form field is satisfied when it is optional, hidden (showIf), a non-input (heading / switch), or has a value
+const reqFieldOK = (fd, D) => {
+  if (fd.opt || fd.type==="heading" || fd.type==="switch") return true;
+  if (fd.showIf && !fd.showIf(D)) return true;
+  if (fd.type==="tabs") return true;                                   // always has a value (defaults to its first tab)
+  if (fd.type==="daterange") return !isBlankVal(D[fd.k]) && !isBlankVal(D[fd.k2]);
+  return !isBlankVal(D[fd.k]);
+};
+// how many required inputs are still empty. Form nodes: each required field (+ each stage's required fields, or 1
+// when no stage exists yet). Field-row nodes (create / update / add task): each row lacking a field or value (1 when
+// there are no rows). Execute app integration: each mapping row lacking a key or value (1 when there are none).
+const missingRequired = (node) => {
+  if (!node) return 0;
+  if (node.action==="execute_integration") { const m = node.mappings||[]; return m.length ? m.filter(x=>!x.key || isBlankVal(x.value)).length : 1; }
+  const spec = formSpecFor(node.action), d = node.data||{};
+  if (spec) {
+    let n = spec.fields.filter(fd=>!reqFieldOK(fd, d)).length;
+    if (spec.stages) { const st = d.stages||[]; n += st.length ? st.reduce((a,s)=>a+spec.stages.fields.filter(fd=>!reqFieldOK(fd, s)).length, 0) : 1; }
+    return n;
+  }
+  const rows = node.action==="add_task" ? ensureTaskRows(node.fields) : (node.fields||[]);
+  return rows.length ? rows.filter(r=>!r.field || isBlankVal(r.value)).length : 1;
+};
+// the one-line error shown under an empty required field in the drawer
+function FieldError({ children }) {
+  return (
+    <div className="flex items-center gap-1.5 text-[length:var(--fs-11)] leading-tight" style={{color:"var(--red)"}} role="alert">
+      <svg className="shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/><path d="M12 7.5v5.5M12 16.2v.3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+      <span>{children}</span>
+    </div>
+  );
+}
+// v8 recipients popup: a DEDICATED "Email address" box + Add button at the top (user 2026-10-08 — typing a new
+// address into the old search field wasn't discoverable). Enter or Add adds; a paste of "a@x.com, b@y.com" adds
+// each valid one; invalid leftovers stay in the box with a one-line error. Add is disabled until the text looks
+// like an address. Keys are kept out of the popover's list nav (Enter would otherwise pick the highlighted role).
+const EMAIL_RX = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]{2,}$/;
+function EmailAddBox({ onAdd }) {
+  const [txt, setTxt] = React.useState("");
+  const [err, setErr] = React.useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(()=>{ const id = requestAnimationFrame(()=>{ try { ref.current && ref.current.focus({preventScroll:true}); } catch(_){} }); return ()=>cancelAnimationFrame(id); }, []);
+  const parts = txt.split(/[\s,;]+/).filter(Boolean);
+  const canAdd = parts.some(p=>EMAIL_RX.test(p));
+  const submit = ()=>{
+    if (!parts.length) return;
+    const good = parts.filter(p=>EMAIL_RX.test(p)), bad = parts.filter(p=>!EMAIL_RX.test(p));
+    if (good.length) onAdd(good);
+    setTxt(bad.join(", ")); setErr(bad.length>0);
+    if (ref.current) ref.current.focus();
+  };
+  return (
+    <div className="px-3 pt-2.5">
+      <label htmlFor="rcp-email" className="block mb-1 text-[length:var(--fs-11)] font-medium" style={{color:"var(--muted)"}}>Email address</label>
+      <div className="flex items-center gap-1.5">
+        <input id="rcp-email" ref={ref} type="email" value={txt} placeholder="name@company.com" autoComplete="off"
+          aria-invalid={err || undefined}
+          onChange={e=>{ setTxt(e.target.value); if (err) setErr(false); }}
+          onKeyDown={e=>{
+            if (e.key==="Enter"){ e.preventDefault(); e.stopPropagation(); if (canAdd) submit(); else if (parts.length) setErr(true); return; }
+            if (e.key==="Escape" && txt){ e.preventDefault(); e.stopPropagation(); setTxt(""); setErr(false); return; }
+            if (e.key!=="Escape") e.stopPropagation(); // arrows/Tab belong to the text box, not the popover's list nav
+          }}
+          className="flex-1 min-w-0 h-8 px-2.5 rounded-md outline-none text-[length:var(--fs-12)] transition-colors"
+          style={{background:"var(--bg)", color:"var(--text)", border:`1px solid ${err ? "var(--red)" : "var(--border2)"}`}}
+          onFocus={e=>{ if (!err) e.currentTarget.style.borderColor="var(--accent)"; }}
+          onBlur={e=>{ if (!err) e.currentTarget.style.borderColor="var(--border2)"; }} />
+        <button type="button" disabled={!canAdd} onMouseDown={e=>e.preventDefault()} onClick={submit}
+          className="shrink-0 h-8 px-3 rounded-md text-[length:var(--fs-12)] font-semibold transition-colors"
+          style={canAdd ? {background:"var(--accent)", color:"#fff"} : {background:"var(--border)", color:"var(--faint)", cursor:"not-allowed"}}>Add</button>
+      </div>
+      {err && <div className="mt-1.5"><FieldError>Enter a valid email address</FieldError></div>}
+    </div>
+  );
+}
+
 // right chevron marking an item that opens a FURTHER choice (a sub-panel), so it doesn't read as a direct add.
 const SUB_CHEV = (<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>);
 const ADD_MENU = [
@@ -3156,7 +3235,7 @@ function OnlineOnlyToggle({ initial, onFlip }){
 // module-level cursor tracker — so a popover knows the pointer position the instant it opens, even on a fresh mount.
 let __lastMouse = null;
 if (typeof document !== "undefined" && document.addEventListener) document.addEventListener("mousemove", (e)=>{ __lastMouse = { x:e.clientX, y:e.clientY }; }, true);
-function Popover({ anchor, anchorKey, items, flat, onPick, onActive, onClose, onSoftCancel, title, inputType, noSearch, footer, wide, matchWidth, back, help, solidIcons, selected, onHelp, onViewMore, hideHelp, noHover, itemsAsNodes, initActive, choices, smart, duration, moduleMorph, searchPlaceholder, clearOnPick, settleHover, offsetX, source, onQueryEnter }) {
+function Popover({ anchor, anchorKey, items, flat, onPick, onActive, onClose, onSoftCancel, title, inputType, noSearch, footer, wide, matchWidth, back, help, solidIcons, selected, onHelp, onViewMore, hideHelp, noHover, itemsAsNodes, initActive, choices, smart, duration, moduleMorph, searchPlaceholder, clearOnPick, settleHover, offsetX, source, onQueryEnter, topSlot, listHeader }) {
   const ref = useRef(null);
   // report Quick-Help to the parent so it renders in the CONTEXT RAIL (not a floating card). Two layers:
   // `base` = the node/menu help (e.g. "Trigger"); `item` = the specific hovered/active option (e.g. "Record
@@ -3432,12 +3511,12 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onActive, onClose, on
   const smartTabNow = (smart && smart.tab) || "specific";
   // heading is DYNAMIC per tab (user 2026-07-05, image #35): "Dynamic value" on the reference/formula tab,
   // else the picker's own title (e.g. "Wait for…") or the generic "Specific value". Never the bare record name.
-  const smartHeading = smartTabNow==="ref" ? "Dynamic value" : ((smart && smart.title) || "Specific value");
+  const smartHeading = smartTabNow==="ref" ? ((smart && smart.refTitle) || "Dynamic value") : ((smart && smart.title) || "Specific value");
   // FULL-WIDTH segmented tabs with TEXT labels [ Specific | Dynamic ] (each half). Replaces the compact icon toggle.
   // smart.refOnly → a Dynamic-only popover (no Specific value exists, e.g. the loop's attribute) → no tabs at all.
   const smartTabs = (smart && !smart.refOnly) ? (
     <div className="flex items-stretch w-full p-0.5 rounded-lg gap-0.5" style={{background:"var(--bg)", border:"1px solid var(--border2)"}}>
-      {[["specific","Specific"],["ref","Dynamic"]].map(([id,label])=>{ const on = smartTabNow===id;
+      {[["specific",(smart.tabLabels||[])[0]||"Specific"],["ref",(smart.tabLabels||[])[1]||"Dynamic"]].map(([id,label])=>{ const on = smartTabNow===id;
         return <button key={id} onClick={()=>{ if(smartTabNow===id) return; id==="ref" ? (smart.onReference && smart.onReference()) : (smart.onSpecific && smart.onSpecific()); }}
           className="flex-1 rounded-md flex items-center justify-center transition-colors text-[length:var(--fs-12)] font-medium py-1.5"
           style={{ ...(on ? {background:"var(--pop-bg)", color:"var(--text)", fontWeight:600, boxShadow:"var(--shadow-sm)"} : {color:"var(--muted)", background:"transparent"}) }}>
@@ -3699,14 +3778,21 @@ function Popover({ anchor, anchorKey, items, flat, onPick, onActive, onClose, on
     {smartSource}
     {sourceCard}
     {smartCrumb}
-    {!noSearch &&
+    {topSlot}
+    {!noSearch && !listHeader &&
       <div className="px-2.5 pt-1 pb-2">
         <SearchBox inputRef={searchRef} autoFocus value={q} placeholder={searchPlaceholder} onChange={e=>{setQ(e.target.value); setActive(0);}} onKeyDown={e=>{ if(e.key==="Backspace" && q==="" && back){ e.preventDefault(); back(); } }} />
       </div>}
+    {/* v8 `listHeader` (email recipients): a plain section header over the list, no search (user 2026-10-08) —
+        the popup keeps ONE input, the email box in `topSlot`. */}
+    {listHeader && (
+      <div className="mx-3 mt-2 flex items-center h-7">
+        <span className="flex-1 min-w-0 truncate text-[length:var(--fs-11)] font-medium" style={{color:"var(--faint)"}}>{listHeader}</span>
+      </div>)}
     {/* dynamic module search (trigger picker) renders SECTION-WISE: moduleMorphFor emits an "Event Trigger ›
         <Module>" header + its 3 event rows per matched module, so multiple modules just add more sections. */}
     <div className="max-h-72 overflow-y-auto overscroll-contain py-1 px-1.5">{/* compact cap everywhere (user 2026-07-03: the 440px node-menu was too tall — "scroll is not that big of a problem"; the partially clipped bottom row doubles as the scroll cue) */}
-      {filtered.length===0 && <div className="px-3 py-2 text-[length:var(--fs-12)]" style={{color:"var(--faint)"}}>No matches</div>}
+      {filtered.length===0 && !(topSlot && !items.length) && <div className="px-3 py-2 text-[length:var(--fs-12)]" style={{color:"var(--faint)"}}>No matches</div>}
       {filtered.map((i,k)=>{
         // horizontal CHIP row (Popular shortcuts): small neutral pills, one compact line — costs ~36px
         // instead of a rows section. Not keyboard-selectable; clicking a chip picks like a normal item.
@@ -4821,7 +4907,9 @@ function App() {
   const [toastHidden, setToastHidden] = useState(false); // user dismissed the bottom intro toast
   const [published, setPublished] = useState(false);
   const [savePanel, setSavePanel] = useState(null); // right-side save/publish drawer: null | "save" | "publish"
-  const currentBuild = decodeURIComponent((location.pathname.split("/").pop()) || "index.html") || "index.html";
+  // the live root (index.html) is a COPY of a numbered build — builds.js maps it (BUILD_ALIASES) so the dropdown names it right
+  const currentBuildRaw = decodeURIComponent((location.pathname.split("/").pop()) || "index.html") || "index.html";
+  const currentBuild = ((typeof window!=="undefined" && window.BUILD_ALIASES) || {})[currentBuildRaw] || currentBuildRaw;
   const idRef = useRef(1);
   const nid = () => idRef.current++;
   const rowRefs = useRef({});
@@ -6816,7 +6904,7 @@ function App() {
     // chosen source and (when >1 record is in scope) is CLICKABLE to switch sources; Specific/Expression from `chrome`.
     const sm = (rec, steps) => ({ tab:"ref", crumb: crumb(rec, steps),
       source: rec.label.replace(/^the\s+/i,""), onSource: scope.length>1 ? recStep : null,
-      onSpecific: chrome && chrome.onSpecific, onExpression: chrome && chrome.onExpression, exprDisabled: chrome && chrome.exprDisabled, refOnly: chrome && chrome.refOnly });
+      onSpecific: chrome && chrome.onSpecific, onExpression: chrome && chrome.onExpression, exprDisabled: chrome && chrome.exprDisabled, refOnly: chrome && chrome.refOnly, tabLabels: chrome && chrome.tabLabels, refTitle: chrome && chrome.refTitle });
     // ONE drill level. `fields` = rows shown, `steps` = the path picked so far, `goBack` = the level above.
     // Object fields (enum/user/multi) drill deeper (chevron + sub-field count tag); leaf fields commit the path.
     const drillStep = (rec, fields, steps, goBack) => { setOpenSlot(slotKey);
@@ -6831,7 +6919,7 @@ function App() {
     const recStep = () => { setOpenSlot(slotKey);
       open(el, scope.map(r=>({id:r.id, label:r.label.replace(/^the\s+/i,""), sub:recSub(r)})),
         (i)=>{ const rec=scope.find(x=>x.id===i.id); drillStep(rec, recordFieldsFor(rec.module)||[], [], undefined); return true; },
-        "Reference which record", {...anc, noSearch:true, smart: { tab:"ref", crumb:"", onSpecific: chrome && chrome.onSpecific, onExpression: chrome && chrome.onExpression, exprDisabled: chrome && chrome.exprDisabled, refOnly: chrome && chrome.refOnly }, ...opts}); };
+        "Reference which record", {...anc, noSearch:true, smart: { tab:"ref", crumb:"", onSpecific: chrome && chrome.onSpecific, onExpression: chrome && chrome.onExpression, exprDisabled: chrome && chrome.exprDisabled, refOnly: chrome && chrome.refOnly, tabLabels: chrome && chrome.tabLabels, refTitle: chrome && chrome.refTitle }, ...opts}); };
     // Auto-pick the FIRST in-scope source and go straight to its fields; the "From" header lets you switch source.
     drillStep(scope[0], recordFieldsFor(scope[0].module)||[], [], undefined);
   };
@@ -7996,6 +8084,16 @@ function App() {
   // Create deployment (v8): the "Add packages" listing REPLACES the drawer body (‹ back to the form). {sel:[ids], q, page} or null.
   const [pkgPick, setPkgPick] = useState(null);
   useEffect(()=>{ setPkgPick(null); }, [drawer]); // switching / closing the drawer always lands back on the form
+  // REQUIRED-FIELD ERRORS (v8): when a node's drawer CLOSES (×, Esc, clicking its card, switching to another node)
+  // with required fields still empty, flag it `showErrs` → its canvas card turns into the error state and, when
+  // reopened, the drawer shows each field's one-line error. Hopping to the Expression rail is NOT a close (it returns).
+  const prevDrawerRef = useRef(null);
+  useEffect(()=>{
+    const prev = prevDrawerRef.current; prevDrawerRef.current = drawer;
+    if (!prev || prev===drawer || exprEdit) return;
+    const p = treeFindPath(flowRef.current, prev); const n = p && nodeAt(flowRef.current, p);
+    if (n && !n.showErrs && missingRequired(n) > 0) update(p, { showErrs:true });
+  }, [drawer]);
   const isComplete = hasTrigger && hasAction(flow);
   /* context-rail summary helpers */
   const fillTrigger = (t) => triggerView(t).tpl.replace(/\{(\w+)\}/g, (_,k)=> (t.vals && t.vals[k]) ? t.vals[k] : "…");
@@ -8906,7 +9004,7 @@ function App() {
         // node-level "good to go": has a form/card, every required field filled, AND confirmed via Done
         const _spec = formSpecFor(node.action), _data = node.data||{}, _rows = node.fields||[];
         const _stagesOK = !_spec || !_spec.stages || ((_data.stages||[]).length>0 && (_data.stages||[]).every(st=>_spec.stages.fields.filter(f3=>!f3.opt).every(f3=>st[f3.k])));
-        const _complete = _spec ? (_spec.fields.filter(fd=>!fd.opt && (!fd.showIf || fd.showIf(_data))).every(fd=>_data[fd.k]) && _stagesOK) : (_rows.length>0 && _rows.every(rw=>rw.field && rw.value));
+        const _complete = missingRequired(node)===0; // v8: the shared required-field check (drawer errors + card state)
         const _hasCard = ((def && def.details) || _spec) && !(def && def.arg && !node.arg);
         const nodeGood = !!(_hasCard && _complete && node.confirmed);
         return (
@@ -9000,9 +9098,11 @@ function App() {
               const title = spec ? spec.title : (node.action==="create" ? (node.arg||"Record")+" details" : "Fields to update");
               // state: complete = every required form field filled (incl. every stage) / every row filled
               const stagesOK = !spec || !spec.stages || ((data.stages||[]).length>0 && (data.stages||[]).every(st=>spec.stages.fields.filter(f3=>!f3.opt).every(f3=>st[f3.k])));
-              const complete = isInteg ? (maps.length>0 && maps.every(m=>m.key && m.value))
-                                    : spec ? (spec.fields.filter(fd=>!fd.opt && (!fd.showIf || fd.showIf(data))).every(fd=>data[fd.k]) && stagesOK)
-                                    : (nf>0 && rows.every(rw=>rw.field && rw.value));
+              // complete = no required input left empty (shared with the drawer, see missingRequired); after the drawer was
+              // closed with gaps (node.showErrs) the card switches to the ERROR state: "N required fields missing".
+              const nMissing = missingRequired(node);
+              const complete = nMissing===0;
+              const showErr = !!node.showErrs && nMissing>0;
               const countLine = isInteg ? (nm ? `${nm} mapping${nm>1?"s":""} set` : "No mappings yet")
                                     : spec ? ((filled ? `${filled} of ${spec.fields.length} filled` : "Not configured") + (spec.stages ? ` · ${(data.stages||[]).length} stage${(data.stages||[]).length===1?"":"s"}` : ""))
                                     : (nf ? `${nf} field${nf>1?"s":""} set` : "No fields yet");
@@ -9036,16 +9136,20 @@ function App() {
                   onMouseEnter={(e)=>{ if(!cardEditing){ e.currentTarget.style.background="var(--pop-hover)"; e.currentTarget.style.boxShadow="var(--shadow-sm)"; } }}
                   onMouseLeave={(e)=>{ if(!cardEditing){ e.currentTarget.style.background="var(--panel)"; e.currentTarget.style.boxShadow="none"; } }}
                   className="mt-2.5 relative flex items-center gap-3 rounded-xl border px-3 py-2.5 cursor-pointer transition-all max-w-[420px]"
-                  style={{ borderColor: cardEditing?"var(--text)":(good?"var(--rdy-bd)":"var(--border2)"), borderWidth: cardEditing?"1.5px":"1px", background:"var(--panel)", ...(cardEditing?{zIndex:40, boxShadow:"var(--shadow-pop)"}:{}) }}>
-                  {/* left icon: a CHECK once configured (the tick lives HERE, not next to "Edit"); the GEAR while not set up (accent = action). */}
-                  <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{background: good?"var(--rdy-bg)":"var(--panel2)", color: good?"var(--rdy-fg)":"var(--muted)"}}>
+                  style={{ borderColor: cardEditing?"var(--text)":(good?"var(--rdy-bd)":showErr?"color-mix(in srgb, var(--red) 70%, transparent)":"var(--border2)"), borderWidth: cardEditing?"1.5px":"1px", background:"var(--panel)", ...(cardEditing?{zIndex:40, boxShadow:"var(--shadow-pop)"}:{}) }}>
+                  {/* left icon: a CHECK once configured (the tick lives HERE, not next to "Edit"); a red WARNING once closed with
+                      required fields missing; the GEAR while not set up (accent = action). */}
+                  <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{background: good?"var(--rdy-bg)":showErr?"color-mix(in srgb, var(--red) 14%, transparent)":"var(--panel2)", color: good?"var(--rdy-fg)":showErr?"var(--red)":"var(--muted)"}}>
                     {good
                       ? <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-11" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      : showErr
+                      ? <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 3.5l9.5 16.5h-19L12 3.5z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M12 9.5v4.5M12 17v.3" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round"/></svg>
                       : <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.7"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1M18.7 18.7l-2.1-2.1M7.4 7.4L5.3 5.3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>}
                   </span>
                   {/* ONE readable line — configured shows the field-change summary, not-configured shows the prompt (no title/subtitle split, so it reads linearly) */}
                   <span className="flex-1 min-w-0">
-                    <span className="block text-[length:var(--fs-13)] leading-tight truncate" style={{color:"var(--text)"}} title={good ? (cardTip || subtitle) : undefined}>{good ? subtitle : prompt}</span>
+                    <span className="block text-[length:var(--fs-13)] leading-tight truncate" style={{color: showErr && !good ? "var(--red)" : "var(--text)"}} title={good ? (cardTip || subtitle) : undefined}>
+                      {good ? subtitle : showErr ? `${nMissing} required field${nMissing===1?"":"s"} missing` : prompt}</span>
                   </span>
                   {/* RIGHT = an ACTION: while this form is OPEN → "Close ×"; else "Set up ›" (not configured) → "✓ Edit" (done). */}
                   {cardEditing ? (
@@ -10246,7 +10350,8 @@ function App() {
                   <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-2.5">
                     {maps.map((m,mi)=>{ const keyOpen = openSlot===`${dk}:map${mi}:key`;
                       return (
-                      <div key={mi} className="flex items-center gap-2">
+                      <div key={mi} className="flex flex-col gap-1.5">
+                      <div className="flex items-center gap-2">
                         <button type="button" data-anchor={`mapk:${dnode.id}:${mi}`} onClick={(e)=>pickKey(mi, e.currentTarget)}
                           className="shrink-0 w-[136px] h-[38px] rounded-lg pl-3 pr-2.5 flex items-center gap-2 text-left text-[length:var(--fs-13)] transition-colors hover:bg-[var(--pop-hover)]"
                           style={{ background:"var(--panel2)", border:"1px solid "+(keyOpen?"var(--accent2)":"var(--border2)"), color: m.key?"var(--text)":"var(--faint)" }}>
@@ -10261,13 +10366,19 @@ function App() {
                               openPhPicker(`${dk}:map${mi}:val`, null, (label)=> setMaps(ms=>ms.map((x,j)=>j===mi?{...x, value:(x.value||"")+"{{"+label+"}}"}:x)), `mapv:${dnode.id}:${mi}`); }} /></div>
                         </div>
                         <DeleteBtn onClick={(e)=>{ e.stopPropagation(); setMaps(ms=>ms.filter((_,j)=>j!==mi)); }} title="Delete mapping" />
+                      </div>
+                      {/* required-field error (v8): a mapping needs both a key and a value */}
+                      {dnode.showErrs && (!m.key && isBlankVal(m.value) ? <FieldError>Key and value are required</FieldError>
+                        : !m.key ? <FieldError>Key is required</FieldError>
+                        : isBlankVal(m.value) ? <FieldError>Value is required</FieldError> : null)}
                       </div>); })}
+                    {dnode.showErrs && !maps.length && <FieldError>Add at least one mapping</FieldError>}
                     <button type="button" onClick={()=>setMaps(ms=>[...ms, { key:null, value:"" }])} className="w-full rounded-xl border px-3 py-2.5 text-[length:var(--fs-13)] font-medium flex items-center justify-center gap-1.5 transition-colors hover:brightness-110" style={{border:"1px solid var(--accent2)", color:"var(--accent2)", background:"color-mix(in srgb, var(--accent) 8%, transparent)"}}>
                       + Add mapping
                     </button>
                   </div>
                   <div className="px-4 py-3.5 border-t shrink-0 flex" style={{borderColor:"var(--border)"}}>
-                    <button onClick={()=>{ update(dpath, {confirmed:true}); setDrawer(null); }} className="ml-auto px-4 py-2 rounded-lg text-[length:var(--fs-13)] font-semibold transition-colors hover:brightness-110" style={{background:"var(--accent)", color:"#fff"}}>Done</button>
+                    <button onClick={()=>{ if (missingRequired(nodeAt(flowRef.current, dpath)) > 0) { update(dpath, {showErrs:true}); return; } update(dpath, {confirmed:true}); setDrawer(null); }} className="ml-auto px-4 py-2 rounded-lg text-[length:var(--fs-13)] font-semibold transition-colors hover:brightness-110" style={{background:"var(--accent)", color:"#fff"}}>Done</button>
                   </div>
                 </div>
               );
@@ -10484,18 +10595,23 @@ function App() {
                         const reopen = ()=> requestAnimationFrame(()=>openRecipients(field));   // rebuild so a picked suggestion drops out of the list
                         const title = field==="to" ? "To" : field==="cc" ? "Cc" : "Bcc";
                         const footer = (
-                          <div className="flex items-center justify-between gap-2 px-1">
-                            <span className="text-[length:var(--fs-115)]" style={{color:"var(--faint)"}}>or type any address — Enter to add</span>
+                          <div className="flex items-center justify-end gap-2 px-1">
                             <button type="button" onMouseDown={(e)=>{ e.preventDefault(); close(); }}
                               className="shrink-0 rounded-md px-2.5 py-1 text-[length:var(--fs-12)] font-semibold transition-colors hover:brightness-110" style={{ background:"var(--accent)", color:"#fff" }}>Done</button>
                           </div>);
+                        // v8 (user 2026-10-08): tabs read "People | From a field" (not Specific | Dynamic); a dedicated
+                        // Email address box + Add sits on top; the roles list is headed by the record it's about, with
+                        // a quiet 🔍 in that header instead of a second boxed search.
+                        const listHdr = field==="to" ? `Roles on this ${(sRec && sRec.module) || "record"}` : "Predefined recipients";
+                        const chromeTabs = { tabLabels:["People","From a field"], refTitle:"Add "+title+" recipients" };
                         setOpenSlot(ak);
-                        open(null, sugs.length ? [{header:"Suggestions"}, ...sugs.map(s=>({ id:s.label, label:s.label, sub:s.sub, icon:s.icon }))] : [],
+                        open(null, sugs.map(s=>({ id:s.label, label:s.label, sub:s.sub, icon:s.icon })),
                           (i)=>{ rAdd(field, i.id); reopen(); return true; }, title,
-                          { anchorKey:ak, wide:true, clearOnPick:true, searchPlaceholder:"Search or type an address…", footer,
-                            onQueryEnter:(txt)=>{ rAdd(field, txt); reopen(); },
-                            ...(recordsInScope(dpath).length ? { smart:{ tab:"specific", slotKey:ak, title:"Add "+title+" recipients", onSpecific: ()=>openRecipients(field),
-                              onReference: ()=> openSmartRef(dpath, ak, null, ak, (ref)=>{ rAdd(field, {ref}); reopen(); }, { onSpecific: ()=>openRecipients(field) }, { wide:true }) } } : {}) });
+                          { anchorKey:ak, wide:true, clearOnPick:true, footer, initActive:-1,
+                            listHeader: sugs.length ? listHdr : undefined, noSearch:true,
+                            topSlot: <EmailAddBox onAdd={(list)=>{ list.forEach(v=>rAdd(field, v)); reopen(); }} />,
+                            ...(recordsInScope(dpath).length ? { smart:{ tab:"specific", slotKey:ak, title:"Add "+title+" recipients", ...chromeTabs, onSpecific: ()=>openRecipients(field),
+                              onReference: ()=> openSmartRef(dpath, ak, null, ak, (ref)=>{ rAdd(field, {ref}); reopen(); }, { onSpecific: ()=>openRecipients(field), ...chromeTabs }, { wide:true }) } } : {}) });
                       };
                       // one recipient row: label · chips (× on hover) · a click-anywhere "add" target that opens the popup
                       const rRow = (field, label, extra) => { const list = rList(dnode, field); const ak = `rcp:${dnode.id}:${field}`;
@@ -10578,11 +10694,14 @@ function App() {
                                 canPlaceholder={canRef} onRequestPlaceholder={reqPh("subject")} />
                             </div>
                           </div>
+                          {/* v8: error sits BELOW the subject hairline, not inside the row */}
+                          {dnode.showErrs && !reqFieldOK(fdOf("subject"), ddata) && <div className="px-5 pt-1.5"><FieldError>Subject is required</FieldError></div>}
                           {/* Body — the big open writing area */}
                           <div className="px-5 pt-3 pb-2">
                             <RichBody frameless noFooter api={bodyApi} expandTitle="Email body" value={mig(ddata.body)} onChange={(v2)=>setD("body",v2)}
                               placeholder={fdOf("body").ph||"Write the email…"} minRows={12}
                               canPlaceholder={canRef} onRequestPlaceholder={reqPh("body")} />
+                            {dnode.showErrs && !reqFieldOK(fdOf("body"), ddata) && <div className="mt-1.5"><FieldError>Body is required</FieldError></div>}
                           </div>
                           {/* expanded formatting bar — appears ABOVE the main row when the ▾ is toggled (Gmail) */}
                           {more && (
@@ -10701,6 +10820,7 @@ function App() {
                               </tbody>
                             </table>
                           </div>
+                          {dnode.showErrs && !reqFieldOK(fd, D) && <FieldError>Add at least one package</FieldError>}
                         </div>);
                       }
                       else if (fd.type==="segment")
@@ -10765,6 +10885,7 @@ function App() {
                         <div key={fd.k} className={(fd.half?"col-span-1":"col-span-2")+" flex flex-col gap-1.5 min-w-0"}>
                           {fd.type!=="daterange" && <label className="text-[length:var(--fs-11)] font-semibold uppercase tracking-[0.08em]" style={{color:"var(--faint)"}}>{fd.label}{!fd.opt && <span className="ml-0.5" style={{color:"var(--red)"}}>*</span>}</label>}
                           {ctrl}
+                          {dnode.showErrs && !reqFieldOK(fd, D) && <FieldError>{fd.label} is required</FieldError>}
                         </div>
                       );
                     };
@@ -10791,6 +10912,7 @@ function App() {
                       {/* repeatable STAGES — accordion cards with add/remove (e.g. multi-stage approval) */}
                       {dspec.stages && (<>
                         <span className="mt-1 text-[length:var(--fs-11)] font-semibold uppercase tracking-[0.08em]" style={{color:"var(--faint)"}}>{dspec.stages.label}<span className="ml-0.5" style={{color:"var(--red)"}}>*</span></span>
+                        {dnode.showErrs && !dstages.length && <FieldError>Add at least one stage</FieldError>}
                         {dstages.map((st,i2)=>{
                           const skey = "stage:"+i2, sOpen = !!openSecs[skey];
                           return (
@@ -10800,6 +10922,8 @@ function App() {
                                 <svg className={"transition-transform "+(sOpen?"rotate-90":"")} width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                                 <span className="text-[length:var(--fs-125)] font-semibold" style={{color:"var(--text)"}}>Stage {i2+1}</span>
                                 <span className="text-[length:var(--fs-11)]" style={{color:"var(--faint)"}}>{st.dtype||"—"}</span>
+                                {dnode.showErrs && !sOpen && dspec.stages.fields.some(f3=>!reqFieldOK(f3, st)) &&
+                                  <span className="text-[length:var(--fs-11)] font-medium" style={{color:"var(--red)"}}>· required fields missing</span>}
                                 <button onClick={(e)=>{ e.stopPropagation(); rmStage(i2); }} className="ml-auto text-[length:var(--fs-11)] font-medium hover:brightness-125" style={{color:"var(--red)"}}>remove</button>
                               </div>
                               {sOpen && <div className="px-3 pb-3.5 pt-2.5">{grid(dspec.stages.fields, st, (kk,val)=>setStage(i2,kk,val))}</div>}
@@ -10864,9 +10988,13 @@ function App() {
                             ? fieldCtrl(dpath, fd, fv.value, (val)=>setF(i,{value:val}), `dval:${dnode.id}:${i}`, "choose a start date…")
                             : fieldCtrl(dpath, fd, fv.value, (val)=>setF(i,{value:val}), `dval:${dnode.id}:${i}`, "value"))}
                           </>)}
+                          {/* required-field error (v8): a row needs both a field and its value */}
+                          {dnode.showErrs && (!fv.field ? <FieldError>Choose a field</FieldError>
+                            : isBlankVal(fv.value) ? <FieldError>{(fd && fd.label) || "This field"} is required</FieldError> : null)}
                         </div>
                       );
                     })}
+                    {dnode.showErrs && !dfields.length && <FieldError>Add at least one field</FieldError>}
                     {/* + Add field — opens the categorized field picker (Suggested + All grouped). Full-width,
                         PURPLE outline + tinted bg (user 2026-07-04). */}
                     <button onClick={(e)=>openFieldPicker(e.currentTarget, null)} className="w-full rounded-xl border px-3 py-2.5 text-[length:var(--fs-13)] font-medium flex items-center justify-center gap-1.5 transition-colors hover:brightness-110" style={{border:"1px solid var(--accent2)", color:"var(--accent2)", background:"color-mix(in srgb, var(--accent) 8%, transparent)"}}>
@@ -10876,7 +11004,7 @@ function App() {
                   </>)}
                 </div>
                 <div className="px-4 py-3.5 border-t shrink-0 flex" style={{borderColor:"var(--border)"}}>
-                  <button onClick={()=>{ update(dpath, {confirmed:true}); setDrawer(null); }} className="ml-auto px-4 py-2 rounded-lg text-[length:var(--fs-13)] font-semibold transition-colors hover:brightness-110" style={{background:"var(--accent)", color:"#fff"}}>Done</button>
+                  <button onClick={()=>{ if (missingRequired(nodeAt(flowRef.current, dpath)) > 0) { update(dpath, {showErrs:true}); return; } update(dpath, {confirmed:true}); setDrawer(null); }} className="ml-auto px-4 py-2 rounded-lg text-[length:var(--fs-13)] font-semibold transition-colors hover:brightness-110" style={{background:"var(--accent)", color:"#fff"}}>Done</button>
                 </div>
               </div>
             );
@@ -11012,7 +11140,7 @@ function App() {
 
       </div>
 
-      {pop && <Popover key={openInsertKey || pop.anchorKey || undefined} anchor={pop.anchor} anchorKey={pop.anchorKey} items={pop.items} flat={pop.flat} title={pop.title} inputType={pop.inputType} noSearch={pop.noSearch} footer={pop.footer} wide={pop.wide} matchWidth={pop.matchWidth} back={pop.back} help={pop.help} solidIcons={pop.solidIcons} selected={pop.selected} itemsAsNodes={pop.itemsAsNodes} initActive={pop.initActive} choices={pop.choices} smart={pop.smart} duration={pop.duration} moduleMorph={pop.moduleMorph} searchPlaceholder={pop.searchPlaceholder} clearOnPick={pop.clearOnPick} onQueryEnter={pop.onQueryEnter} settleHover={pop.settleHover} offsetX={pop.offsetX} source={pop.source} onHelp={setRailHelp} onViewMore={(id)=>{ close(); setRefSel(id); setRefOpen(true); }} hideHelp={tourActive} noHover={tourActive} onPick={pop.onPick} onActive={pop.onActive} onClose={close} onSoftCancel={()=>{ dropPreviewGhost(); if (replaceRef.current) replaceRef.current = null; setSplitPreviewKey(null); }}/>}
+      {pop && <Popover key={openInsertKey || pop.anchorKey || undefined} anchor={pop.anchor} anchorKey={pop.anchorKey} items={pop.items} flat={pop.flat} title={pop.title} inputType={pop.inputType} noSearch={pop.noSearch} footer={pop.footer} wide={pop.wide} matchWidth={pop.matchWidth} back={pop.back} help={pop.help} solidIcons={pop.solidIcons} selected={pop.selected} itemsAsNodes={pop.itemsAsNodes} initActive={pop.initActive} choices={pop.choices} smart={pop.smart} duration={pop.duration} moduleMorph={pop.moduleMorph} searchPlaceholder={pop.searchPlaceholder} clearOnPick={pop.clearOnPick} onQueryEnter={pop.onQueryEnter} topSlot={pop.topSlot} listHeader={pop.listHeader} settleHover={pop.settleHover} offsetX={pop.offsetX} source={pop.source} onHelp={setRailHelp} onViewMore={(id)=>{ close(); setRefSel(id); setRefOpen(true); }} hideHelp={tourActive} noHover={tourActive} onPick={pop.onPick} onActive={pop.onActive} onClose={close} onSoftCancel={()=>{ dropPreviewGhost(); if (replaceRef.current) replaceRef.current = null; setSplitPreviewKey(null); }}/>}
 
       {/* Use-case full description popup */}
       {ucPopup && isUsecase && USECASE_META[activeModule] && (
