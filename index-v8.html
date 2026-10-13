@@ -14,7 +14,7 @@
     color-scheme: dark; /* native controls (number spinners, date pickers, selects) render dark */
     --bg:#0a0a0c; --panel:#0f0f12; --panel2:#131317; --topbar:#0c0c0f; --border:#1f1f25;
     --border2:#2a2a32; --text:#e6e6ea; --muted:#86868f; --faint:#5a5a63; --ink-mid:#b0b0b8;
-    --pop-bg:#16161b; --pop-hover:#20202a;
+    --pop-bg:#16161b; --pop-hover:#20202a; --panel3:#1b1b21; --scroll:#26262e; --scroll-h:#33333d;
     --accent:#5b6cff; --accent2:#7c89ff; --green:#3fb950; --amber:#d6a531; --red:#f85149; --split:#f0873e;
     --vs-text:#b3bbff; /* view-switch active tab text — a LIGHT accent so it stays high-contrast on the accent tint (dark theme) */
     --find-hl:#ffe27a; /* Ctrl+F-style search-match marker */
@@ -59,7 +59,7 @@
     color-scheme: light;
     --bg:#ffffff; --panel:#ffffff; --panel2:#f1f5f9; --topbar:#ffffff; --border:#e8ecf1;
     --border2:#d6dde6; --text:#0f172a; --muted:#64748b; --faint:#94a3b8; --ink-mid:#475569;
-    --pop-bg:#ffffff; --pop-hover:#f1f5f9;
+    --pop-bg:#ffffff; --pop-hover:#f1f5f9; --panel3:#e6ebf2; --scroll:#cfd6e0; --scroll-h:#b4bdca;
     --accent:#4f5dff; --accent2:#5562e6; --green:#1a7f37; --amber:#9a6700; --red:#cf222e; --split:#c2410c;
     --vs-text:#3730c7; /* view-switch active tab text — a DARK accent so it stays high-contrast on the accent tint (light theme) */
     --find-hl:#ffe066; /* Ctrl+F-style search-match marker */
@@ -85,8 +85,8 @@
     -webkit-font-smoothing:antialiased; font-feature-settings:"cv11","ss01";
     transition:background .2s ease,color .2s ease;}
   ::-webkit-scrollbar{width:10px;height:10px}
-  ::-webkit-scrollbar-thumb{background:#26262e;border-radius:6px;border:2px solid var(--bg)}
-  ::-webkit-scrollbar-thumb:hover{background:#33333d}
+  ::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:6px;border:2px solid var(--bg)}
+  ::-webkit-scrollbar-thumb:hover{background:var(--scroll-h)}
   .no-scrollbar{scrollbar-width:none;-ms-overflow-style:none}
   .no-scrollbar::-webkit-scrollbar{display:none}
   .thin-scroll{scrollbar-width:thin;scrollbar-color:rgba(150,150,160,0.18) transparent}
@@ -95,7 +95,7 @@
   .thin-scroll::-webkit-scrollbar-thumb{background:rgba(150,150,160,0.16);border-radius:6px;border:none}
   .thin-scroll::-webkit-scrollbar-thumb:hover{background:rgba(150,150,160,0.32)}
   /* empty editable param chip in an invalid (un-filled) expression — light-red tone, dark-mode safe */
-  .exprparam-error{ background:color-mix(in srgb, #ef4444 22%, transparent) !important; border:1px dashed color-mix(in srgb, #ef4444 60%, var(--border2)) !important; color:#fca5a5 !important; }
+  .exprparam-error{ background:color-mix(in srgb, #ef4444 22%, transparent) !important; border:1px dashed color-mix(in srgb, #ef4444 60%, var(--border2)) !important; color:color-mix(in srgb, #ef4444 70%, var(--text)) !important; }
   .expredit-error{ border-color:#ef4444 !important; box-shadow:inset 0 1px 3px rgba(0,0,0,0.18), 0 0 0 1px color-mix(in srgb, #ef4444 50%, transparent) !important; }
   /* placeholder chips (compose subject/body): the remove × is hidden at rest; hovering the chip EXPANDS
      it and reveals the × (which deletes the chip). Chips are raw HTML inside contentEditable → CSS-only. */
@@ -1101,7 +1101,7 @@ const MODULE_ACTIONS = {
   software_asset: [{ id:"add_barcode", label:"add a Barcode" }],
   nonit_asset:    [{ id:"add_barcode", label:"add a Barcode" }],
   cmdb:           [{ id:"sync_rule", label:"execute Sync Rule" }, { id:"warranty_sync", label:"execute Warranty Sync" }],
-  announcement:   [{ id:"create_announcement", label:"create an Announcement" }],
+  announcement:   [], // create_announcement is a UNIVERSAL action (any workflow), like create_deployment (v8)
   deployment:     [], // create_deployment is now a UNIVERSAL action (any workflow) — see actionCatalogFor (v8)
 };
 // Create deployment (v8) — the package catalog behind "+ Add packages". Grid columns: ID · name · version · architecture · package type · user type.
@@ -1150,6 +1150,7 @@ const SAMPLE_USERS = [
   { name:"Mei Lin",        email:"mei.lin@acme.com" },
   { name:"Tom Becker",     email:"tom.becker@acme.com" },
 ];
+const REQUESTER_GROUPS = ["All Employees","Finance","HR","Sales","Executives","Contractors","Managers"]; // approval stages / announcement permissions
 const SAMPLE_GROUPS = ["Service Desk","Hardware Team","Software Team","Network Ops","Field Support","Security","Database","Apps Team","Tier-2","Tier-3","Default Support Group","Finance IT Support Group","HR IT Support Group","Operations IT Support Group","Sales IT Support Group","Internal IT Support Group","General Support Group"];
 const groupCount = (g)=>((g||"").length*3+5)%8+3; // deterministic fake member count — single source for every group row/card
 // AUTO field values (2026-07-04): a field can be filled by an automatic engine instead of a literal. The
@@ -1257,14 +1258,22 @@ const RF = {
   user_role:  { id:"user_role",  label:"Role",               type:"enum", values:["Requester","Technician","Administrator"] },
   // task / announcement
   task_status:{ id:"task_status",label:"Status",             type:"enum", values:["Open","In Progress","Completed","Cancelled"] },
+  // mandatory on CREATE in the node-based builder (v8, user 2026-10-12 — see CREATE_REQUIRED)
+  release_name:{ id:"release_name", label:"Release name",     type:"text", req:true },
+  asset_type: { id:"asset_type", label:"Asset type",         type:"enum", values:["Computer","Laptop","Server","Network Device","Printer","Mobile Device","Application","Operating System","License","Furniture","Vehicle"], req:true },
+  ci_type:    { id:"ci_type",    label:"CI type",            type:"enum", values:["Base CI","Server","Database","Application","Network Device","Business Service"], req:true },
+  user_roles: { id:"user_roles", label:"Add Roles",             type:"multi", values:["Service Desk Technician","Asset Manager","Change Manager","Problem Manager","Administrator","Self Service User"], req:true },
+  task_start: { id:"task_start", label:"Task start date",    type:"taskdate", req:true },
+  parent_entity:{ id:"parent_entity", label:"Associate parent entity", type:"toggle", req:true },
 };
 const REQUEST_FIELDS = [RF.transition,RF.requester,RF.subject,RF.description,RF.cc,RF.status,RF.priority,RF.urgency,RF.impact,RF.category,RF.subcategory,RF.tech_group,RF.assignee,RF.department,RF.vendor,RF.location,RF.company,RF.tags,RF.spam,RF.attachment];
 const PROBLEM_FIELDS = [RF.transition,RF.requester,RF.cc,RF.subject,RF.description,RF.status,RF.due_by,RF.nature,RF.known_error,RF.priority,RF.urgency,RF.impact,RF.category,RF.tech_group,RF.assignee,RF.department,RF.vendor,RF.location,RF.tags,RF.attachment];
 const CHANGE_FIELDS = [RF.transition,RF.requester,RF.cc,RF.subject,RF.description,RF.start_date,RF.end_date,RF.priority,RF.urgency,RF.impact,RF.category,RF.change_risk,RF.change_type,RF.change_reason,RF.target_env,RF.tech_group,RF.assignee,RF.department,RF.vendor,RF.location,RF.change_implementer,RF.change_manager,RF.change_reviewer,RF.tags,RF.attachment];
-const RELEASE_FIELDS = [RF.transition,RF.requester,RF.cc,RF.subject,RF.description,RF.start_date,RF.end_date,RF.priority,RF.urgency,RF.impact,RF.category,RF.release_risk,RF.release_type,RF.release_reason,RF.business_services,RF.department,RF.vendor,RF.location,RF.tech_group,RF.assignee,RF.tags,RF.attachment];
-const ASSET_FIELDS = [RF.asset_name,RF.asset_tag,RF.product,RF.asset_state,RF.vendor,RF.location,RF.department,RF.managed_by_group,RF.managed_by,RF.used_by,RF.cost,RF.impact,RF.tags,RF.attachment];
-const USER_FIELDS = [RF.user_name,RF.user_email,RF.user_role,RF.department,RF.location,RF.tags];
-const TASK_FIELDS = [RF.subject,RF.description,RF.task_status,RF.priority,RF.assignee,RF.due_by,RF.attachment];
+const RELEASE_FIELDS = [RF.transition,RF.requester,RF.cc,RF.subject,RF.release_name,RF.description,RF.start_date,RF.end_date,RF.priority,RF.urgency,RF.impact,RF.category,RF.release_risk,RF.release_type,RF.release_reason,RF.business_services,RF.department,RF.vendor,RF.location,RF.tech_group,RF.assignee,RF.tags,RF.attachment];
+const ASSET_FIELDS = [RF.asset_type,RF.asset_name,RF.asset_tag,RF.product,RF.asset_state,RF.vendor,RF.location,RF.department,RF.managed_by_group,RF.managed_by,RF.used_by,RF.cost,RF.impact,RF.tags,RF.attachment];
+const USER_FIELDS = [RF.user_name,RF.user_email,RF.user_roles,RF.department,RF.location,RF.tags];
+const TASK_FIELDS = [RF.task_start,RF.subject,RF.parent_entity,RF.description,RF.task_status,RF.priority,RF.assignee,RF.due_by,RF.attachment];
+const CI_FIELDS = [RF.ci_type, ...ASSET_FIELDS.filter(f=>f.id!=="asset_type")];
 const ANNOUNCEMENT_FIELDS = [RF.subject,RF.description,RF.start_date,RF.end_date,RF.attachment];
 // ADD TASK (v8) — the task's field rows (same field-row drawer as Update record). Task start date + Subject are the
 // two MANDATORY rows: always first, field locked, not removable (ensureTaskRows). The rest come from "+ Add field"
@@ -1288,6 +1297,50 @@ const TASK_LOCKED_IDS = ["task_start","subject"];
 // keep the two mandatory rows first (adding them empty if missing) — every other row keeps its order after them
 const ensureTaskRows = (fs) => { const cur = fs||[]; const g = (id)=>cur.find(f=>f.field===id) || { field:id, value:null };
   return [...TASK_LOCKED_IDS.map(id=>({ ...g(id), locked:true })), ...cur.filter(f=>!TASK_LOCKED_IDS.includes(f.field))]; };
+// CREATE RECORD (v8, user 2026-10-12) — the MANDATORY rows of each record, copied from the node-based ServiceOps
+// builder's Create nodes: always first, field locked, not removable (like Add task's two rows). Modules not listed
+// (Asset Movement, Announcement) have no Create node there and keep the free "one empty row" start.
+const CREATE_REQUIRED = {
+  "Incident":        ["subject","requester"],
+  "Service Request": ["requester"],
+  "Problem":         ["status","nature","subject","description","requester"],
+  "Change":          ["change_manager","subject","requester"],
+  "Release":         ["subject","requester","release_name"],
+  "Task":            ["task_start","subject","parent_entity","assignee"],
+  "User":            ["user_name","user_email","user_roles"],
+  "Hardware Asset":  ["asset_type","asset_name"],
+  "Software Asset":  ["asset_type","asset_name"],
+  "Non-IT Asset":    ["asset_type","asset_name"],
+  "CMDB (CI)":       ["ci_type","asset_name"],
+};
+// …and the ONE required pick that sits ABOVE the rows. Service Request / User start empty and their mandatory rows
+// only appear once it is answered; the asset / CI ones come pre-filled (`def`) with the record kind.
+const CREATE_GATE = {
+  "Service Request": { label:"Service catalog", ph:"Select a catalog", items:()=>GET_PRESETS["Service Request"].items },
+  "User":            { label:"User type",       ph:"Select user type", values:["Technician","Requester"] },
+  "Hardware Asset":  { label:"Asset ID",        ph:"Select", def:"Hardware",      values:["Hardware","Computer","Network Device","Printer","Mobile Device"] },
+  "Software Asset":  { label:"Asset ID",        ph:"Select", def:"Software",      values:["Software","Application","Operating System","License"] },
+  "Non-IT Asset":    { label:"Asset ID",        ph:"Select", def:"Non IT Assets", values:["Non IT Assets","Furniture","Vehicle","Facility Equipment"] },
+  "CMDB (CI)":       { label:"CI ID",           ph:"Select", def:"Base CI",       values:["Base CI","Server","Database","Application","Network Device","Business Service"] },
+};
+const createGate = (node) => node && node.action==="create" ? (CREATE_GATE[node.arg] || null) : null;
+const createGateItems = (g) => g.items ? g.items() : g.values.map(v=>({ id:v, label:v }));
+// a gate value left over from ANOTHER module (the node's record type was changed) doesn't count
+const createGateVal = (node) => { const g = createGate(node); if (!g) return null;
+  return createGateItems(g).some(i=>i.id===node.gate) ? node.gate : (g.def || null); };
+// UPDATE User asks the same required User type first (node-based builder parity, user 2026-10-13). `mod` = the
+// module of the record an update acts on (callers resolve it from the records in scope).
+const nodeGate = (node, mod) => !node ? null : node.action==="create" ? (CREATE_GATE[node.arg] || null)
+  : (node.action==="update" && mod==="User") ? CREATE_GATE["User"] : null;
+const nodeGateVal = (node, mod) => { const g = nodeGate(node, mod); if (!g) return null;
+  return createGateItems(g).some(i=>i.id===node.gate) ? node.gate : (g.def || null); };
+const ensureCreateRows = (node) => { const cur = ((node && node.fields) || []).map(({locked, ...r})=>r);
+  const g = createGate(node); if (g && !createGateVal(node)) return [];
+  const ids = CREATE_REQUIRED[node.arg]; if (!ids) return cur;
+  const get = (id)=>cur.find(x=>x.field===id) || { field:id, value:null };
+  return [...ids.map(id=>({ ...get(id), locked:true })), ...cur.filter(x=>x.field && !ids.includes(x.field))]; };
+// the field rows a node shows: its own + the mandatory locked ones (Add task / Create record)
+const fieldRowsOf = (node) => !node ? [] : node.action==="add_task" ? ensureTaskRows(node.fields) : node.action==="create" ? ensureCreateRows(node) : (node.fields || []);
 // the field catalog an action's field rows use: Add task → the task fields; Create/Update → the record's module
 const actionFieldsFor = (action, mod) => action==="add_task" ? ADD_TASK_FIELDS : recordFieldsFor(mod);
 // resolve the field catalog for a record type (by module name)
@@ -1296,6 +1349,7 @@ function recordFieldsFor(mod){
   if (m.includes("problem")) return PROBLEM_FIELDS;
   if (m.includes("change")) return CHANGE_FIELDS;
   if (m.includes("release")) return RELEASE_FIELDS;
+  if (m.includes("cmdb")||m.includes("(ci)")) return CI_FIELDS;
   if (m.includes("asset")||m.includes("cmdb")||m.includes(" ci")||m.includes("hardware")||m.includes("software")||m.includes("non-it")) return ASSET_FIELDS;
   if (m.includes("user")) return USER_FIELDS;
   if (m.includes("task")) return TASK_FIELDS;
@@ -1378,7 +1432,8 @@ function actionCatalogFor(mid) {
   // "create a new {record}" — any record type is creatable, not just the trigger's module.
   // menuLabel = how it reads in the action picker; label = the in-sentence verb (slot fills the type).
   // Deployment is excluded here — it has its own Create deployment action (source record + packages drawer, v8).
-  const recordOps = [{ id:"create", label:"create a new", menuLabel:"Create record", arg:MODULE_NAMES.filter(x=>x!=="Deployment"), argPlaceholder:"record", icon:I.plus, details:true }];
+  // Announcement too — its own Create announcement action + form; Asset Movement can't be created (user 2026-10-12).
+  const recordOps = [{ id:"create", label:"create a new", menuLabel:"Create record", arg:MODULE_NAMES.filter(x=>!["Deployment","Announcement","Asset Movement"].includes(x)), argPlaceholder:"record", icon:I.plus, details:true }];
   const defs = [
     // Record operations (§4.1)
     ...recordOps,
@@ -1391,10 +1446,11 @@ function actionCatalogFor(mid) {
     { id:"assign", label:"assign it to", arg:ASSIGN_TARGETS, argPlaceholder:"user/group", icon:I.user },
     { id:"set_auto_assignment", label:"set auto assignment using", arg:["Round Robin","Smart Balance"], argPlaceholder:"method", icon:I.user },
     // Cross-module (§4.2)
-    { id:"execute_integration", label:"execute integration", arg:Object.keys(APP_INTEGRATIONS), argPlaceholder:"an app", icon:I.link }, // v8: "for {record}, {integration} is executed in {app}" + input mappings (drawer)
+    { id:"execute_integration", label:"execute integration", arg:Object.keys(APP_INTEGRATIONS), argPlaceholder:"an app", icon:I.link }, // v8: "for {record}, in {app} execute {integration}" + input mappings (drawer)
     { id:"add_relation", label:"add a relation", icon:I.link },
     { id:"add_task",     label:"add a task", icon:I.task, details:true }, // v8: field-row drawer (locked start date + subject)
     { id:"create_deployment", label:"create a Deployment", menuLabel:"Create deployment", icon:I.box },
+    { id:"create_announcement", label:"create an Announcement", menuLabel:"Create announcement", icon:I.bell },
     // Communication (§4.3) — one action per channel, recipient is a module-gated arg
     ...chans.map(ch => ({ id:`send_${ch.toLowerCase().replace(/\s+/g,"_")}`, label:`send ${ch} to`, arg:recs, icon:ch==="Email"?I.mail:I.bell })),
     { id:"send_approval_reminder", label:"send an approval-reminder email to", arg:recs, icon:I.mail },
@@ -1413,7 +1469,7 @@ function actionCatalogFor(mid) {
   const has = (...ids) => ids.filter(id=>byId[id]).map(id=>({ id, label:byId[id].menuLabel || byId[id].label, icon:byId[id].icon }));
   const menu = [
     { header:"Assignment" }, ...has("assign","set_auto_assignment"),
-    { header:"Record operations" }, ...has("create","create_deployment","update","archive","get","get_many"),
+    { header:"Record operations" }, ...has("create","create_deployment","create_announcement","update","archive","get","get_many"),
     { header:"Cross-module" }, ...has("execute_integration","add_relation","add_task"),
     { header:"Communication" }, ...has(...chans.map(ch=>`send_${ch.toLowerCase().replace(/\s+/g,"_")}`), "send_approval_reminder"),
     ...((MODULE_ACTIONS[mid]||[]).length ? [{ header:`${label}-specific` }, ...has(...(MODULE_ACTIONS[mid]||[]).map(a=>a.id))] : []),
@@ -1429,11 +1485,13 @@ function actionCatalogFor(mid) {
 // `section` groups the categories in the MAIN menu (super-headers). `sub` (on leaves) sub-categorizes a
 // group's sub-menu (e.g. Update → Manual / Automatic) — only set it where a split actually helps.
 const ACTION_GROUPS = [
-  { id:"create",  label:"Create",            section:"Record management", leaves:[ {a:"create", label:"Create record", kw:"create new add record"}, {a:"create_deployment", label:"Create deployment", kw:"deployment deploy package install uninstall rollout software"} ] },
+  { id:"create",  label:"Create",            section:"Record management", leaves:[ {a:"create", label:"Create record", kw:"create new add record"}, {a:"create_deployment", label:"Create deployment", kw:"deployment deploy package install uninstall rollout software"}, {a:"create_announcement", label:"Create announcement", kw:"announcement announce broadcast notice portal"} ] },
   // `direct` (2026-07-03 fewer-steps): Update adds the manual field-update node INSTANTLY (drawer opens
   // right away); the Automatic variants (Priority Matrix / Smart Suggestion) stay findable via search.
   { id:"update",  label:"Update record",     section:"Record management", direct:{ a:"update", label:"Update record", kw:"update set edit modify change field status priority category subcategory assignee group impact urgency sla value" },
-    leaves:[ {a:"update", label:"Update record field", kw:"update set edit modify change field status priority category subcategory assignee group impact urgency sla value", sub:"Manual", _noHow:true}, {a:"priority_matrix", label:"Update priority by Priority Matrix", kw:"priority matrix set", sub:"Automatic"}, {a:"smart_suggestion", label:"Update field by Smart Suggestion", kw:"smart suggestion ai auto category", sub:"Automatic"} ] },
+    leaves:[ {a:"update", label:"Update record field", kw:"update set edit modify change field status priority category subcategory assignee group impact urgency sla value", sub:"Manual", _noHow:true} ] },
+  // standalone steps, as in the node-based builder (v8, user 2026-10-13) — no longer values inside Update record
+  { id:"auto_set", label:"Set automatically", section:"Record management", leaves:[ {a:"priority_matrix", label:"Set priority as per Priority Matrix", kw:"priority matrix set update automatic"}, {a:"smart_suggestion", label:"Set suggested field by Smart Suggestion", kw:"smart suggestion ai auto category update automatic"} ] },
   { id:"assign",  label:"Assign",            section:"Record management", leaves:[ {a:"assign", label:"Assign record", kw:"assign user group technician team auto assignment round robin smart balance"} ] },
   { id:"close",   label:"Close record",      section:"Record management", direct:{ a:"close", label:"Close record", kw:"close resolve finish complete done ticket request incident" },
     leaves:[ {a:"close", label:"Close this record", kw:"close resolve finish complete done ticket request incident"}, {a:"close_related_requests", label:"Close all related Requests", kw:"close related request ticket"}, {a:"close_related_problems", label:"Close all related Problems", kw:"close related problem"} ] },
@@ -1471,66 +1529,74 @@ const ACTION_FORMS = {
   // add_task moved to the FIELD-ROW drawer in v8 (ADD_TASK_FIELDS: locked Task start date + Subject rows, then "+ Add field").
   // multi-STAGE approval (platform form): repeatable stage cards (add/remove), each = subject, decision type,
   // groups and approvers. (Title/description/source/name boilerplate removed — source is in the sentence.)
-  ask_approval: { title:"Approval details",    sub:"Stages, approvers and decision rules",
+  // Ask for approval (v8, user 2026-10-13) — the node-based builder's stage form, in its order: Subject*, Approval
+  // description, decision type, then Requester group* / Technician group* / Set approvers to* — each MULTI (the
+  // node-based "+ Add …" rows become one chip picker). Stage 1 exists from the start; the record is in the sentence.
+  ask_approval: { title:"Ask for approval",    sub:"Stages, approvers and decision rules",
     overview:(d)=>{ const n=(d.stages||[]).length; const segs=[{t:"Ask for approval"}]; if(n){segs.push({t:"·"});segs.push({t:`${n} stage${n>1?"s":""}`,em:true});} return segs; },
     fields:[],
     stages: { label:"Stages", fields:[
       { k:"subject", label:"Subject", type:"text", ph:"Enter subject" },
-      { k:"dtype", label:"Decision type", type:"segment", options:["Unanimous","Majority","Any one","First approval"] },
-      { k:"adesc", label:"Approval description", type:"textarea", opt:true, ph:"Details for the approvers" },
-      { k:"req_group", label:"Requester group", type:"select", options:SAMPLE_GROUPS },
-      { k:"tech_group", label:"Technician group", type:"select", options:SAMPLE_GROUPS },
-      { k:"approvers", label:"Set approvers to", type:"user" } ] } },
-  http_request: { title:"HTTP request", sub:"Call an external endpoint / webhook",
-    overview:(d)=>{ const segs=[{t:(d.method||"GET"),em:true},{t:"request to"},{t:d.url||"a URL",em:true}];
-      if(d.auth && d.auth!=="None"){ segs.push({t:"with"}); segs.push({t:d.auth+" auth",em:true}); }
-      if(d.store_as){ segs.push({t:"→ store as"}); segs.push({t:d.store_as,em:true}); }
+      { k:"adesc", label:"Approval description", type:"textarea", opt:true, ph:"Enter description" },
+      { k:"dtype", label:"Set individual decision type", type:"segment", options:["Unanimous","Majority","Any one","First approval"] },
+      { k:"req_group", label:"Requester group", type:"multi", options:REQUESTER_GROUPS, ph:"choose requester groups…" },
+      { k:"tech_group", label:"Technician group", type:"multi", options:SAMPLE_GROUPS, ph:"choose technician groups…" },
+      { k:"approvers", label:"Set approvers to", type:"multi", options:SAMPLE_USERS.map(u=>u.name), ph:"choose approvers…" } ] } },
+  // Run webhook / HTTP (v8, user 2026-10-13) — the node-based builder's fields, in its order: Request type*, URL*
+  // (+ Insert placeholder) with Test connection, Request JSON* (POST / PATCH / PUT), Header rows, Credential type*
+  // (No Auth · Basic Auth → username + password · By Credentials → a saved credential) and Proxy server. The record
+  // is in the sentence. v8-only extras (query params, bearer / API key, timeout, store response, on failure) removed.
+  http_request: { title:"Run webhook (HTTP)", sub:"Call an external endpoint with this record's data",
+    overview:(d)=>{ const segs=[{t:(d.method||"GET"),em:true},{t:"request to"}, d.url ? {t:phPretty(d.url),em:true} : {t:"a URL",dim:true}];
+      if(d.cred && d.cred!=="No Auth"){ segs.push({t:"with"}); segs.push({t:d.cred==="By Credentials" ? (d.credential||"saved credentials") : "Basic Auth",em:true}); }
+      if(d.proxy){ segs.push({t:"via"}); segs.push({t:d.proxy,em:true}); }
       return segs; },
     fields:[
-    { k:"method", label:"Method", type:"segment", default:"GET", options:["GET","POST","PUT","PATCH","DELETE"] },
-    { k:"url", label:"URL", type:"text", ph:"https://api.example.com/…" },
-    { k:"content_type", label:"Content type", type:"select", options:["application/json","application/x-www-form-urlencoded","text/plain","multipart/form-data"], showIf:(d)=>["POST","PUT","PATCH"].includes(d.method) },
-    { k:"body", label:"Body", type:"textarea", ph:"request payload…", showIf:(d)=>["POST","PUT","PATCH"].includes(d.method) },
-    { k:"headers", label:"Headers", type:"keyval", keyPh:"Header", valPh:"Value", opt:true, sec:"Headers & params" },
-    { k:"params",  label:"Query parameters", type:"keyval", keyPh:"Key", valPh:"Value", opt:true, sec:"Headers & params" },
-    { k:"auth",    label:"Authentication", type:"select", options:["None","Basic","Bearer token","API key"], opt:true, sec:"Authentication" },
-    { k:"auth_user", label:"Username", type:"text", opt:true, half:true, sec:"Authentication", showIf:(d)=>d.auth==="Basic" },
-    { k:"auth_pass", label:"Password", type:"text", opt:true, half:true, sec:"Authentication", showIf:(d)=>d.auth==="Basic" },
-    { k:"auth_token", label:"Token", type:"text", opt:true, sec:"Authentication", showIf:(d)=>d.auth==="Bearer token" },
-    { k:"auth_key_name", label:"Key name", type:"text", opt:true, half:true, sec:"Authentication", showIf:(d)=>d.auth==="API key" },
-    { k:"auth_key_val", label:"Key value", type:"text", opt:true, half:true, sec:"Authentication", showIf:(d)=>d.auth==="API key" },
-    { k:"auth_key_in", label:"Send in", type:"select", options:["Header","Query string"], opt:true, sec:"Authentication", showIf:(d)=>d.auth==="API key" },
-    { k:"timeout", label:"Timeout (sec)", type:"number", opt:true, half:true, sec:"Response & options" },
-    { k:"store_as", label:"Store response as", type:"text", ph:"e.g. apiResult", opt:true, half:true, sec:"Response & options" },
-    { k:"on_fail", label:"On failure", type:"select", options:["Stop the workflow","Continue anyway"], opt:true, sec:"Response & options" } ] },
-  run_approval: { title:"Approval workflow", sub:"Choose which approval workflow to run",
-    overview:(d)=>{ const s=[{t:"Run"}]; s.push(d.workflow?{t:d.workflow,em:true}:{t:"an approval workflow",dim:true}); s.push({t:"approval workflow"}); return s; },
+    { k:"method", label:"Request type", type:"segment", default:"GET", options:["GET","POST","PATCH","PUT","DELETE"] },
+    { k:"url", label:"URL", type:"phtext", ph:"https://api.example.com/…" },
+    { k:"_test", label:"Test connection", type:"testconn", opt:true },
+    { k:"body", label:"Request JSON", type:"textarea", ph:'{ "key": "value" }', showIf:(d)=>["POST","PATCH","PUT"].includes(d.method) },
+    { k:"headers", label:"Header", type:"keyval", keyPh:"Key", valPh:"Value", addLabel:"Add header", opt:true },
+    { k:"cred", label:"Credential type", type:"segment", default:"No Auth", options:["No Auth","Basic Auth","By Credentials"] },
+    { k:"auth_user", label:"Username", type:"text", half:true, plain:true, ph:"Username", showIf:(d)=>d.cred==="Basic Auth" },
+    { k:"auth_pass", label:"Password", type:"password", half:true, plain:true, ph:"Password", showIf:(d)=>d.cred==="Basic Auth" },
+    { k:"credential", label:"Credential", type:"select", plain:true, options:["Service account — API","Monitoring system","Jira service user","Azure app registration"], showIf:(d)=>d.cred==="By Credentials" },
+    { k:"proxy", label:"Proxy server", type:"select", plain:true, options:["Corporate proxy","DMZ proxy","Cloud egress proxy"], opt:true, ph:"Proxy server" } ] },
+  // Run approval workflow has NO form since v8 (user 2026-10-13) — as in the node-based builder it only needs its
+  // record, which lives in the sentence: "run approval workflow on {record}".
+  // Execute plugin (v8, user 2026-10-13): Plugin* + Input mappings only (the record is in the sentence; the old
+  // Options section — timeout / store result / on failure — is gone). Sample plugins; the real list is per instance.
+  run_plugin:   { title:"Execute plugin", sub:"Choose the plugin and map its inputs",
+    overview:(d)=>[{t:"Run"}, d.plugin ? {t:d.plugin,em:true} : {t:"a plugin",dim:true}, {t:"plugin"}],
     fields:[
-    { k:"workflow", label:"Approval workflow", type:"select", options:["Manager approval","Change CAB approval","Emergency approval","Standard approval","Director approval"] } ] },
-  // Plugin list + its inputs are instance-configurable in ServiceOps — these are sample plugins.
-  run_plugin:   { title:"Run plugin", sub:"Run a plugin with its inputs",
-    overview:(d)=>{ const segs=[{t:"Run"},{t:d.plugin||"a plugin",em:true},{t:"plugin"}]; if(d.on_fail==="Continue anyway") segs.push({t:"· continue on failure"}); return segs; },
-    fields:[
-    { k:"plugin", label:"Plugin", type:"select", options:["Backup runner","License audit","Network scanner","AD sync","Custom script…"] },
-    { k:"inputs", label:"Inputs", type:"keyval", keyPh:"Parameter", valPh:"Value", opt:true, showIf:(d)=>!!d.plugin },
-    { k:"timeout", label:"Timeout (sec)", type:"number", opt:true, half:true, sec:"Options" },
-    { k:"store_as", label:"Store result as", type:"text", ph:"e.g. pluginResult", opt:true, half:true, sec:"Options" },
-    { k:"on_fail", label:"On failure", type:"select", options:["Stop the workflow","Continue anyway"], opt:true, sec:"Options" } ] },
+    { k:"plugin", label:"Plugin", type:"select", plain:true, options:["Backup runner","License audit","Network scanner","AD sync","Update priority from AIOps note","Link related CIs to change"] },
+    { k:"inputs", label:"Input mappings", type:"keyval", keyPh:"Key", valPh:"Value", addLabel:"Add input mapping", opt:true, showIf:(d)=>!!d.plugin } ] },
   // Warranty Sync — a single field: which warranty to sync (sample list; verify against the live platform).
   warranty_sync: { title:"Warranty Sync", sub:"Choose which warranty to sync",
     overview:(d)=>{ const s=[{t:"Sync"}]; s.push(d.warranty?{t:d.warranty,em:true}:{t:"a warranty",dim:true}); return s; },
     fields:[
     { k:"warranty", label:"Warranty to sync", type:"select", options:["Dell ProSupport","HP Care Pack","Lenovo Premier Support","Cisco SmartNet","Apple Care","Microsoft Warranty"] } ] },
-  // Create announcement — fields reasoned (announcement module); verify against the live platform.
-  create_announcement: { title:"Announcement", sub:"Compose the announcement",
-    overview:(d)=>{ const s=[{t:"Create an announcement"}]; if(d.subject){s.push({t:"—"});s.push({t:d.subject,em:true});} return s; },
+  // Create announcement (v8, user 2026-10-12) — the SAME fields as the node-based builder's Announcement node:
+  // Subject*, Duration* (+ unit), Company, the two portal switches (each reveals its required Permission), and the
+  // Announcement* body. Permission options are the live product's lists.
+  create_announcement: { title:"Create announcement", sub:"What to announce, for how long, and on which portals",
+    overview:(d)=>{ const s=[{t:"Create an announcement"}];
+      if (d.subject){ s.push({t:"—"}); s.push({t:phPretty(d.subject),em:true}); }
+      if (d.duration){ s.push({t:"for"}); s.push({t:d.duration+" "+(d.duration_unit||"Hours").toLowerCase(),em:true}); }
+      const on=[d.support_portal && "support portal", d.tech_portal && "technician portal"].filter(Boolean);
+      if (on.length){ s.push({t:"on the"}); s.push({t:on.join(" and "),em:true}); }
+      return s; },
     fields:[
-    { k:"subject",  label:"Subject",  type:"text", ph:"Announcement title" },
-    { k:"message",  label:"Message",  type:"richtext", ph:"What do you want to announce…" },
-    { k:"audience", label:"Audience", type:"select", options:["All users","Technicians only","Requesters only","Specific groups"] },
-    { k:"groups",   label:"Groups",   type:"multi", options:SAMPLE_GROUPS, opt:true, showIf:(d)=>d.audience==="Specific groups" },
-    { k:"start", k2:"end", label:"Active period", type:"daterange", opt:true, sec:"Schedule & visibility" },
-    { k:"portal",   label:"Show on self-service portal", type:"segment", options:["Yes","No"], opt:true, sec:"Schedule & visibility" } ] },
+    { k:"subject",  label:"Subject",  type:"text", ph:"Subject" },
+    { k:"duration", label:"Duration", type:"duration" },
+    { k:"company",  label:"Company",  type:"select", plain:true, options:V_COMPANY, opt:true },
+    { k:"support_portal", label:"Show on support portal", type:"switch", opt:true },
+    { k:"support_perm",   label:"Support portal permission", type:"select", plain:true, options:["Public","All Logged-in Users","Requester Group"], showIf:(d)=>!!d.support_portal },
+    { k:"support_groups", label:"Requester groups", type:"multi", options:REQUESTER_GROUPS, showIf:(d)=>!!d.support_portal && d.support_perm==="Requester Group" },
+    { k:"tech_portal",    label:"Show on technician portal", type:"switch", opt:true },
+    { k:"tech_perm",      label:"Technician portal permission", type:"select", plain:true, options:["All Technicians","Technician Group"], showIf:(d)=>!!d.tech_portal },
+    { k:"tech_groups",    label:"Technician groups", type:"multi", options:SAMPLE_GROUPS, showIf:(d)=>!!d.tech_portal && d.tech_perm==="Technician Group" },
+    { k:"message",  label:"Announcement", type:"richtext", ph:"Description", enhance:true } ] },
   // add_relation has NO drawer since v8 — it lives on the canvas: "add a relation from {record} to {module}" + Get-style "where …" conditions.
   // Create deployment (v8) — the SOURCE record is picked in the sentence ("Which record?"), then this drawer:
   // name (typeable + { } placeholder) → Install/Uninstall tabs → Packages grid (+ Add package) → Configuration settings.
@@ -1570,11 +1636,18 @@ const PLACEHOLDER_CATALOG = [
   ["Feedback", ["Feedback Rating","Feedback","Feedback URL"]],
   ["Custom Fields", ["Query Type","current status","New Multi-Select Dropdown","test","location-new","other Number"]],
 ];
+// Email "Placeholder configuration" (v8, user 2026-10-13) — the node-based builder's TABLE placeholders and the
+// columns each can show (Asset / Merge lists are the live product's; CI mirrors Asset).
+const PH_TABLES = {
+  "Asset Details":  ["Asset Id","Asset Name","Asset Type"],
+  "CI Details":     ["CI Id","CI Name","CI Type"],
+  "Merge Requests": ["ID","Subject","Technician Name","Merge Type","Ticket URL"],
+};
 const RESPONSE_TEMPLATES = ["— None —","Acknowledgement","Resolution notice","Approval request","Escalation notice"];
 // subject may carry {{path}} placeholder tokens (letter compose) — phPretty renders them as readable {Field} tags.
 const ovSubj = (verb) => (d)=>{ const segs=[{t:verb}]; if(d.subject && typeof d.subject==="string"){segs.push({t:"—"});segs.push({t:phPretty(d.subject),em:true});} return segs; };
 const SEND_FORMS = {
-  send_email: { title:"Email", sub:"Compose the email notification", compose:"email", phCatalog:true, overview:ovSubj("Send an email"), fields:[
+  send_email: { title:"Email", sub:"Compose the email notification", compose:"email", phCatalog:true, phConfig:true, overview:ovSubj("Send an email"), fields:[
     { k:"template",  label:"Response template", type:"select", options:RESPONSE_TEMPLATES, opt:true },
     { k:"subject",   label:"Subject",       type:"text",     ph:"Subject line" },
     { k:"body",      label:"Body",          type:"richtext", ph:"Write the email…" },
@@ -1613,7 +1686,7 @@ const formSpecFor = (a) => {
 const isBlankVal = (v) => v==null || v==="" || (Array.isArray(v) && !v.length);
 // a form field is satisfied when it is optional, hidden (showIf), a non-input (heading / switch), or has a value
 const reqFieldOK = (fd, D) => {
-  if (fd.opt || fd.type==="heading" || fd.type==="switch") return true;
+  if (fd.opt || fd.type==="heading" || fd.type==="switch" || fd.type==="testconn") return true;
   if (fd.showIf && !fd.showIf(D)) return true;
   if (fd.type==="tabs") return true;                                   // always has a value (defaults to its first tab)
   if (fd.type==="daterange") return !isBlankVal(D[fd.k]) && !isBlankVal(D[fd.k2]);
@@ -1622,17 +1695,19 @@ const reqFieldOK = (fd, D) => {
 // how many required inputs are still empty. Form nodes: each required field (+ each stage's required fields, or 1
 // when no stage exists yet). Field-row nodes (create / update / add task): each row lacking a field or value (1 when
 // there are no rows). Execute app integration: each mapping row lacking a key or value (1 when there are none).
-const missingRequired = (node) => {
+const missingRequired = (node, mod) => {
   if (!node) return 0;
   if (node.action==="execute_integration") { const m = node.mappings||[]; return m.length ? m.filter(x=>!x.key || isBlankVal(x.value)).length : 1; }
   const spec = formSpecFor(node.action), d = node.data||{};
   if (spec) {
     let n = spec.fields.filter(fd=>!reqFieldOK(fd, d)).length;
+    if (spec.phConfig) n += (d.ph_config||[]).filter(c=>!c.ph).length; // each added placeholder configuration needs its placeholder
     if (spec.stages) { const st = d.stages||[]; n += st.length ? st.reduce((a,s)=>a+spec.stages.fields.filter(fd=>!reqFieldOK(fd, s)).length, 0) : 1; }
     return n;
   }
-  const rows = node.action==="add_task" ? ensureTaskRows(node.fields) : (node.fields||[]);
-  return rows.length ? rows.filter(r=>!r.field || isBlankVal(r.value)).length : 1;
+  const rows = fieldRowsOf(node); // incl. the mandatory rows; a Create whose first pick is empty has none → counts as 1
+  const gateMissing = (node.action==="update" && nodeGate(node, mod) && !nodeGateVal(node, mod)) ? 1 : 0; // Update User: its User type
+  return (rows.length ? rows.filter(r=>!r.field || isBlankVal(r.value)).length : 1) + gateMissing;
 };
 // the one-line error shown under an empty required field in the drawer
 function FieldError({ children }) {
@@ -1822,6 +1897,7 @@ const ACTION_HELP = {
   close_related_problems:AH("Close related Problems","Close every Problem linked to this record.",I.flag),
   add_task:AH("Add a task","Attach a task with its own assignee and schedule.",I.task),
   add_relation:AH("Add a relation","Relate this record to assets/CIs that match a condition.",I.link),
+  create_announcement:AH("Create announcement","Publish an announcement on the support and technician portals.",I.bell),
   create_deployment:AH("Create deployment","Install or uninstall software packages for a record, with a rollout policy.",I.box),
   add_barcode:AH("Add a barcode","Generate and attach a barcode to the asset.",I.field),
   send_notification:AH("Send notification","Adds the step right away — then pick the channel (Email, SMS, WhatsApp, Teams, Google Chat) on the sentence.",I.bell),
@@ -2825,7 +2901,7 @@ function SuggestInput({ suggestions, onPick, onType, placeholder, autoFocus, onC
 }
 
 /* KeyValRows — repeatable key/value pairs (HTTP headers, query params). Value = array of {k,v}. */
-function KeyValRows({ value, onChange, keyPh, valPh }) {
+function KeyValRows({ value, onChange, keyPh, valPh, addLabel }) {
   const rows = Array.isArray(value) ? value : [];
   const set = (i,patch)=> onChange(rows.map((r,idx)=>idx===i?{...r,...patch}:r));
   const add = ()=> onChange([...rows,{k:"",v:""}]);
@@ -2844,7 +2920,7 @@ function KeyValRows({ value, onChange, keyPh, valPh }) {
       <button onClick={add} className="self-start flex items-center gap-1.5 text-[length:var(--fs-125)] font-medium transition-colors" style={{color:"var(--muted)"}}
         onMouseEnter={e=>e.currentTarget.style.color="var(--text)"} onMouseLeave={e=>e.currentTarget.style.color="var(--muted)"}>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-        Add {keyPh||"row"}
+        {addLabel || ("Add "+(keyPh||"row"))}
       </button>
     </div>
   );
@@ -4780,8 +4856,9 @@ function App() {
     const spec = formSpecFor(n.action);
     if (spec) { const data = n.data || {}, patch = {};
       spec.fields.forEach(f => { if (f.default!=null && data[f.k]==null) patch[f.k] = f.default; });
+      if (spec.stages && !(data.stages||[]).length) { patch.stages = [{ dtype:"Unanimous" }]; setOpenSecs(s2=>({ ...s2, "stage:0":true })); } // Stage 1 is there (and open) from the start
       if (Object.keys(patch).length) update(p, { data: { ...data, ...patch } });
-    } else if (n.action==="create" && !(n.fields && n.fields.length)) {
+    } else if (n.action==="create" && !(n.fields && n.fields.length) && !CREATE_REQUIRED[n.arg]) {
       update(p, { fields: [{ field:null, value:null }] }); // create starts with one empty field row; UPDATE starts EMPTY (only "+ Add field" — user 2026-07-04)
     }
   }, [drawer]);
@@ -4888,7 +4965,8 @@ function App() {
   const [mergeWire, setMergeWire] = useState(null); // v5.16 — the hover-only branch→merge connector wire { d, mx, my }
   const [editingName, setEditingName] = useState(false); // header name: click-to-edit
   const [enabled, setEnabled] = useState(true);
-  const [theme, setTheme] = useState("dark");
+  // opens dark; the last picked theme is remembered in this browser (user 2026-10-13)
+  const [theme, setTheme] = useState(()=>{ try { const t=localStorage.getItem("wf-theme"); return t==="light"||t==="dark" ? t : "dark"; } catch(e){ return "dark"; } });
   const [focusKey, setFocusKey] = useState("T"); // "T" = trigger, else path.join('.')
   const [branchMenuPath, setBranchMenuPath] = useState(null); // path.join('.') of the branch whose "add step" menu is open
   const [splitPreviewKey, setSplitPreviewKey] = useState(null); // pathKey of a split-lane's first node being PREVIEWED (What-happens-next open, not yet committed) → renders dimmed
@@ -4972,7 +5050,7 @@ function App() {
   const valueSlotRefs = useRef({});  // condition node id -> its value element
   const argSlotRefs = useRef({});    // action path -> its arg element
   const branchAddRefs = useRef({});  // branch path -> its "+" element
-  useEffect(()=>{ document.documentElement.dataset.theme = theme; }, [theme]);
+  useEffect(()=>{ document.documentElement.dataset.theme = theme; try { localStorage.setItem("wf-theme", theme); } catch(e){} }, [theme]);
 
   const [openSlot, setOpenSlot] = useState(null); // unique key of the slot whose popover is open
   const [smartPreview, setSmartPreview] = useState(null); // slotKey whose value popover is on the "Smart value" tab → preview a badge in the sentence
@@ -6312,7 +6390,7 @@ function App() {
       ...(avail.has("execute_integration") ? ["Slack","Microsoft Teams","Jira","Azure AD","Okta","Zapier"].map(app=>({ id:"opt:app:"+app, label:app, crumb:"Action › Execute app integration", keywords:"integration app execute", _leaf:{ a:"execute_integration", _arg:app } })) : []),
       // per-module create rows match the MODULE name (matchOnly + free CREATE_VERBS) — so "create"/"cre" shows
       // just the generic "Create record", while "incident" / "create task" / "new problem" surface the module row.
-      ...(avail.has("create") ? MODULE_NAMES.filter(m=>m!=="Deployment").map(m=>({ id:"opt:create:"+m, label:"Create a "+m, crumb:"Action › Create record", matchOnly:moduleSearchStr(m), matchVerbs:CREATE_VERBS, _leaf:{ a:"create", _arg:m } })) : []),
+      ...(avail.has("create") ? MODULE_NAMES.filter(m=>!["Deployment","Announcement","Asset Movement"].includes(m)).map(m=>({ id:"opt:create:"+m, label:"Create a "+m, crumb:"Action › Create record", matchOnly:moduleSearchStr(m), matchVerbs:CREATE_VERBS, _leaf:{ a:"create", _arg:m } })) : []),
       ]),
     ];
   };
@@ -7628,7 +7706,7 @@ function App() {
     const argNodeId = (nodeAt(flowRef.current, path) || nodeAt(flow, path))?.id;
     const backArg = argNodeId ? backToActionMenu(path, argNodeId) : undefined; // arg pickers back → the Action menu (→ back → Change this step)
     if (actionId==="assign") { setPop(assignTargetConfig(path, el, anchorKey, backArg)); return; }
-    if (actionId==="execute_integration") { pickIntegApp(path, el, anchorKey); return; } // v8: app comes AFTER the integration
+    if (actionId==="execute_integration") { pickIntegApp(path, el, anchorKey); return; } // v8: app is picked FIRST, then its integration
     // once the arg is set, AUTO-OPEN the form the FIRST time (if this action has a form & isn't set up yet).
     // Read the node from flowRef (LIVE) — the node was created after this picker's closure was captured.
     const commitArg = (val)=>{
@@ -7656,6 +7734,10 @@ function App() {
   // Suggestion swap the action in place (they have their own sentences, no form). All three stay
   // DISCOVERABLE while browsing — the old submenu hid nothing but cost a drill.
   // the module whose fields an update node targets (record in scope → its field catalog)
+  // the module NAME of the record a node acts on (create → its own type; others → the record in scope)
+  const nodeModName = (path, node) => { if (!node) return null; if (node.action==="create") return node.arg;
+    const scope = recordsInScope(path); const rec = scope.find(x=>x.id===node.record) || scope[scope.length-1];
+    return rec ? rec.label.replace(/^the\s+/i,"") : (triggers[0]&&triggers[0].vals&&triggers[0].vals.module); };
   const updateTargetFields = (path, node) => {
     const scope = recordsInScope(path);
     const rec = scope.find(x=>x.id===node.record) || scope[scope.length-1];
@@ -7691,7 +7773,8 @@ function App() {
   // shortcuts ("Update priority by Priority Matrix" / "…by Smart Suggestion").
   // whether the field's auto value should be offered in its value dropdown — needs the field's MODULE to
   // support the method (Priority Matrix needs urgency × impact; excludes Task).
-  const fieldAutoValueItem = (dpath, fd) => { const fa = FIELD_AUTO[fd.id]; if(!fa || !fa.pickable) return null; // the field's automatic value as a pickable dropdown option (Priority→Priority Matrix, Category/Tech group→Smart Suggestion) — shown at the TOP of the value dropdown (user 2026-07-22, no longer auto-defaulted)
+  const fieldAutoValueItem = (dpath, fd) => { return null; // v8 (user 2026-10-13): Priority Matrix / Smart Suggestion are STANDALONE steps only, as in the node-based builder — never a field value
+    const fa = FIELD_AUTO[fd.id]; if(!fa || !fa.pickable) return null; // the field's automatic value as a pickable dropdown option (Priority→Priority Matrix, Category/Tech group→Smart Suggestion) — shown at the TOP of the value dropdown (user 2026-07-22, no longer auto-defaulted)
     const n = nodeAt(flowRef.current, dpath) || nodeAt(flow, dpath); if(!n) return null;
     const recF = n.action==="create" ? recordFieldsFor(n.arg) : updateTargetFields(dpath, n);
     if (!updateAutoAvailable(recF, fa.method)) return null;
@@ -7756,11 +7839,11 @@ function App() {
     const n = nodeAt(flow, path); const nodeId = n && n.id;
     update(path, { action: leaf.a, arg: leaf._arg || null, formAutoOpened:false, ...(leaf.a==="set_auto_assignment"?{pool:"all", online:false}:{}) }); // re-enable the one-time auto-open for the new action; _arg = level-3 preset value
     if (leaf.a === "send_notification") { requestAnimationFrame(()=>openChannelPicker(path, null, `chan:${nodeId}`)); return; } // node-first: channel picks on the canvas
-    if (leaf.a === "priority_matrix" || leaf.a === "smart_suggestion") { requestAnimationFrame(()=>applyUpdateAuto(path, leaf.a)); return; } // action-search shortcut: update node + auto field value (2026-07-04)
+    if (leaf.a === "priority_matrix" || leaf.a === "smart_suggestion" || leaf.a === "run_approval") { requestAnimationFrame(()=>pickSourceRecord(path, nodeId, ()=>{})); return; } // standalone step (v8, user 2026-10-13): just its record, no drawer
     // Update record → opens the fields drawer DIRECTLY (no "how?" step; auto methods are field values now — user 2026-07-04). Falls through to the form logic below.
     if (leaf.a === "set_auto_assignment" && leaf._arg) { requestAnimationFrame(()=>openPoolPicker(path, null, `apool:${nodeId}`)); return; } // method preset (level-3 search) → the pool picks on the canvas
     const adef = actionCatAll.byId[leaf.a];
-    if (leaf.a==="execute_integration") { requestAnimationFrame(()=>startIntegrationFlow(path, nodeId)); return; } // v8: record → integration → app
+    if (leaf.a==="execute_integration") { requestAnimationFrame(()=>startIntegrationFlow(path, nodeId)); return; } // v8: record → app → integration
     if (adef && adef.arg && !leaf._arg) requestAnimationFrame(()=>openArgByKey(path, leaf.a, `aarg:${nodeId}`));
     else if ((adef && adef.details) || formSpecFor(leaf.a) || leaf.a==="add_relation") requestAnimationFrame(()=>openFormFlow(path, nodeId, leaf.a)); // no arg + form → source pick (if record-acting) then form
   };
@@ -7813,7 +7896,7 @@ function App() {
       return out;
     })(),
     flat: flatItems(availActionIds(path)),
-    selected: opts.selected!==undefined ? opts.selected : (()=>{ const a=nodeAt(flow,path)?.action; if(!a) return null; const grp={priority_matrix:"update", smart_suggestion:"update"}; return "leaf:"+(String(a).startsWith("send_") ? "send_notification" : (grp[a]||a)); })(),
+    selected: opts.selected!==undefined ? opts.selected : (()=>{ const a=nodeAt(flow,path)?.action; if(!a) return null; const grp={priority_matrix:"auto_set", smart_suggestion:"auto_set"}; return "leaf:"+(String(a).startsWith("send_") ? "send_notification" : (grp[a]||a)); })(),
     onPick:(i, idx)=>{ if (i.cat) { setPop(actionGroupConfig(path, anchor, i._g, ()=>setPop({ ...actionMenuConfig(path, anchor, back, anchorKey, opts), initActive: idx }), undefined, opts)); return true; } (opts.onLeaf || ((lf)=>pickLeaf(path, lf)))(i._leaf); },
   });
   // the action verb slot's picker carries a BACK chevron → "Change this step" (swap the whole node kind)
@@ -7828,11 +7911,11 @@ function App() {
     setFlow(withReplaceRemoved(g => treeInsertAt(g, parentPath, idx, node)));
     setFocusKey(pathKey(newPath));
     if (leaf.a === "send_notification") { requestAnimationFrame(()=>openChannelPicker(newPath, null, `chan:${node.id}`)); return; } // node-first: the row lands NOW, channel picks on the canvas
-    if (leaf.a === "priority_matrix" || leaf.a === "smart_suggestion") { requestAnimationFrame(()=>applyUpdateAuto(newPath, leaf.a)); return; } // action-search shortcut: update node + auto field value (2026-07-04)
+    if (leaf.a === "priority_matrix" || leaf.a === "smart_suggestion" || leaf.a === "run_approval") { requestAnimationFrame(()=>pickSourceRecord(newPath, node.id, ()=>{})); return; } // standalone step (v8, user 2026-10-13): just its record, no drawer
     // Update record → opens the fields drawer DIRECTLY (no "how?" step — auto methods are field values now, user 2026-07-04). Falls through to the form logic below.
     if (leaf.a === "set_auto_assignment" && leaf._arg) { requestAnimationFrame(()=>openPoolPicker(newPath, null, `apool:${node.id}`)); return; } // method preset (level-3 search) → the pool picks on the canvas
     const adef = actionCatAll.byId[leaf.a];
-    if (leaf.a==="execute_integration") { requestAnimationFrame(()=>startIntegrationFlow(newPath, node.id)); return; } // v8: record → integration → app
+    if (leaf.a==="execute_integration") { requestAnimationFrame(()=>startIntegrationFlow(newPath, node.id)); return; } // v8: record → app → integration
     if (adef && adef.arg && !leaf._arg) requestAnimationFrame(()=>openArgByKey(newPath, leaf.a, `aarg:${node.id}`));
     else if ((adef && adef.details) || formSpecFor(leaf.a) || leaf.a==="add_relation") requestAnimationFrame(()=>openFormFlow(newPath, node.id, leaf.a)); // no arg + form → source pick (if record-acting) then form
   };
@@ -7934,15 +8017,20 @@ function App() {
     if (id==="close")   return { verb:"close",  tpl:" {record}" };
     if (id==="add_relation") return { verb:"add", tpl:" a relation from {record} to {relmod}" }; // v8: module is a sentence blank (no drawer)
     if (id==="add_task") return { verb:"add", tpl:" a task to {record}" };
-    // v8: passive, so the blanks read left → right in FILL order (record → integration → app); {verb} = the action slot
-    if (id==="execute_integration") return { verb:"executed", tpl:"for {record}{comma}{integ} is {verb} in {arg}" };
+    if (id==="ask_approval") return { verb:"ask for Approval", tpl:" on {record}" };
+    // v8 (user 2026-10-13): the node-based "Select Source Node" lives in the sentence for these three too
+    if (id==="run_approval") return { verb:"run approval workflow", tpl:" on {record}" };
+    if (id==="run_plugin")   return { verb:"run a Plugin", tpl:" on {record}" };
+    if (id==="http_request") return { verb:"make an HTTP request / webhook", tpl:" for {record}" }; // v8 (user 2026-10-13): which record the approval is for
+    // v8: the blanks read left → right in FILL order (record → app → integration, user 2026-10-12); {verb} = the action slot
+    if (id==="execute_integration") return { verb:"execute", tpl:"for {record}{comma}in {arg} {verb} {integ}" };
     // Create deployment (v8): the SOURCE record is a conscious pick (like add_relation) and the sentence reads
     // the drawer's config back — "create a Deployment to install 3 packages for the Incident".
     if (id==="create_deployment") { const d = node.data || {}; const n = (d.packages||[]).length;
       const verb2 = (d.config_type||"Install").toLowerCase();
       return { verb:"create", tpl:` a Deployment to ${verb2} ${n ? n+" package"+(n===1?"":"s") : "packages"} for {record}` }; }
-    if (id==="priority_matrix")    return showRec ? { verb:"update", tpl:" {record} priority as per Priority Matrix" } : { verb:"set", tpl:" the priority as per Priority Matrix" };
-    if (id==="smart_suggestion")   return showRec ? { verb:"update", tpl:" {record} field by Smart Suggestion" }   : { verb:"set", tpl:" the suggested field by Smart Suggestion" };
+    if (id==="priority_matrix")    return { verb:"set", tpl:" priority of {record} as per Priority Matrix" };
+    if (id==="smart_suggestion")   return { verb:"set", tpl:" suggested field of {record} by Smart Suggestion" };
     if (id==="set_auto_assignment")return showRec ? { verb:"set",    tpl:" auto assignment on {record} using {arg} among {pool}" } : { verb:"set", tpl:" auto assignment using {arg} among {pool}" };
     if (id==="send_notification") return { verb:"send", tpl:" a {channel}" }; // placeholder — reads "Send a notification…" until the channel slot is picked
     if (id && id.startsWith("send_")) {
@@ -8018,39 +8106,35 @@ function App() {
         if (n && n.relModule===i.id) openCondFieldPicker(path, cur.id, 0, null); else if (++tries < 20) setTimeout(go, 25); }; setTimeout(go, 0); }
     }, "Relate to which module", { noSearch:true, selected:n0.relModule, ...(el ? {} : { anchorKey:`rmod:${n0.id}` }) });
   };
-  // Execute app integration (v8) — the sentence reads left → right in fill order:
-  //   "for {record}, {integration} is executed in {app}"
-  // The {integration} blank lists EVERY integration (sub = the apps offering it); the {app} blank then lists only
-  // the apps that offer the picked integration — ONE app → prefilled, no popup. Once both are set the INPUT MAPPING
-  // opens in the right-side drawer. A DIFFERENT integration resets the mappings (they belong to the old one).
-  const appsForIntegration = (integ) => Object.keys(APP_INTEGRATIONS).filter(a=>(APP_INTEGRATIONS[a]||[]).includes(integ));
+  // Execute app integration (v8) — the sentence reads left → right in fill order (user 2026-10-12: APP first):
+  //   "for {record}, in {app} execute {integration}"
+  // The {app} blank lists every app; the {integration} blank then lists only THAT app's integrations. Once both
+  // are set the INPUT MAPPING opens in the right-side drawer. A different app drops an integration it doesn't
+  // offer; a DIFFERENT integration resets the mappings (they belong to the old one).
   const openIntegDrawer = (path) => requestAnimationFrame(()=>{ const n=nodeAt(flowRef.current, path); if (n && n.integration && n.arg) setDrawer(n.id); });
-  const pickIntegration = (path, el) => {
-    const n0 = nodeAt(flowRef.current, path) || {};
-    // a search preset ("Slack" typed in the action search) chose the app first → offer only that app's integrations
-    const preset = n0.arg && !n0.integration ? n0.arg : null;
-    const names = preset ? (APP_INTEGRATIONS[preset]||[]) : [...new Set(Object.values(APP_INTEGRATIONS).flat())];
-    setOpenSlot(`${pathKey(path)}:integ`);
-    open(el, names.map(x=>({ id:x, label:x, sub: appsForIntegration(x).join(", ") })), (i)=>{
-      const cur = nodeAt(flowRef.current, path) || {};
-      const apps = appsForIntegration(i.id);
-      const changed = cur.integration!==i.id;
-      const arg = cur.arg && apps.includes(cur.arg) ? cur.arg : (apps.length===1 ? apps[0] : null);
-      update(path, { integration:i.id, arg, ...(changed ? { mappings:[{ key:null, value:"" }], confirmed:false } : {}) });
-      if (!arg) requestAnimationFrame(()=>pickIntegApp(path, null));
-      else if (changed || !cur.confirmed) openIntegDrawer(path);
-    }, "Which integration?", { selected:n0.integration, ...(el ? {} : { anchorKey:`integ:${n0.id}` }) });
-  };
-  // the {app} blank — only the apps offering the chosen integration (no integration yet → pick that first)
+  // the {app} blank — step 1
   const pickIntegApp = (path, el, anchorKey) => {
     const n0 = nodeAt(flowRef.current, path) || {};
-    if (!n0.integration) { pickIntegration(path, el); return; }
     setOpenSlot(`${pathKey(path)}:arg`);
-    open(el, appsForIntegration(n0.integration).map(a=>({ id:a, label:a })), (i)=>{
+    open(el, Object.keys(APP_INTEGRATIONS).map(a=>({ id:a, label:a })), (i)=>{
       const cur = nodeAt(flowRef.current, path) || {};
-      update(path, { arg:i.id });
-      if (!cur.confirmed) openIntegDrawer(path);
-    }, "Which app?", { noSearch:true, selected:n0.arg, ...(el ? {} : { anchorKey: anchorKey || `aarg:${n0.id}` }) });
+      const keep = cur.integration && (APP_INTEGRATIONS[i.id]||[]).includes(cur.integration);
+      update(path, { arg:i.id, ...(keep ? {} : { integration:null, mappings:[{ key:null, value:"" }], confirmed:false }) });
+      if (!keep) requestAnimationFrame(()=>pickIntegration(path, null));
+      else if (!cur.confirmed) openIntegDrawer(path);
+    }, "Which app?", { selected:n0.arg, ...(el ? {} : { anchorKey: anchorKey || `aarg:${n0.id}` }) });
+  };
+  // the {integration} blank — step 2: only the chosen app's integrations (no app yet → pick that first)
+  const pickIntegration = (path, el) => {
+    const n0 = nodeAt(flowRef.current, path) || {};
+    if (!n0.arg) { pickIntegApp(path, el); return; }
+    setOpenSlot(`${pathKey(path)}:integ`);
+    open(el, (APP_INTEGRATIONS[n0.arg]||[]).map(x=>({ id:x, label:x })), (i)=>{
+      const cur = nodeAt(flowRef.current, path) || {};
+      const changed = cur.integration!==i.id;
+      update(path, { integration:i.id, ...(changed ? { mappings:[{ key:null, value:"" }], confirmed:false } : {}) });
+      if (changed || !cur.confirmed) openIntegDrawer(path);
+    }, "Which integration?", { selected:n0.integration, ...(el ? {} : { anchorKey:`integ:${n0.id}` }) });
   };
   // The SOURCE-record step of an add flow ("Which record?"), shared by every record-acting action. With ONLY ONE
   // record in scope there is nothing to choose → it is PREFILLED (no popup) and the flow moves straight on; the
@@ -8064,7 +8148,8 @@ function App() {
     open(null, scope.map(r=>({id:r.id, label:r.label})), (i)=>commit(i.id),
       "Which record?", { anchorKey:`act:${nodeId}`, noSearch:true, selected: nodeAt(flow,path)?.record, back: backToActionMenu(path, nodeId) });
   };
-  // the add flow (v8, left → right as the sentence reads): "Which record?" → integration → app (→ input-mapping drawer)
+  // the add flow (v8, left → right as the sentence reads): "Which record?" → app → integration (→ input-mapping drawer)
+  // (pickIntegration falls back to the app picker when no app is set; a search preset may have set it already)
   const startIntegrationFlow = (path, nodeId) =>
     pickSourceRecord(path, nodeId, () => requestAnimationFrame(()=>pickIntegration(path, null)));
   const openFormFlow = (path, nodeId, actionId) => {
@@ -8102,7 +8187,7 @@ function App() {
     const prev = prevDrawerRef.current; prevDrawerRef.current = drawer;
     if (!prev || prev===drawer || exprEdit) return;
     const p = treeFindPath(flowRef.current, prev); const n = p && nodeAt(flowRef.current, p);
-    if (n && !n.showErrs && missingRequired(n) > 0) update(p, { showErrs:true });
+    if (n && !n.showErrs && missingRequired(n, nodeModName(p, n)) > 0) update(p, { showErrs:true });
   }, [drawer]);
   const isComplete = hasTrigger && hasAction(flow);
   /* context-rail summary helpers */
@@ -9102,7 +9187,7 @@ function App() {
               const isInteg = node.action==="execute_integration";
               if (isInteg && !(node.integration && node.arg)) return null;
               if (!((def && def.details) || spec || isInteg) || (def && def.arg && !node.arg && !String(node.action||"").startsWith("send_"))) return null;
-              const data = node.data || {}, rows = node.fields || [], nf = rows.length;
+              const data = node.data || {}, rows = fieldRowsOf(node), nf = rows.length;
               const maps = isInteg ? (node.mappings||[]) : [], nm = maps.filter(m=>m.key).length;
               const filled = spec ? spec.fields.filter(fd=>data[fd.k]).length : nf;
               const title = spec ? spec.title : (node.action==="create" ? (node.arg||"Record")+" details" : "Fields to update");
@@ -9110,7 +9195,7 @@ function App() {
               const stagesOK = !spec || !spec.stages || ((data.stages||[]).length>0 && (data.stages||[]).every(st=>spec.stages.fields.filter(f3=>!f3.opt).every(f3=>st[f3.k])));
               // complete = no required input left empty (shared with the drawer, see missingRequired); after the drawer was
               // closed with gaps (node.showErrs) the card switches to the ERROR state: "N required fields missing".
-              const nMissing = missingRequired(node);
+              const nMissing = missingRequired(node, nodeModName(path, node));
               const complete = nMissing===0;
               const showErr = !!node.showErrs && nMissing>0;
               const countLine = isInteg ? (nm ? `${nm} mapping${nm>1?"s":""} set` : "No mappings yet")
@@ -9126,8 +9211,9 @@ function App() {
                 const modName = node.action==="create" ? node.arg : (()=>{ const r=sc.find(x=>x.id===node.record)||sc[sc.length-1]; return r?r.label.replace(/^the\s+/i,""):(triggers[0]&&triggers[0].vals&&triggers[0].vals.module); })();
                 const recF = actionFieldsFor(node.action, modName);
                 // c = compact (text-based values capped to 3 words for the visible line); f = full (the hover tooltip)
-                return rows.filter(fv=>fv.field).map(fv=>{ const fd=recF.find(x=>x.id===fv.field); const label=(fd?fd.label:"field");
-                  return { c: label+" → "+(valueDisplay(fv.value)||"…"), f: label+" → "+(valueDisplay(fv.value, true)||"…") }; }); // valueDisplay: {ref}/{expr}/{auto} rendered readably
+                const cg = nodeGate(node, modName), cgv = nodeGateVal(node, modName);
+                return [...(cg && cgv ? [{ c: cg.label+" → "+cgv, f: cg.label+" → "+cgv }] : []), ...rows.filter(fv=>fv.field).map(fv=>{ const fd=recF.find(x=>x.id===fv.field); const label=(fd?fd.label:"field");
+                  return { c: label+" → "+(valueDisplay(fv.value)||"…"), f: label+" → "+(valueDisplay(fv.value, true)||"…") }; })]; // valueDisplay: {ref}/{expr}/{auto} rendered readably
               })();
               const cardChanges = cardRows && cardRows.map(r=>r.c);      // compact (capped) — the visible card line
               const cardChangesFull = cardRows && cardRows.map(r=>r.f);  // full — the hover tooltip (no cap)
@@ -10097,6 +10183,14 @@ function App() {
           {/* VERSION HISTORY + MORE (three-dot) — synced to the Node view's top-right (user 2026-08-19). Replaces the
               theme toggle + Enabled switch. Version history is placement-only (the side panel it opens isn't built);
               the three-dot holds workflow actions (Duplicate / Delete). */}
+          {/* THEME TOGGLE — back in the top bar, left of Version history (user 2026-10-13); T still toggles it */}
+          <Tooltip label={theme==="dark" ? "Switch to light theme" : "Switch to dark theme"} side="bottom"><button onClick={()=>setTheme(t=>t==="dark"?"light":"dark")}
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:brightness-110"
+            style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--muted)"}}>
+            {theme==="dark"
+              ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+              : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>}
+          </button></Tooltip>
           <Tooltip label="Version history" side="bottom"><button onClick={()=>{}}
             className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:brightness-110"
             style={{background:"var(--panel2)",border:"1px solid var(--border2)",color:"var(--muted)"}}>
@@ -10264,7 +10358,10 @@ function App() {
             const dpath = treeFindPath(flow, drawer);
             const dnode = dpath ? nodeAt(flow, dpath) : null;
             if (!dnode) return null;
-            const dfields = dnode.action==="add_task" ? ensureTaskRows(dnode.fields) : (dnode.fields || []); // Add task: the 2 locked rows always lead (v8)
+            const dfields = fieldRowsOf(dnode); // Add task / Create record: the mandatory locked rows always lead (v8)
+            // Create record's required first pick (service catalog / user type / asset ID / CI ID), shown above the rows
+            const dGate = nodeGate(dnode, nodeModName(dpath, dnode)), dGateVal = nodeGateVal(dnode, nodeModName(dpath, dnode));
+            const openGate = (el) => open(el, createGateItems(dGate), (i)=>update(dpath, { gate:i.id }), dGate.label, { selected:dGateVal, ...(dGate.items ? {} : { noSearch:true }) });
             // which record this action acts on → its module decides which system fields show
             const dScope = recordsInScope(dpath);
             const dModName = dnode.action==="create" ? dnode.arg
@@ -10358,7 +10455,7 @@ function App() {
               const pickKey = (mi, el)=>{ setOpenSlot(`${dk}:map${mi}:key`); const used = maps.map((m,j)=>j!==mi && m.key).filter(Boolean);
                 open(el, INTEGRATION_KEYS.filter(x=>!used.includes(x)).map(x=>({id:x, label:x})),
                   (i)=> setMaps(ms=>ms.map((m,j)=>j===mi?{...m, key:i.id}:m)), "Select key", { selected:maps[mi]?.key, searchPlaceholder:"Search" }); };
-              const iSegs = [{t:"For"},{t:recordLabel(dScope, dnode.record)||"the record",em:true},{t:","},{t:dnode.integration||"an integration",em:!!dnode.integration,dim:!dnode.integration},{t:"is executed in"},{t:dnode.arg||"an app",em:!!dnode.arg,dim:!dnode.arg}];
+              const iSegs = [{t:"For"},{t:recordLabel(dScope, dnode.record)||"the record",em:true},{t:","},{t:"in"},{t:dnode.arg||"an app",em:!!dnode.arg,dim:!dnode.arg},{t:"execute"},{t:dnode.integration||"an integration",em:!!dnode.integration,dim:!dnode.integration}];
               return (
                 <div className="h-full w-full flex flex-col" style={{background:"var(--panel)"}}>
                   <div className="px-4 h-16 shrink-0 flex items-center gap-2.5 border-b" style={{borderColor:"var(--border)"}}>
@@ -10424,8 +10521,7 @@ function App() {
             // top (auto-fillable via Smart Suggestion — added with the auto value as default), then ALL FIELDS
             // grouped by category (added with NO value → its value picker opens immediately). rowIdx=null → the
             // pick APPENDS a new row; a number → it CHANGES that row's field.
-            const dSuggIds = (dnode.action==="update" && updateAutoAvailable(recFields,"smart_suggestion"))
-              ? SUGGESTED_FIELD_IDS.filter(fid=>recFields.some(f=>f.id===fid)) : [];
+            const dSuggIds = []; // no "Suggested fields" section any more — Smart Suggestion is its own step (user 2026-10-13)
             const fieldPickerItems = (usedIds) => {
               const items = []; const avail = recFields.filter(f=>!usedIds.includes(f.id));
               const sugg = dSuggIds.filter(fid=>!usedIds.includes(fid));
@@ -10440,7 +10536,7 @@ function App() {
             const applyFieldPick = (rowIdx, fid) => {
               // EVERY field (incl. category / technician group) is added with NO value → the user picks it; Smart
               // Suggestion is offered as the TOP option in the value dropdown, NOT auto-defaulted (user 2026-07-22).
-              const n = nodeAt(flowRef.current, dpath) || dnode; const cur = n.action==="add_task" ? ensureTaskRows(n.fields) : (n.fields||[]);
+              const n = nodeAt(flowRef.current, dpath) || dnode; const cur = fieldRowsOf(n);
               const idx = rowIdx===null ? cur.length : rowIdx;
               const next = rowIdx===null ? [...cur, {field:fid, value:null}] : cur.map((x,ix)=>ix===rowIdx?{field:fid, value:null}:x);
               update(dpath, { fields: next }); // keep the node's action (create OR update) — do NOT force "update" (would flip a Create node)
@@ -10464,7 +10560,10 @@ function App() {
             const dstages = ddata.stages || [];
             const setStage = (i2, kk, val) => setD("stages", dstages.map((s3,ix)=> ix===i2 ? { ...s3, [kk]: val } : s3));
             const addStage = () => { setD("stages", [...dstages, { dtype:"Unanimous" }]); setOpenSecs(s2=>({ ...s2, ["stage:"+dstages.length]:true })); };
-            const rmStage = (i2) => setD("stages", dstages.filter((_,ix)=>ix!==i2));
+            // open/closed state follows the stage when one is removed or duplicated (keys are positional)
+            const reKey = (fn) => setOpenSecs(s2=>{ const o={...s2}; const was=dstages.map((_,ix)=>!!s2["stage:"+ix]); Object.keys(o).filter(k2=>k2.startsWith("stage:")).forEach(k2=>delete o[k2]); fn(was).forEach((v,ix)=>{ if(v) o["stage:"+ix]=true; }); return o; });
+            const rmStage = (i2) => { setD("stages", dstages.filter((_,ix)=>ix!==i2)); reKey(was=>was.filter((_,ix)=>ix!==i2)); };
+            const dupStage = (i2) => { const copy = JSON.parse(JSON.stringify(dstages[i2])); setD("stages", [...dstages.slice(0,i2+1), copy, ...dstages.slice(i2+1)]); reKey(was=>[...was.slice(0,i2+1), true, ...was.slice(i2+1)]); };
             const inCls = "w-full rounded-lg px-3 py-2.5 text-[length:var(--fs-135)] outline-none";
             const inSty = { background:"var(--panel2)", border:"1px solid var(--border2)", color:"var(--text)" };
             // native <select> → appearance-none + a custom chevron with comfortable right spacing (no cramped browser arrow)
@@ -10473,7 +10572,7 @@ function App() {
               backgroundImage:`url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238a8a93' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>")`,
               backgroundRepeat:"no-repeat", backgroundPosition:"right 12px center" };
             const title = dspec ? dspec.title : (dnode.action==="create" ? `Create ${dnode.arg||"record"}` : dnode.action==="update" ? "Update record" : dnode.action==="add_task" ? "Task details" : "Details");
-            const sub   = dspec ? dspec.sub   : dnode.action==="add_task" ? "Start date and subject are required — add any other task field below" : (dnode.action==="update" ? "Choose the fields to change and their new values" : "Fill the fields for this action");
+            const sub   = dspec ? dspec.sub   : dnode.action==="add_task" ? "Start date and subject are required — add any other task field below" : (dnode.action==="update" ? "Choose the fields to change and their new values" : (dnode.action==="create" && CREATE_REQUIRED[dnode.arg]) ? "Fields marked * are required — add any other field below" : "Fill the fields for this action");
             // notifications (email/SMS/WhatsApp/Teams/Google Chat/announcement/reminder) drop the Summary section
             // entirely — the compose body already reads as the message (user 2026-07-15). Other actions keep it.
             const isNotify = String(dnode.action||"").startsWith("send_");
@@ -10494,8 +10593,9 @@ function App() {
                   const segs = dnode.action==="add_task"   // v8: "Add a task to the Incident with Task start date as … · Subject as …"
                     ? [{t:"Add a task to the"},{t:(dModName||"record"),em:true},{t:"with"}]
                     : [{t:isC?"Create a":"Update the"},{t:(isC?(dnode.arg||"record"):(dModName||"record")),em:true},{t:isC?"with":"— set"}];
-                  const rows2 = dfields.length ? dfields : [{}];
-                  rows2.forEach((fv,i)=>{ if(i>0) segs.push({t:"·"});
+                  if (dGate) segs.push({t:dGate.label,em:true},{t:"to"}, dGateVal ? {t:dGateVal,em:true} : {t:"a value",dim:true});
+                  const rows2 = dfields.length ? dfields : (dGate ? [] : [{}]);
+                  rows2.forEach((fv,i)=>{ if(i>0 || dGate) segs.push({t:"·"});
                     const fd = fv.field && recFields.find(x=>x.id===fv.field); const val = valueDisplay(fv.value); const valFull = valueDisplay(fv.value, true); // [S1] {ref}/{expr}/array/literal; text-based → 3-word cap, full on hover
                     segs.push(fd ? {t:fd.label,em:true} : {t:"field",dim:true});
                     segs.push({t: dnode.action==="add_task" ? "as" : "to"});
@@ -10748,7 +10848,52 @@ function App() {
                               style={{color: more?"var(--accent2)":"var(--muted)", background: more?"color-mix(in srgb, var(--accent) 12%, transparent)":"transparent"}}>
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{transform: more?"rotate(180deg)":"none", transition:"transform .15s"}}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                             </button>
+                            {/* AI "Enhance" (user 2026-10-13) — visual only in the prototype, as in the node-based editor */}
+                            <button type="button" data-tip="Rewrite with AI" className="ml-auto shrink-0 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[length:var(--fs-12)] font-medium transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--accent2)"}}>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M5 19L15 9M14 4l.9 2.1L17 7l-2.1.9L14 10l-.9-2.1L11 7l2.1-.9L14 4zM19 12l.6 1.4L21 14l-1.4.6L19 16l-.6-1.4L17 14l1.4-.6L19 12z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                              Enhance</button>
                           </div>
+                          {/* PLACEHOLDER CONFIGURATION (user 2026-10-13) — its own section under the body: each card picks a TABLE
+                              placeholder and the columns it shows (chips; all columns by default), as in the node-based builder */}
+                          {dspec.phConfig && (()=>{
+                            const cfgs = Array.isArray(ddata.ph_config) ? ddata.ph_config : [];
+                            const setCfgs = (next)=>setD("ph_config", next.length ? next : null);
+                            const setCfg = (ci, patch)=>setCfgs(cfgs.map((c,ix)=>ix===ci?{...c,...patch}:c));
+                            const used = cfgs.map(c=>c.ph).filter(Boolean);
+                            return (
+                              <div className="px-5 py-4 border-t flex flex-col gap-3" style={{borderColor:"var(--border2)"}}>
+                                <span className="text-[length:var(--fs-11)] font-semibold uppercase tracking-[0.08em]" style={{color:"var(--faint)"}}>Placeholder configuration</span>
+                                {cfgs.map((c,ci)=>{ const all = PH_TABLES[c.ph] || []; const cols = c.cols || []; const rest = all.filter(x=>!cols.includes(x));
+                                  return (
+                                  <div key={ci} className="shrink-0 rounded-xl border px-3.5 py-3 flex flex-col gap-2.5" style={{borderColor:"var(--border2)", background:"var(--panel)"}}>
+                                    <div className="flex items-center justify-between">
+                                      <label className="text-[length:var(--fs-11)] font-semibold uppercase tracking-[0.08em]" style={{color:"var(--faint)"}}>Placeholder<span className="ml-0.5" style={{color:"var(--red)"}}>*</span></label>
+                                      <button type="button" data-tip="Remove" aria-label="Remove placeholder configuration" onClick={()=>setCfgs(cfgs.filter((_,ix)=>ix!==ci))} className="w-7 h-7 -my-1 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--red)"}}>
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+                                    </div>
+                                    <Dropdown placeholder="Select…" value={c.ph||""} options={Object.keys(PH_TABLES).filter(k2=>k2===c.ph || !used.includes(k2)).map(o=>({id:o,label:o}))} onChange={(val)=>setCfg(ci, { ph:val, cols:[...(PH_TABLES[val]||[])] })} />
+                                    {dnode.showErrs && !c.ph && <FieldError>Placeholder is required</FieldError>}
+                                    {c.ph && (<>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {cols.map(col=>(
+                                          <span key={col} className="inline-flex items-center gap-1 rounded-md pl-2 pr-1 py-1 text-[length:var(--fs-12)]" style={{background:"var(--panel2)", border:"1px solid var(--border2)", color:"var(--text)"}}>
+                                            {col}
+                                            <button type="button" aria-label={"Remove "+col} onClick={()=>setCfg(ci, { cols: cols.filter(x=>x!==col) })} className="w-4 h-4 rounded flex items-center justify-center hover:bg-[var(--pop-hover)]" style={{color:"var(--faint)"}}>
+                                              <svg width="9" height="9" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"/></svg></button>
+                                          </span>))}
+                                        {!cols.length && <span className="text-[length:var(--fs-12)]" style={{color:"var(--faint)"}}>No columns selected</span>}
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                        <button type="button" disabled={!rest.length} onClick={(e)=>open(e.currentTarget, rest.map(x=>({id:x,label:x})), (i)=>{ const n2=nodeAt(flowRef.current, dpath); const cur=((n2.data||{}).ph_config||[]); update(dpath, { data:{ ...(n2.data||{}), ph_config: cur.map((cc,ix)=>ix===ci?{...cc, cols: all.filter(x=>[...(cc.cols||[]), i.id].includes(x))}:cc) } }); }, "Select columns", { noSearch:true })}
+                                          className="text-[length:var(--fs-12)] font-medium transition-colors hover:brightness-125" style={{color: rest.length ? "var(--accent2)" : "var(--faint)", cursor: rest.length ? "pointer" : "default"}}>+ Select columns</button>
+                                        {cols.length>0 && <button type="button" onClick={()=>setCfg(ci, { cols:[] })} className="text-[length:var(--fs-12)] font-medium hover:brightness-125" style={{color:"var(--red)"}}>Remove all columns</button>}
+                                      </div>
+                                    </>)}
+                                  </div>); })}
+                                {cfgs.length < Object.keys(PH_TABLES).length &&
+                                  <button type="button" onClick={()=>setCfgs([...cfgs, { ph:null, cols:[] }])} className="rounded-xl border border-dashed px-3 py-2.5 text-[length:var(--fs-13)] font-medium transition-colors hover:bg-[var(--pop-hover)]" style={{borderColor:"var(--border2)", color:"var(--muted)"}}>+ Add placeholder configuration</button>}
+                              </div>);
+                          })()}
                         </div>);
                     }
                     // spec-driven form. Required fields (no `sec`) stay always visible; optional fields are
@@ -10777,6 +10922,10 @@ function App() {
                         const bodyVal = typeof v==="string" ? v : (v && v.ref ? "{{"+refPathLabels(v).join(" › ")+"}}" : "");
                         ctrl = <RichBody value={bodyVal} onChange={set} placeholder={fd.ph||"enter text…"} minRows={fd.type==="richtext"?5:3}
                           expandable expandTitle={fd.label} canPlaceholder={refOK && recordsInScope(dpath).length>0}
+                          /* AI "Enhance" (announcement, user 2026-10-12) — visual only in the prototype, as in the node-based editor */
+                          footerExtra={fd.enhance ? <button type="button" data-tip="Rewrite with AI" className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[length:var(--fs-12)] font-medium transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--accent2)"}}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M5 19L15 9M14 4l.9 2.1L17 7l-2.1.9L14 10l-.9-2.1L11 7l2.1-.9L14 4zM19 12l.6 1.4L21 14l-1.4.6L19 16l-.6-1.4L17 14l1.4-.6L19 12z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            Enhance</button> : null}
                           onRequestPlaceholder={(el, applyRef)=> (dspec && dspec.phCatalog)
                             ? openPhPicker(fk, el, applyRef)                                                  // send channels → real Motadata catalog
                             : openSmartRef(dpath, fk, el, null, (refObj)=>applyRef(refPathLabels(refObj).join(" › ")), {})} />;  // announcement/HTTP keep the record drill
@@ -10910,19 +11059,32 @@ function App() {
                         </div>);
                       else if (fd.type==="condition")
                         ctrl = <AttachedCondition value={Array.isArray(v)?v:[]} onChange={set} open={open} fields={fd.fieldsFrom ? fd.fieldsFrom(D) : undefined}/>;
+                      else if (fd.type==="testconn") { // HTTP "Test connection" (visual only in the prototype): needs a URL, then reports OK
+                        const st = D[fd.k];
+                        ctrl = (<div className="flex items-center gap-2.5 flex-wrap">
+                          <button type="button" onClick={()=>SET(fd.k, (typeof D.url==="string" && D.url.trim()) ? "ok" : "nourl")}
+                            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[length:var(--fs-125)] font-medium transition-colors hover:bg-[var(--pop-hover)]" style={{borderColor:"var(--border2)", color:"var(--text)"}}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M5 12a7 7 0 0114 0M8.5 12a3.5 3.5 0 017 0M12 12v.01M12 16v4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                            Test connection</button>
+                          {st==="ok" && <span className="text-[length:var(--fs-12)] font-medium" style={{color:"var(--rdy-fg)"}}>Connection successful · 200 OK</span>}
+                          {st==="nourl" && <FieldError>Enter a URL first</FieldError>}
+                        </div>);
+                      }
+                      else if (fd.type==="password")
+                        ctrl = <input className={inCls} style={inSty} type="password" autoComplete="new-password" value={v} placeholder={fd.ph||""} onChange={e=>set(e.target.value)}/>;
                       else if (fd.type==="keyval")
-                        ctrl = <KeyValRows value={Array.isArray(v)?v:[]} onChange={set} keyPh={fd.keyPh} valPh={fd.valPh}/>;
+                        ctrl = <KeyValRows value={Array.isArray(v)?v:[]} onChange={set} keyPh={fd.keyPh} valPh={fd.valPh} addLabel={fd.addLabel}/>;
                       else if (fd.type==="attach")
                         ctrl = (<button type="button" className="inline-flex items-center justify-center gap-2 rounded-lg border border-dashed px-3 py-2 text-[length:var(--fs-125)] font-medium transition-colors hover:bg-[var(--pop-hover)]" style={{borderColor:"var(--border2)", color:"var(--muted)"}}>
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 16V4M8 8l4-4 4 4M5 20h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
                           Attach files
                         </button>);
                       else
-                        ctrl = refOK ? fieldCtrl(dpath, fd, v, set, fk, fd.ph||"value")
+                        ctrl = (refOK && !fd.plain) ? fieldCtrl(dpath, fd, v, set, fk, fd.ph||"value")
                           : <input className={inCls} style={inSty} type={fd.type==="date"?"date":fd.type==="datetime"?"datetime-local":fd.type==="number"?"number":"text"} value={v} placeholder={fd.ph||""} onChange={e=>set(e.target.value)}/>;
                       return (
                         <div key={fd.k} className={(fd.half?"col-span-1":"col-span-2")+" flex flex-col gap-1.5 min-w-0"}>
-                          {fd.type!=="daterange" && <label className="text-[length:var(--fs-11)] font-semibold uppercase tracking-[0.08em]" style={{color:"var(--faint)"}}>{fd.label}{!fd.opt && <span className="ml-0.5" style={{color:"var(--red)"}}>*</span>}</label>}
+                          {fd.type!=="daterange" && fd.type!=="testconn" && <label className="text-[length:var(--fs-11)] font-semibold uppercase tracking-[0.08em]" style={{color:"var(--faint)"}}>{fd.label}{!fd.opt && <span className="ml-0.5" style={{color:"var(--red)"}}>*</span>}</label>}
                           {ctrl}
                           {dnode.showErrs && !reqFieldOK(fd, D) && <FieldError>{fd.label} is required</FieldError>}
                         </div>
@@ -10931,13 +11093,13 @@ function App() {
                     const grid = (fs, dd, sd)=>(<div className="grid grid-cols-2 gap-x-3 gap-y-4">{fs.map(f3=>renderField(f3, dd, sd))}</div>);
                     const secs = [...new Set(dspec.fields.filter(f2=>f2.sec).map(f2=>f2.sec))];
                     return (<>
-                      {grid(dspec.fields.filter(f2=>!f2.sec))}
+                      {dspec.fields.some(f2=>!f2.sec) && grid(dspec.fields.filter(f2=>!f2.sec))}
                       {secs.map(sn=>{
                         const fs = dspec.fields.filter(f2=>f2.sec===sn);
                         const openS = !!openSecs[sn];
                         const n = fs.filter(f2=>ddata[f2.k]).length;
                         return (
-                          <div key={sn} className="rounded-xl border overflow-hidden" style={{borderColor:"var(--border2)"}}>
+                          <div key={sn} className="shrink-0 rounded-xl border overflow-hidden" style={{borderColor:"var(--border2)"}}>
                             <button onClick={()=>setOpenSecs(s2=>({...s2,[sn]:!s2[sn]}))}
                               className="w-full flex items-center gap-2 px-3 py-2.5 transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}>
                               <svg className={"transition-transform "+(openS?"rotate-90":"")} width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -10950,22 +11112,30 @@ function App() {
                       })}
                       {/* repeatable STAGES — accordion cards with add/remove (e.g. multi-stage approval) */}
                       {dspec.stages && (<>
-                        <span className="mt-1 text-[length:var(--fs-11)] font-semibold uppercase tracking-[0.08em]" style={{color:"var(--faint)"}}>{dspec.stages.label}<span className="ml-0.5" style={{color:"var(--red)"}}>*</span></span>
+                        <span className="-mb-2 text-[length:var(--fs-11)] font-semibold uppercase tracking-[0.08em]" style={{color:"var(--faint)"}}>{dspec.stages.label}<span className="ml-0.5" style={{color:"var(--red)"}}>*</span></span>
                         {dnode.showErrs && !dstages.length && <FieldError>Add at least one stage</FieldError>}
                         {dstages.map((st,i2)=>{
                           const skey = "stage:"+i2, sOpen = !!openSecs[skey];
+                          const sMissing = dspec.stages.fields.filter(f3=>!reqFieldOK(f3, st)).length;
+                          const icoBtn = "w-7 h-7 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--pop-hover)]";
                           return (
-                            <div key={i2} className="rounded-xl border overflow-hidden" style={{borderColor: sOpen?"color-mix(in srgb, var(--accent) 45%, transparent)":"var(--border2)"}}>
-                              <div onClick={()=>setOpenSecs(s2=>({...s2,[skey]:!s2[skey]}))}
-                                className="w-full flex items-center gap-2 px-3 py-2.5 cursor-pointer transition-colors hover:bg-[var(--pop-hover)]" style={{color:"var(--muted)"}}>
-                                <svg className={"transition-transform "+(sOpen?"rotate-90":"")} width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                                <span className="text-[length:var(--fs-125)] font-semibold" style={{color:"var(--text)"}}>Stage {i2+1}</span>
-                                <span className="text-[length:var(--fs-11)]" style={{color:"var(--faint)"}}>{st.dtype||"—"}</span>
-                                {dnode.showErrs && !sOpen && dspec.stages.fields.some(f3=>!reqFieldOK(f3, st)) &&
-                                  <span className="text-[length:var(--fs-11)] font-medium" style={{color:"var(--red)"}}>· required fields missing</span>}
-                                <button onClick={(e)=>{ e.stopPropagation(); rmStage(i2); }} className="ml-auto text-[length:var(--fs-11)] font-medium hover:brightness-125" style={{color:"var(--red)"}}>remove</button>
+                            /* shrink-0: the drawer body is a flex column — without it a tall stage was squeezed and its last fields clipped (no scroll) */
+                            <div key={i2} className="shrink-0 rounded-xl border" style={{borderColor: sOpen?"color-mix(in srgb, var(--accent) 45%, transparent)":"var(--border2)", background:"var(--panel)"}}>
+                              <div onClick={()=>setOpenSecs(s2=>({...s2,[skey]:!s2[skey]}))} role="button" aria-expanded={sOpen}
+                                className={"w-full flex items-center gap-2 pl-3 pr-1.5 py-2 cursor-pointer transition-colors hover:bg-[var(--pop-hover)] " + (sOpen ? "rounded-t-xl border-b" : "rounded-xl")} style={{color:"var(--muted)", borderColor:"var(--border)"}}>
+                                <svg className={"shrink-0 transition-transform "+(sOpen?"rotate-90":"")} width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                <span className="shrink-0 text-[length:var(--fs-13)] font-semibold" style={{color:"var(--text)"}}>Stage {i2+1}</span>
+                                <span className="min-w-0 truncate text-[length:var(--fs-11)]" style={{color:"var(--faint)"}}>{[st.dtype, typeof st.subject==="string" && st.subject].filter(Boolean).join(" · ") || "—"}</span>
+                                {dnode.showErrs && !sOpen && sMissing>0 &&
+                                  <span className="shrink-0 text-[length:var(--fs-11)] font-medium" style={{color:"var(--red)"}}>{sMissing} missing</span>}
+                                <span className="ml-auto shrink-0 flex items-center gap-0.5">
+                                  <button type="button" data-tip="Duplicate stage" aria-label="Duplicate stage" onClick={(e)=>{ e.stopPropagation(); dupStage(i2); }} className={icoBtn} style={{color:"var(--faint)"}}>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></button>
+                                  {dstages.length>1 && <button type="button" data-tip="Remove stage" aria-label="Remove stage" onClick={(e)=>{ e.stopPropagation(); rmStage(i2); }} className={icoBtn} style={{color:"var(--red)"}}>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg></button>}
+                                </span>
                               </div>
-                              {sOpen && <div className="px-3 pb-3.5 pt-2.5">{grid(dspec.stages.fields, st, (kk,val)=>setStage(i2,kk,val))}</div>}
+                              {sOpen && <div className="px-3.5 pb-4 pt-3.5">{grid(dspec.stages.fields, st, (kk,val)=>setStage(i2,kk,val))}</div>}
                             </div>
                           );
                         })}
@@ -10973,6 +11143,20 @@ function App() {
                       </>)}
                     </>);
                   })() : (<>
+                    {/* Create record's required FIRST PICK (v8, user 2026-10-12) — above the field rows, as in the node-based builder */}
+                    {dGate && (
+                      <div className={"flex flex-col gap-3" + (dfields.length ? " pb-6 border-b" : "")} style={dfields.length ? {borderColor:"var(--border)"} : undefined}>
+                        <span className="text-[length:var(--fs-10)] font-semibold uppercase tracking-[0.1em]" style={{color:"var(--faint)"}}>{dGate.label}<span className="ml-0.5" style={{color:"var(--red)"}}>*</span></span>
+                        <button type="button" data-anchor={`dgate:${dnode.id}`} onClick={(e)=>openGate(e.currentTarget)}
+                          className="w-full rounded-lg pl-3 pr-2.5 py-2.5 text-[length:var(--fs-135)] flex items-center gap-2 text-left transition-colors hover:bg-[var(--pop-hover)]"
+                          style={{ background:"var(--panel2)", border:"1px solid var(--border2)", color: dGateVal?"var(--text)":"var(--faint)" }}>
+                          <span className="flex-1 min-w-0 truncate">{dGateVal || dGate.ph}</span>
+                          <svg className="shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none" style={{color:"var(--faint)"}}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </button>
+                        {!dGateVal && (dnode.showErrs ? <FieldError>{dGate.label} is required</FieldError>
+                          : <span className="text-[length:var(--fs-12)]" style={{color:"var(--faint)"}}>{dnode.action==="update" ? "Pick this first, then add the fields to change." : "Its required fields appear once this is picked."}</span>)}
+                      </div>
+                    )}
                     {dfields.map((fv,i)=>{
                       const fd = recFields.find(x=>x.id===fv.field);
                       return (
@@ -10986,7 +11170,7 @@ function App() {
                           {/* field control = the SAME categorized picker (Suggested + All), for CHANGING this row's field.
                               A LOCKED row (Add task start date / subject, v8) shows its field fixed — no picker, a lock instead of the chevron. */}
                           <button type="button" onClick={fv.locked ? undefined : (e)=>openFieldPicker(e.currentTarget, i)} aria-disabled={fv.locked || undefined}
-                            data-tip={fv.locked ? "This field is required for a task" : undefined}
+                            data-tip={fv.locked ? (dnode.action==="create" ? "Required for every "+(dnode.arg||"record") : "This field is required for a task") : undefined}
                             className={"w-full rounded-lg pl-3 pr-2.5 py-2.5 text-[length:var(--fs-135)] flex items-center gap-2 text-left transition-colors " + (fv.locked ? "" : "hover:bg-[var(--pop-hover)]")}
                             /* field NAME is muted (lighter) so it reads as secondary to the value below it (user 2026-09-04) */
                             style={{ background:"var(--panel2)", border:"1px solid var(--border2)", color: fv.field?"var(--muted)":"var(--faint)", ...(fv.locked ? {opacity:1} : {}) }}>
@@ -11033,17 +11217,17 @@ function App() {
                         </div>
                       );
                     })}
-                    {dnode.showErrs && !dfields.length && <FieldError>Add at least one field</FieldError>}
+                    {dnode.showErrs && !dfields.length && !dGate && <FieldError>Add at least one field</FieldError>}
                     {/* + Add field — opens the categorized field picker (Suggested + All grouped). Full-width,
                         PURPLE outline + tinted bg (user 2026-07-04). */}
-                    <button onClick={(e)=>openFieldPicker(e.currentTarget, null)} className="w-full rounded-xl border px-3 py-2.5 text-[length:var(--fs-13)] font-medium flex items-center justify-center gap-1.5 transition-colors hover:brightness-110" style={{border:"1px solid var(--accent2)", color:"var(--accent2)", background:"color-mix(in srgb, var(--accent) 8%, transparent)"}}>
+                    {!(dGate && !dGateVal) && <button onClick={(e)=>openFieldPicker(e.currentTarget, null)} className="w-full rounded-xl border px-3 py-2.5 text-[length:var(--fs-13)] font-medium flex items-center justify-center gap-1.5 transition-colors hover:brightness-110" style={{border:"1px solid var(--accent2)", color:"var(--accent2)", background:"color-mix(in srgb, var(--accent) 8%, transparent)"}}>
                       + Add field
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    </button>
+                    </button>}
                   </>)}
                 </div>
                 <div className="px-4 py-3.5 border-t shrink-0 flex" style={{borderColor:"var(--border)"}}>
-                  <button onClick={()=>{ if (missingRequired(nodeAt(flowRef.current, dpath)) > 0) { update(dpath, {showErrs:true}); return; } update(dpath, {confirmed:true}); setDrawer(null); }} className="ml-auto px-4 py-2 rounded-lg text-[length:var(--fs-13)] font-semibold transition-colors hover:brightness-110" style={{background:"var(--accent)", color:"#fff"}}>Done</button>
+                  <button onClick={()=>{ if (missingRequired(nodeAt(flowRef.current, dpath), dModName) > 0) { update(dpath, {showErrs:true}); return; } update(dpath, {confirmed:true}); setDrawer(null); }} className="ml-auto px-4 py-2 rounded-lg text-[length:var(--fs-13)] font-semibold transition-colors hover:brightness-110" style={{background:"var(--accent)", color:"#fff"}}>Done</button>
                 </div>
               </div>
             );
