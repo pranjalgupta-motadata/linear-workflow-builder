@@ -1740,9 +1740,9 @@ function EmailAddBox({ onAdd, onTabOut, onFocusBox }) {
   };
   return (
     <div className="px-3 pt-2.5">
-      <label htmlFor="rcp-email" className="block mb-1 text-[length:var(--fs-11)] font-medium" style={{color:"var(--muted)"}}>Email address</label>
-      <div className="flex items-center gap-1.5">
-        <input id="rcp-email" ref={ref} type="email" value={txt} placeholder="name@company.com" autoComplete="off"
+      {/* user 2026-10-13: one "Add email" field — Enter adds (commas for several); no label, no Add button */}
+      <div className="relative">
+        <input id="rcp-email" ref={ref} type="text" inputMode="email" value={txt} placeholder="Add email" autoComplete="off" aria-label="Add email"
           aria-invalid={err || undefined}
           onChange={e=>{ setTxt(e.target.value); if (err) setErr(false); }}
           onKeyDown={e=>{
@@ -1752,13 +1752,16 @@ function EmailAddBox({ onAdd, onTabOut, onFocusBox }) {
             if (e.key==="Tab" && !e.shiftKey && onTabOut){ e.preventDefault(); e.stopPropagation(); e.currentTarget.blur(); onTabOut(); return; }
             if (e.key!=="Escape") e.stopPropagation(); // arrows/Tab belong to the text box, not the popover's list nav
           }}
-          className="flex-1 min-w-0 h-8 px-2.5 rounded-md outline-none text-[length:var(--fs-12)] transition-colors"
+          className="w-full h-9 pl-3 pr-9 rounded-md outline-none text-[length:var(--fs-125)] transition-colors"
           style={{background:"var(--bg)", color:"var(--text)", border:`1px solid ${err ? "var(--red)" : "var(--border2)"}`}}
           onFocus={e=>{ if (onFocusBox) onFocusBox(); if (!err) e.currentTarget.style.borderColor="var(--accent)"; }}
           onBlur={e=>{ if (!err) e.currentTarget.style.borderColor="var(--border2)"; }} />
-        <button type="button" disabled={!canAdd} onMouseDown={e=>e.preventDefault()} onClick={submit}
-          className="shrink-0 h-8 px-3 rounded-md text-[length:var(--fs-12)] font-semibold transition-colors"
-          style={canAdd ? {background:"var(--accent)", color:"#fff"} : {background:"var(--border)", color:"var(--faint)", cursor:"not-allowed"}}>Add</button>
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{color:"var(--faint)"}}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.9"/><path d="M16 16l4.5 4.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"/></svg>
+        </span>
+      </div>
+      <div className="mt-1.5 text-[length:var(--fs-11)] leading-snug" style={{color:"var(--muted)"}}>
+        Type an email and press <kbd className="px-1 py-px rounded text-[length:var(--fs-10)] font-medium" style={{border:"1px solid var(--border2)", background:"var(--panel2)", color:"var(--text)"}}>Enter</kbd> · separate several with commas
       </div>
       {err && <div className="mt-1.5"><FieldError>Enter a valid email address</FieldError></div>}
     </div>
@@ -9224,9 +9227,10 @@ function App() {
               // "Subject: …" — as soon as either is set (not the bare "Choose options"). Missing parts read "…".
               const emailLines = node.action==="send_email" ? (()=>{
                 const to = Array.isArray(data.to) ? data.to : (node.arg ? [node.arg] : []);
-                const toTxt = to.map(v=> typeof v==="string" ? v : valueDisplay(v, true)).join(", ");
+                const toAll = to.map(v=> typeof v==="string" ? v : valueDisplay(v, true));
+                const toTxt = toAll[0] || "";   // user 2026-10-13: first recipient only; the rest behind a +N number (hover lists them)
                 const subj = typeof data.subject==="string" ? phPretty(data.subject).trim() : "";
-                return (toTxt || subj) ? { to: toTxt || "…", subject: subj || "…" } : null; })() : null;
+                return (toTxt || subj) ? { to: toTxt || "…", more: toAll.slice(1), subject: subj || "…" } : null; })() : null;
               // full hover tooltip: every field-change as a bullet (update/create), or the whole overview (spec forms).
               const cardTip = spec ? cardSummary : (cardChangesFull && cardChangesFull.length ? cardChangesFull.map(c=>"• "+c).join("\n") : null);
               // when not configured: ONE line, just the prompt (no subtext)
@@ -9253,9 +9257,16 @@ function App() {
                   <span className="flex-1 min-w-0">
                     {emailLines && !(showErr && !good) ? (<>
                       {/* full value on hover when a line is cut off (user 2026-10-08) — themed, wrapping tooltip */}
-                      <Tooltip wrap truncOnly label={"To: "+emailLines.to}>
-                        <span className="block text-[length:var(--fs-13)] leading-tight truncate" style={{color:"var(--text)"}}>
-                          <span style={{color:"var(--muted)"}}>To: </span>{emailLines.to}</span></Tooltip>
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        <Tooltip wrap truncOnly label={"To: "+emailLines.to}>
+                          <span className="block min-w-0 text-[length:var(--fs-13)] leading-tight truncate" style={{color:"var(--text)"}}>
+                            <span style={{color:"var(--muted)"}}>To: </span>{emailLines.to}</span></Tooltip>
+                        {emailLines.more.length>0 && (
+                          <Tooltip wrap label={emailLines.more.join("\n")}>
+                            <span className="shrink-0 inline-flex items-center px-1.5 rounded-full text-[length:var(--fs-115)] font-medium leading-[18px]"
+                              style={{background:"var(--panel2)", border:"1px solid var(--border2)", color:"var(--muted)"}}>+{emailLines.more.length}</span>
+                          </Tooltip>)}
+                      </span>
                       <Tooltip wrap truncOnly label={"Subject: "+emailLines.subject}>
                         <span className="block mt-1 text-[length:var(--fs-13)] leading-tight truncate" style={{color:"var(--text)"}}>
                           <span style={{color:"var(--muted)"}}>Subject: </span>{emailLines.subject}</span></Tooltip>
@@ -10743,7 +10754,14 @@ function App() {
                           <div className="px-5 py-2 flex items-center gap-3 border-b" style={{borderColor:"var(--border2)"}}>
                             <span className="shrink-0 w-7 text-[length:var(--fs-125)]" style={{color:"var(--muted)"}}>{label}</span>
                             <div className="flex-1 min-w-0 flex flex-wrap items-center gap-1.5">
-                              {list.map(v=> chip(rLabel(v), typeof v!=="string" || preOpts.includes(v), ()=>rRemove(field, v)))}
+                              {/* user 2026-10-13: only the FIRST recipient is a chip; the others sit behind a +N number whose
+                                  hover lists them (read-only — removing the chip brings the next one forward) */}
+                              {list.slice(0,1).map(v=> chip(rLabel(v), typeof v!=="string" || preOpts.includes(v), ()=>rRemove(field, v)))}
+                              {list.length>1 && (
+                                <Tooltip wrap label={list.slice(1).map(rLabel).join("\n")}>
+                                  <span tabIndex={0} className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[length:var(--fs-115)] font-medium cursor-default"
+                                    style={{background:"var(--panel2)", border:"1px solid var(--border2)", color:"var(--muted)"}}>+{list.length-1}</span>
+                                </Tooltip>)}
                               <button type="button" data-anchor={ak} onClick={()=>{ RCP_KB.on=false; openRecipients(field); }}
                                 className="flex-1 min-w-[90px] text-left text-[length:var(--fs-125)] py-0.5 rounded transition-colors"
                                 style={{color: openSlot===ak ? "var(--accent2)" : "var(--faint)"}}>{list.length ? "+ add" : "add an email or pick…"}</button>
