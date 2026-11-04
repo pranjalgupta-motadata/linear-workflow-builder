@@ -33,3 +33,6 @@ node_modules/
 Thumbs.db
 .vscode/
 .idea/
+
+# Test screenshots
+tests/out/
