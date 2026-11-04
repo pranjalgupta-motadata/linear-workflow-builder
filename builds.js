@@ -11,6 +11,7 @@
 window.BUILD_ALIASES = { "index.html": "index-v8.html" };
 window.BUILDS = [
   { label: "v8 (IF / Else, live)", file: "index-v8.html" },
+  { label: "v5.17 (fold)", file: "index-v5.17.html" },
   { label: "v7", file: "index-v7.html" },
   { label: "v5.16 (working)", file: "index-v5.16.html" },
   { label: "v5.15", file: "index-v5.15.html" },
